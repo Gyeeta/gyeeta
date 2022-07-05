@@ -35,7 +35,7 @@ BINARIES := tcptracer tcpresponse test_caps test_ipaddr test_inet_diag test_time
 all: gitignores $(BINARIES)
 
 gitignores:
-	@-echo $(BINARIES) > .gitignore || echo
+	@-echo " $(BINARIES)" | sed "s/ /\\n/g" > .gitignore
 
 tcptracer: tcptracer.o nlhandler.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(BCCLIBS) $(LDLIBS) -o $@
