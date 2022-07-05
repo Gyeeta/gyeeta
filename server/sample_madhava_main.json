@@ -1,0 +1,22 @@
+
+{
+		"listener_domains"	 	:	["0.0.0.0"],
+		"listener_ports"		:	[10038],
+		"madhava_name"			:	"madhava_useast1",
+		"service_hostname"		:	"madhava-useast1.local",
+		"service_port"			:	10038,
+		"cloud_type"			:	"aws",
+
+		"shyama_hosts" 			:	[ "shyama1.local", "shyama2.local" ],
+		"shyama_ports"			:	[ 10037, 10037 ],
+		"shyama_secret"			:	"This is a secret",
+		
+		"postgres_hostname"		:	"db1.local",
+		"postgres_port"			:	10040,
+		"postgres_user"			:	"madhava1",
+		"postgres_password"		:	"gyeeta",
+		"postgres_storage_days"		:	3,
+		"is_db_remote"			:	false,
+
+		"auto_respawn_on_exit"		:	true
+}

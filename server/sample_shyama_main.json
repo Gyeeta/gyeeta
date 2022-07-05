@@ -1,0 +1,23 @@
+
+{
+		"listener_domains"	 	:	["0.0.0.0"],
+		"listener_ports"		:	[10037],
+		"service_hostname"		:	"shyama1.local",
+		"service_port"			:	10037,
+		"cloud_type"			:	"gcp",
+
+		"shyama_name"			:	"shyama1",
+		"shyama_secret"			:	"This is a secret",
+
+		"min_madhava"			:	1,
+		
+		"postgres_hostname"		:	"dbshyama1.local",
+		"postgres_port"			:	10041,
+		"postgres_user"			:	"shyama1",
+		"postgres_password"		:	"gyeeta",
+		"postgres_storage_days"		:	5,
+
+		"webserver_url"			:	"http://gyeetaweb.local:10039",
+		"auto_respawn_on_exit"		:	true
+}	
+

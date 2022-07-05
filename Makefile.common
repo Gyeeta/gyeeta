@@ -1,0 +1,89 @@
+
+CC = gcc_8
+CXX = g++_8
+
+# Optional run time command line compile flags can be passed using OPTFLAGS="your flag list" while running make
+
+DEBFLAGS = -g -fno-omit-frame-pointer 
+
+ifneq ($(debug),yes)
+DEBFLAGS += -O2 -DNDEBUG 
+else
+DEBFLAGS += -ggdb -DDO_DEBUG -DDO_PROFILE -D_DEBUG
+endif
+
+ifeq ($(profile),yes)
+DEBFLAGS += -DDO_PROFILE -UNDEBUG -DCONDCOMPILE
+endif
+
+ifeq ($(ubsan),yes)
+DEBFLAGS += -fsanitize=undefined #-fno-sanitize-recover
+endif
+
+ifeq ($(memcheck),yes)
+DEBFLAGS += -fsanitize=address -fsanitize=leak
+endif
+
+ifeq ($(mallochook),yes)
+DEBFLAGS += -DGY_MALLOC_HOOKED
+endif
+
+ifeq ($(gprofile_check),yes)
+DEBFLAGS += -g -pg -fprofile-arcs -ftest-coverage -fno-omit-frame-pointer -ggdb
+endif	
+
+# To enable perf profiling
+#pperf_check=yes
+
+ifeq ($(perf_check),yes)
+DEBFLAGS += -g -fno-omit-frame-pointer -ggdb -fno-inline-functions -fno-inline-functions-called-once -fno-optimize-sibling-calls
+endif	
+
+COMMFLAGS = $(DEBFLAGS) -pthread -fno-strict-aliasing -m64 -march=sandybridge -D_GNU_SOURCE -Wall -Wno-unused -Werror -Wno-format-truncation -Wno-stringop-truncation $(OPTFLAGS)
+
+CXXOPT =  -std=c++17 $(COMMFLAGS) 
+
+CXXFLAGS := $(CXXOPT)
+
+COPT =  -std=c11 $(COMMFLAGS)
+
+CFLAGS := $(COPT)
+
+BOOST_HOME := /opt/lib_install/boost_install
+POCO_HOME := /opt/lib_install/poco_install
+RAPIDJSON_HOME := /opt/lib_install/rapidjson
+CITYHASH_HOME := /opt/lib_install/cityhash
+RE2_HOME := /opt/lib_install/re2
+LIBMNL_HOME := /opt/lib_install/libmnl
+FLATBUFFERS_HOME := /opt/lib_install/flatbuffers
+HASHLIBPP_HOME := /opt/lib_install/hashlib++
+MONGO_HOME := /opt/lib_install/mongo_install/mongo_c
+FOLLY_HOME := /opt/lib_install/folly
+GLOG_HOME := /opt/lib_install/glog
+GFLAGS_HOME := /opt/lib_install/gflags
+URCU_HOME := /opt/lib_install/userspace-rcu
+LIBPCAP_HOME := /opt/lib_install/libpcap
+PLF_HOME := /opt/lib_install/plf_colony
+POSTGRES_HOME := /opt/lib_install/postgres
+BOOLSTUFF_HOME := /opt/lib_install/boolstuff
+CURL_HOME := /opt/lib_install/libcurl
+
+MONGO_INC := $(MONGO_HOME)/include/
+
+MAKEFILE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
+
+CPPFLAGS := -I. -I$(MAKEFILE_DIR)/common/ -I$(MAKEFILE_DIR)/thirdparty/ -I$(BOOST_HOME)/include/ \
+	-I$(CITYHASH_HOME)/include/ -I$(RE2_HOME)/include/  -I$(LIBMNL_HOME)/include/ -I$(FLATBUFFERS_HOME)/include/ -I$(HASHLIBPP_HOME)/include/ \
+	-I$(FOLLY_HOME)/include/ -I$(GLOG_HOME)/include/ -I$(URCU_HOME)/include/ -I$(GFLAGS_HOME)/include/ -I$(LIBPCAP_HOME)/include/	\
+	-I$(RAPIDJSON_HOME)/include/ -I${PLF_HOME}/include/ -I${BOOLSTUFF_HOME}/include/ -I$(POSTGRES_HOME)/include/ -I$(CURL_HOME)/include/
+
+
+LDLIBS := -Wl,-rpath,./lib -Wl,-rpath-link,./lib -lpthread -lrt -L. -lgcc -lstdc++ -lm -lz -lnsl  -L$(BOOST_HOME)/lib \
+	$(MAKEFILE_DIR)/common/libgycommon.a \
+	$(RE2_HOME)/lib/libre2.a 	\
+	-L$(LIBMNL_HOME)/lib -lmnl -L$(CITYHASH_HOME)/lib -lcityhash \
+	-L$(FOLLY_HOME)/lib -lfolly $(GLOG_HOME)/lib/libglog.a $(GFLAGS_HOME)/lib/libgflags.a -lgcc_s -lunwind -ldl -ldouble-conversion	\
+	$(URCU_HOME)/lib/liburcu-qsbr.a $(URCU_HOME)/lib/liburcu-cds.a $(LIBPCAP_HOME)/lib/libpcap.a \
+	$(POSTGRES_HOME)/lib/libpq.a $(POSTGRES_HOME)/lib/libpgport.a $(POSTGRES_HOME)/lib/libpgcommon.a \
+	$(BOOLSTUFF_HOME)/lib/libboolstuff-0.1.a $(CURL_HOME)/lib/libcurl.a -lcap -liberty -lcrypto -lssl
+

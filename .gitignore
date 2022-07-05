@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# Misc
+.gdb_history
+
+test_misc/
+
+partha/partha
+server/madhava
+server/shyama
+
