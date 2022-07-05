@@ -49,10 +49,10 @@ clean:
 	rm -f *.o *.a core core.* vgcore.* *.da *.bb *.bbg *.gcda *.gcno *.d .depend
 
 install::
-	$(MAKE) -j 5
+	$(MAKE) -j 2
 
 cleaninstall::
-	$(MAKE) clean && $(MAKE) -j 3
+	$(MAKE) clean && $(MAKE) -j 2
 
 ci:
 	$(MAKE) cleaninstall

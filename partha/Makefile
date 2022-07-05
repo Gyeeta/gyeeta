@@ -6,6 +6,8 @@ include ../Makefile.bcc
 
 INC_MAKE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
+INSTALLDIR := $(INC_MAKE_DIR)/install/partha/
+
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<	
 
@@ -26,12 +28,10 @@ PARTHAOBJS := gypartha.o sversion.o gy_paconnhdlr.o gy_server_int.o sys_hardware
 
 partha: $(PARTHAOBJS) $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $^ $(EXTRALDLIBS) $(BCCLIBS) $(LDLIBS) -o $@
-	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep ./partha || echo
 
 install::
-	cp -p $(BINARIES) ./runpartha.sh ./install/
-	\cp -pP ./lib/*.* ./install/lib/
-	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep ./install/partha || echo
+	cp -p $(BINARIES) ./runpartha.sh $(INSTALLDIR)/
+	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep $(INSTALLDIR)/partha || echo
 
 
 clean:

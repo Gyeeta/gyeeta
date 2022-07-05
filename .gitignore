@@ -35,6 +35,7 @@
 .gdb_history
 
 test_misc/
+install/
 
 partha/partha
 server/madhava
