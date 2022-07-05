@@ -1,0 +1,9 @@
+
+BCC_BASE_DIR := /home/krishna/projects/osproc/misc_src
+
+
+BCCPATH = $(BCC_BASE_DIR)/bcc_include
+CLANGPATH = $(BCC_BASE_DIR)/clang_build
+LLVMLIBPATH = $(BCC_BASE_DIR)/llvm_build/install/lib/
+
+

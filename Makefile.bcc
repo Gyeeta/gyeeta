@@ -1,11 +1,7 @@
 
+BCC_MAKE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
-BCC_BASE_DIR := /home/krishna/projects/osproc/misc_src
-
-
-BCCPATH = $(BCC_BASE_DIR)/bcc_include
-CLANGPATH = $(BCC_BASE_DIR)/clang_build
-LLVMLIBPATH = $(BCC_BASE_DIR)/llvm_build/install/lib/
+include $(BCC_MAKE_DIR)/Makefile.llvm
 
 CPPFLAGS += -I$(CLANGPATH)/include -I$(BCCPATH)/include -I$(CLANGPATH)/include -I$(BCCPATH)/include/compat/linux/ 
 
