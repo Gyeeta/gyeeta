@@ -1,0 +1,214 @@
+prog tag mismatch 9a0f8f16e566b94e 11
+prog tag mismatch 5732abf8378b7095 11
+prog tag mismatch 9a0f8f16e566b94e 11
+prog tag mismatch 21ed20500593f44 11
+prog tag mismatch b0ab5dea56e6bc44 11
+prog tag mismatch efb2d616bff3b81a 11
+prog tag mismatch 985ff843050a7928 11
+prog tag mismatch 18309f6c6d8f5236 11
+[08/17 11:57:38.436530]:[INFO]: TCP Connection : TCP Conn : Client IP : 172.20.59.67,  Client TCP Port : 10868,  Client NetNS 0-Server IP : 172.20.34.24,  Server TCP Port : 443,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : Stats TCP Connection Properties : Bytes Acked 46270, Bytes Received 4437253, Send MBps 72.672, Pacing Rate 145.335 MBps, rtt 9.395 rtt variance 14.729, rcv_rtt 7.5, mss 8949 rcv_mss 8949 path MTU 9001, Last Send was before 2000 msec, Last receive was before 352 msec, 
+
+[08/17 11:57:38.436556]:[INFO]: TCP Connection : TCP Conn : Client IP : 172.20.59.67,  Client TCP Port : 41267,  Client NetNS 0-Server IP : 172.20.34.24,  Server TCP Port : 179,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : Stats TCP Connection Properties : Bytes Acked 2263, Bytes Received 2262, Send MBps 2473.748, Pacing Rate 4938.550 MBps, rtt 0.276 rtt variance 0.022, mss 8949 rcv_mss 536 path MTU 9001, Last Send was before 384 msec, Last receive was before 400 msec, 
+
+[DESTROY]  src=172.20.59.67 dst=172.20.59.67 proto=6 sport=52084 dport=20244  <-Reply-> src=172.20.59.67 dst=172.20.59.67 proto=6 sport=20244 dport=52084 
+   [NEW]  src=172.20.59.67 dst=172.20.59.67 proto=6 sport=52532 dport=20244  <-Reply-> src=172.20.59.67 dst=172.20.59.67 proto=6 sport=20244 dport=52532 
+[08/17 11:57:40.506564]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 2.070608625, Process PID : 1798, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 52532, Dest TCP Port : 20244, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:40.506943]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 2.070728511, Process PID : 1890, Process TID : 1878, Process name : kube-router, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 20244, Dest TCP Port : 52532, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:40.506958]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 2.070959780, Process PID : 1890, Process TID : 1878, Process name : kube-router, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 20244, Dest TCP Port : 52532, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:40.506964]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 2.070975151, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 52532, Dest TCP Port : 20244, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16694 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16694 
+[08/17 11:57:40.691122]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 2.255155481, Process PID : 11986, Process TID : 11986, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16694, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:40.691527]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 2.255576599, Process PID : 11986, Process TID : 11986, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16694, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[DESTROY]  src=100.96.2.1 dst=100.96.2.4 proto=6 sport=32444 dport=44135  <-Reply-> src=100.96.2.4 dst=100.96.2.1 proto=6 sport=44135 dport=32444 
+   [NEW]  src=100.96.2.1 dst=100.96.2.4 proto=6 sport=32894 dport=44135  <-Reply-> src=100.96.2.4 dst=100.96.2.1 proto=6 sport=44135 dport=32894 
+[08/17 11:57:40.814408]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 2.378454878, Process PID : 1396, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.4, Source TCP Port : 32894, Dest TCP Port : 44135, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:40.814601]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 2.378593778, Process PID : 2991, Process TID : 2980, Process name : tiller, Source IPv4 : 100.96.2.4, Dest IPv4 : 100.96.2.1, Source TCP Port : 44135, Dest TCP Port : 32894, NetNS : 4026532507, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:40.818786]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 2.382836578, Process PID : 2991, Process TID : 2980, Process name : tiller, Source IPv4 : 100.96.2.4, Dest IPv4 : 100.96.2.1, Source TCP Port : 44135, Dest TCP Port : 32894, NetNS : 4026532507, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:40.818902]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 2.382947050, Process PID : 1798, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.4, Source TCP Port : 32894, Dest TCP Port : 44135, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[DESTROY]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=47356 dport=10054  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=10054 dport=47356 
+   [NEW]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=47806 dport=10054  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=10054 dport=47806 
+[08/17 11:57:42.819760]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 4.383806324, Process PID : 1396, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 47806, Dest TCP Port : 10054, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:42.819874]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 4.383922462, Process PID : 2624, Process TID : 2610, Process name : sidecar, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 10054, Dest TCP Port : 47806, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:42.820276]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 4.384298061, Process PID : 2624, Process TID : 2610, Process name : sidecar, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 10054, Dest TCP Port : 47806, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:42.820385]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 4.384440710, Process PID : 1396, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 47806, Dest TCP Port : 10054, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:43.436690]:[INFO]: TCP Connection : TCP Conn : Client IP : 172.20.59.67,  Client TCP Port : 10868,  Client NetNS 0-Server IP : 172.20.34.24,  Server TCP Port : 443,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : Stats TCP Connection Properties : Bytes Acked 46354, Bytes Received 4444909, Send MBps 94.368, Pacing Rate 188.737 MBps, rtt 7.235 rtt variance 12.031, rcv_rtt 7.5, mss 8949 rcv_mss 8949 path MTU 9001, Last Send was before 2496 msec, Last receive was before 492 msec, 
+
+[08/17 11:57:43.436705]:[INFO]: TCP Connection : TCP Conn : Client IP : 172.20.59.67,  Client TCP Port : 22,  Client NetNS 0-Server IP : 125.99.76.10,  Server TCP Port : 25436,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : Stats TCP Connection Properties : Bytes Acked 485583, Bytes Received 17017, Send MBps 11.607, Pacing Rate 13.927 MBps, rtt 4.759 rtt variance 1.054, rcv_rtt 4, mss 1448 rcv_mss 1448 path MTU 9001, Last Send was before 744 msec, Last receive was before 744 msec, Send Pkts Retrans 0, Total Retransmits 27 
+
+[DESTROY]  src=172.20.59.67 dst=172.20.59.67 proto=6 sport=52090 dport=20244  <-Reply-> src=172.20.59.67 dst=172.20.59.67 proto=6 sport=20244 dport=52090 
+   [NEW]  src=172.20.59.67 dst=172.20.59.67 proto=6 sport=52540 dport=20244  <-Reply-> src=172.20.59.67 dst=172.20.59.67 proto=6 sport=20244 dport=52540 
+[08/17 11:57:43.506649]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.070670686, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 52540, Dest TCP Port : 20244, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:43.506701]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 5.070766529, Process PID : 1888, Process TID : 1878, Process name : kube-router, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 20244, Dest TCP Port : 52540, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:43.507131]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.071155296, Process PID : 1888, Process TID : 1878, Process name : kube-router, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 20244, Dest TCP Port : 52540, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:43.507308]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.071186673, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 52540, Dest TCP Port : 20244, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16702 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16702 
+[08/17 11:57:43.700203]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.264244256, Process PID : 11989, Process TID : 11989, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16702, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:43.700622]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.264672620, Process PID : 11989, Process TID : 11989, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16702, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[DESTROY]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16258 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16258 
+[DESTROY]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16256 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16256 
+[DESTROY]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16254 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16254 
+[DESTROY]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16252 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16252 
+[DESTROY]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16262 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16262 
+[DESTROY]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16260 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16260 
+[08/17 11:57:44.143053]:[INFO]: [33;1mNamespace Event : Time diff : 5.707085837, Process PID : 12031, Process TID : 12031, Process name : runc:[1:CHILD],  New Mount Namespace, New utsname Namespace, New IPC Namespace, New PID Namespace, New network Namespace,
+
+[0m   [NEW]  src=100.96.2.1 dst=100.96.2.4 proto=6 sport=32902 dport=44135  <-Reply-> src=100.96.2.4 dst=100.96.2.1 proto=6 sport=44135 dport=32902 
+[08/17 11:57:44.153168]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.717214777, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.4, Source TCP Port : 32902, Dest TCP Port : 44135, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.153350]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 5.717316312, Process PID : 2980, Process TID : 2980, Process name : tiller, Source IPv4 : 100.96.2.4, Dest IPv4 : 100.96.2.1, Source TCP Port : 44135, Dest TCP Port : 32902, NetNS : 4026532507, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.153670]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.717692685, Process PID : 2980, Process TID : 2980, Process name : tiller, Source IPv4 : 100.96.2.4, Dest IPv4 : 100.96.2.1, Source TCP Port : 44135, Dest TCP Port : 32902, NetNS : 4026532507, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.153687]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.717704839, Process PID : 1798, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.4, Source TCP Port : 32902, Dest TCP Port : 44135, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[DESTROY]  src=100.96.2.1 dst=100.96.2.4 proto=6 sport=32462 dport=44135  <-Reply-> src=100.96.2.4 dst=100.96.2.1 proto=6 sport=44135 dport=32462 
+   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16706 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16706 
+[08/17 11:57:44.155750]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.719788019, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16706, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:44.156187]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.720240235, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16706, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16708 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16708 
+[08/17 11:57:44.156488]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.720528244, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16708, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:44.156940]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.720995576, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16708, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16710 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16710 
+[08/17 11:57:44.157233]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.721289466, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16710, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:44.157727]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.721783350, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16710, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16712 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16712 
+[08/17 11:57:44.158015]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.722068497, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16712, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:44.158477]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.722530267, Process PID : 1798, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16712, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16714 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16714 
+[08/17 11:57:44.158779]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.722834370, Process PID : 1798, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16714, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:44.159233]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.723282934, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16714, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16716 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16716 
+[08/17 11:57:44.159527]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.723583367, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16716, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:44.160005]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.724060557, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16716, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m   [NEW]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=47826 dport=10054  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=10054 dport=47826 
+[08/17 11:57:44.191351]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.755399217, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 47826, Dest TCP Port : 10054, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.191726]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 5.755529527, Process PID : 2621, Process TID : 2610, Process name : sidecar, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 10054, Dest TCP Port : 47826, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.191742]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.755752184, Process PID : 2621, Process TID : 2610, Process name : sidecar, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 10054, Dest TCP Port : 47826, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.191748]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.755785133, Process PID : 1240, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 47826, Dest TCP Port : 10054, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[DESTROY]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=47374 dport=10054  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=10054 dport=47374 
+   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16720 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16720 
+[08/17 11:57:44.268762]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 5.832808746, Process PID : 12072, Process TID : 12072, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16720, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:44.269334]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 5.833380813, Process PID : 12072, Process TID : 12072, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16720, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[DESTROY]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=40848 dport=8081  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=8081 dport=40848 
+   [NEW]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=41302 dport=8081  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=8081 dport=41302 
+[08/17 11:57:44.603079]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 6.167126556, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 41302, Dest TCP Port : 8081, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.603256]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 6.167238829, Process PID : 2470, Process TID : 2456, Process name : kube-dns, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 8081, Dest TCP Port : 41302, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.603457]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 6.167486846, Process PID : 2470, Process TID : 2456, Process name : kube-dns, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 8081, Dest TCP Port : 41302, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.603480]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 6.167505731, Process PID : 1219, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 41302, Dest TCP Port : 8081, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[DESTROY]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=47378 dport=10054  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=10054 dport=47378 
+   [NEW]  src=100.96.2.1 dst=100.96.2.3 proto=6 sport=47832 dport=10054  <-Reply-> src=100.96.2.3 dst=100.96.2.1 proto=6 sport=10054 dport=47832 
+[08/17 11:57:44.634000]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 6.198055395, Process PID : 1415, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 47832, Dest TCP Port : 10054, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.634151]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 6.198136511, Process PID : 2621, Process TID : 2610, Process name : sidecar, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 10054, Dest TCP Port : 47832, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.635688]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 6.199720310, Process PID : 2624, Process TID : 2610, Process name : sidecar, Source IPv4 : 100.96.2.3, Dest IPv4 : 100.96.2.1, Source TCP Port : 10054, Dest TCP Port : 47832, NetNS : 4026532391, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:44.635711]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 6.199746974, Process PID : 1219, Process TID : 1211, Process name : kubelet, Source IPv4 : 100.96.2.1, Dest IPv4 : 100.96.2.3, Source TCP Port : 47832, Dest TCP Port : 10054, NetNS : 4026532029, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[08/17 11:57:45.558861]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 7.122899123, Process PID : 12095, Process TID : 12095, Process name : mysql, Source IPv4 : 127.0.0.1, Dest IPv4 : 127.0.0.1, Source TCP Port : 58118, Dest TCP Port : 3306, NetNS : 4026532630, Source Addr Desc : IPv4 - Loopback Address of type 127.x.x.x , Dest Addr Desc : IPv4 - Loopback Address of type 127.x.x.x 
+
+[0m[08/17 11:57:45.558893]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 7.122976664, Process PID : 3721, Process TID : 3721, Process name : mysqld, Source IPv4 : 127.0.0.1, Dest IPv4 : 127.0.0.1, Source TCP Port : 3306, Dest TCP Port : 58118, NetNS : 4026532630, Source Addr Desc : IPv4 - Loopback Address of type 127.x.x.x , Dest Addr Desc : IPv4 - Loopback Address of type 127.x.x.x 
+
+[0m[08/17 11:57:45.580557]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 7.144598403, Process PID : 12095, Process TID : 12095, Process name : mysql, Source IPv4 : 127.0.0.1, Dest IPv4 : 127.0.0.1, Source TCP Port : 58118, Dest TCP Port : 3306, NetNS : 4026532630, Source Addr Desc : IPv4 - Loopback Address of type 127.x.x.x , Dest Addr Desc : IPv4 - Loopback Address of type 127.x.x.x 
+
+[0m[08/17 11:57:45.580664]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 7.144711394, Process PID : 4013, Process TID : 3721, Process name : mysqld, Source IPv4 : 127.0.0.1, Dest IPv4 : 127.0.0.1, Source TCP Port : 3306, Dest TCP Port : 58118, NetNS : 4026532630, Source Addr Desc : IPv4 - Loopback Address of type 127.x.x.x , Dest Addr Desc : IPv4 - Loopback Address of type 127.x.x.x 
+
+[0m[08/17 11:57:46.289226]:[INFO]: [33;1mNamespace Event : Time diff : 7.853267162, Process PID : 12118, Process TID : 12118, Process name : runc:[1:CHILD],  New Mount Namespace, New utsname Namespace, New PID Namespace,
+
+[0m   [NEW]  src=100.96.2.10 dst=100.64.0.10 proto=17 sport=56349 dport=53  <-Reply-> src=100.96.2.3 dst=100.96.2.10 proto=17 sport=53 dport=56349 
+   [NEW]  src=100.96.2.10 dst=100.69.180.4 proto=6 sport=57880 dport=3306  <-Reply-> src=100.96.1.3 dst=100.96.2.10 proto=6 sport=3306 dport=57880 
+[08/17 11:57:46.353495]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 7.917538848, Process PID : 12119, Process TID : 12119, Process name : mysql, Source IPv4 : 100.96.2.10, Dest IPv4 : 100.69.180.4, Source TCP Port : 57880, Dest TCP Port : 3306, NetNS : 4026532743, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m   [NEW]  src=100.96.1.3 dst=100.96.2.3 proto=17 sport=38480 dport=53  <-Reply-> src=100.96.2.3 dst=100.96.1.3 proto=17 sport=53 dport=38480 
+   [NEW]  src=100.96.2.3 dst=172.20.0.2 proto=17 sport=36901 dport=53  <-Reply-> src=172.20.0.2 dst=172.20.59.67 proto=17 sport=53 dport=36901 
+[08/17 11:57:46.381430]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 7.945473504, Process PID : 12119, Process TID : 12119, Process name : mysql, Source IPv4 : 100.96.2.10, Dest IPv4 : 100.69.180.4, Source TCP Port : 57880, Dest TCP Port : 3306, NetNS : 4026532743, Source Addr Desc : IPv4 - Globally Addressable , Dest Addr Desc : IPv4 - Globally Addressable 
+
+[0m[DESTROY]  src=172.20.59.67 dst=172.20.59.67 proto=6 sport=52114 dport=20244  <-Reply-> src=172.20.59.67 dst=172.20.59.67 proto=6 sport=20244 dport=52114 
+   [NEW]  src=172.20.59.67 dst=172.20.59.67 proto=6 sport=52570 dport=20244  <-Reply-> src=172.20.59.67 dst=172.20.59.67 proto=6 sport=20244 dport=52570 
+[08/17 11:57:46.506607]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 8.070650195, Process PID : 1442, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 52570, Dest TCP Port : 20244, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:46.506808]:[INFO]: [32mEvent : IPv4 TCP Accept, Time diff : 8.070744703, Process PID : 1888, Process TID : 1878, Process name : kube-router, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 20244, Dest TCP Port : 52570, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:46.506926]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 8.070953094, Process PID : 1888, Process TID : 1878, Process name : kube-router, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 20244, Dest TCP Port : 52570, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m[08/17 11:57:46.506944]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 8.070979933, Process PID : 1219, Process TID : 1211, Process name : kubelet, Source IPv4 : 172.20.59.67, Dest IPv4 : 172.20.59.67, Source TCP Port : 52570, Dest TCP Port : 20244, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16732 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16732 
+[08/17 11:57:46.709193]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 8.273239094, Process PID : 12148, Process TID : 12148, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16732, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:46.709593]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 8.273648358, Process PID : 12148, Process TID : 12148, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16732, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m   [NEW]  src=172.20.59.67 dst=169.254.169.254 proto=6 sport=16734 dport=80  <-Reply-> src=169.254.169.254 dst=172.20.59.67 proto=6 sport=80 dport=16734 
+[08/17 11:57:47.277977]:[INFO]: [32mEvent : IPv4 TCP Connect, Time diff : 8.842004922, Process PID : 12198, Process TID : 12198, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16734, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[08/17 11:57:47.278347]:[INFO]: [32mEvent : IPv4 TCP Close, Time diff : 8.842399297, Process PID : 12198, Process TID : 12198, Process name : curl, Source IPv4 : 172.20.59.67, Dest IPv4 : 169.254.169.254, Source TCP Port : 16734, Dest TCP Port : 80, NetNS : 4026532029, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Link Local IP - Not addressable across routers 
+
+[0m[    1534507068.540324]:[INFO]: [31m./tcptracer : Received Signal SIGINT : Interrupt from keyboard:2 Exiting...
+[0m[    1534507068.540405]:[INFO]: Process PID 11950 Stats : VmPeak:	  656284 kB, VmSize:	  590752 kB, VmData:	  456840 kB, Threads:	7
+[    1534507068.540409]:[NOTE]: ./tcptracer : PID of process sending the signal 0 : UID 0 : Cause of signal Signal sent by Kernel : Code 128
+[08/17 11:57:48.436824]:[INFO]: TCP Connection : TCP Conn : Client IP : 172.20.59.67,  Client TCP Port : 10868,  Client NetNS 0-Server IP : 172.20.34.24,  Server TCP Port : 443,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : Stats TCP Connection Properties : Bytes Acked 46717, Bytes Received 4471121, Send MBps 54.398, Pacing Rate 108.791 MBps, rtt 12.551 rtt variance 17.796, rcv_rtt 7.5, mss 8949 rcv_mss 8949 path MTU 9001, Last Send was before 328 msec, Last receive was before 328 msec, 
+
+[08/17 11:57:48.545478]:[INFO]: Thread debug_thread returning as signal SIGINT : Interrupt from keyboard received...
+[08/17 11:57:48.545528]:[INFO]: Thread/Proc CPU/Mem/IO Stats for [debug_thread : 11957 : ] after 10.109281540 sec : User CPU Usage 0.000 %, Sys CPU Usage 0.000 %, Blkio Delay 0.000 %, User Time 0 ticks, Sys Time 0 ticks, Blkio Delay 0 ticks, Virtual Memory 576 MB, RSS 106 MB, Minor Page Faults 1, Major Page Fault 0, Num Threads 7, Bytes Read 420, Bytes Written 0, Read Syscalls 2, Write Syscalls 0, Act Bytes Read 0, Act Bytes Written 0
+
+[08/17 11:57:48.545860]:[INFO]: Thread ipv6_thr returning as signal SIGINT : Interrupt from keyboard received...
+[08/17 11:57:48.545900]:[INFO]: Thread/Proc CPU/Mem/IO Stats for [ipv6_thr : 11955 : ] after 10.109740257 sec : User CPU Usage 0.000 %, Sys CPU Usage 0.000 %, Blkio Delay 0.000 %, User Time 0 ticks, Sys Time 0 ticks, Blkio Delay 0 ticks, Virtual Memory 576 MB, RSS 106 MB, Minor Page Faults 1, Major Page Fault 0, Num Threads 6, Bytes Read 420, Bytes Written 0, Read Syscalls 2, Write Syscalls 0, Act Bytes Read 0, Act Bytes Written 0
+
+[08/17 11:57:49.280559]:[INFO]: Thread ipv4_thr returning as signal SIGINT : Interrupt from keyboard received...
+[08/17 11:57:49.280606]:[INFO]: Thread nlct_thread returning as signal SIGINT : Interrupt from keyboard received...
+[08/17 11:57:49.280627]:[INFO]: Thread/Proc CPU/Mem/IO Stats for [ipv4_thr : 11954 : ] after 10.844606400 sec : User CPU Usage 0.000 %, Sys CPU Usage 0.000 %, Blkio Delay 0.000 %, User Time 0 ticks, Sys Time 0 ticks, Blkio Delay 0 ticks, Virtual Memory 576 MB, RSS 106 MB, Minor Page Faults 8, Major Page Fault 0, Num Threads 5, Bytes Read 420, Bytes Written 32398, Read Syscalls 2, Write Syscalls 64, Act Bytes Read 0, Act Bytes Written 24576
+
+[08/17 11:57:49.280645]:[INFO]: Thread/Proc CPU/Mem/IO Stats for [nlct_thread : 11958 : ] after 10.844361305 sec : User CPU Usage 0.000 %, Sys CPU Usage 0.000 %, Blkio Delay 0.000 %, User Time 0 ticks, Sys Time 0 ticks, Blkio Delay 0 ticks, Virtual Memory 576 MB, RSS 106 MB, Minor Page Faults 2, Major Page Fault 0, Num Threads 5, Bytes Read 420, Bytes Written 0, Read Syscalls 2, Write Syscalls 0, Act Bytes Read 0, Act Bytes Written 0
+
+[08/17 11:57:49.291003]:[INFO]: Thread nsproxy_thr returning as signal SIGINT : Interrupt from keyboard received...
+[08/17 11:57:49.291043]:[INFO]: Thread/Proc CPU/Mem/IO Stats for [nsproxy_thr : 11956 : ] after 10.854834557 sec : User CPU Usage 0.000 %, Sys CPU Usage 0.000 %, Blkio Delay 0.000 %, User Time 0 ticks, Sys Time 0 ticks, Blkio Delay 0 ticks, Virtual Memory 576 MB, RSS 106 MB, Minor Page Faults 4, Major Page Fault 0, Num Threads 3, Bytes Read 420, Bytes Written 1420, Read Syscalls 2, Write Syscalls 2, Act Bytes Read 0, Act Bytes Written 8192
+
+[08/17 11:57:53.436966]:[INFO]: TCP Connection : TCP Conn : Client IP : 172.20.59.67,  Client TCP Port : 10868,  Client NetNS 0-Server IP : 172.20.34.24,  Server TCP Port : 443,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : Stats TCP Connection Properties : Bytes Acked 46759, Bytes Received 4478777, Send MBps 62.063, Pacing Rate 124.122 MBps, rtt 11.001 rtt variance 16.448, rcv_rtt 7.5, mss 8949 rcv_mss 8949 path MTU 9001, Last Send was before 4260 msec, Last receive was before 464 msec, 
+
+[08/17 11:57:53.436986]:[INFO]: Thread inet_diag_thr returning as signal SIGINT : Interrupt from keyboard received...
+[08/17 11:57:53.437033]:[INFO]: Thread/Proc CPU/Mem/IO Stats for [inet_diag_thr : 11959 : ] after 15.000670433 sec : User CPU Usage 0.000 %, Sys CPU Usage 0.000 %, Blkio Delay 0.000 %, User Time 0 ticks, Sys Time 0 ticks, Blkio Delay 0 ticks, Virtual Memory 576 MB, RSS 106 MB, Minor Page Faults 5, Major Page Fault 0, Num Threads 2, Bytes Read 420, Bytes Written 0, Read Syscalls 2, Write Syscalls 0, Act Bytes Read 0, Act Bytes Written 0
+
+[08/17 11:57:53.437125]:[INFO]: Now exiting from process after deleting bpf ...
+

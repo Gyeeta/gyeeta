@@ -1,0 +1,109 @@
+
+strace -f ip route get 8.8.8.8
+
+socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC, NETLINK_ROUTE) = 3
+setsockopt(3, SOL_SOCKET, SO_SNDBUF, [32768], 4) = 0
+setsockopt(3, SOL_SOCKET, SO_RCVBUF, [1048576], 4) = 0
+setsockopt(3, SOL_NETLINK, NETLINK_EXT_ACK, [1], 4) = 0
+bind(3, {sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, 12) = 0
+getsockname(3, {sa_family=AF_NETLINK, nl_pid=25403, nl_groups=00000000}, [12]) = 0
+sendmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, msg_namelen=12, msg_iov=[{iov_base={{len=36, type=RTM_GETROUTE, flags=NLM_F_REQUEST, seq=1535623917, pid=0}, {rtm_family=AF_INET, rtm_dst_len=32, rtm_src_len=0, rtm_tos=0, rtm_table=RT_TABLE_UNSPEC, rtm_protocol=RTPROT_UNSPEC, rtm_scope=RT_SCOPE_UNIVERSE, rtm_type=RTN_UNSPEC, rtm_flags=RTM_F_LOOKUP_TABLE}, {{nla_len=8, nla_type=RTA_DST}, 8.8.8.8}}, iov_len=36}], msg_iovlen=1, msg_controllen=0, msg_flags=0}, 0) = 36
+recvmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, msg_namelen=12, msg_iov=[{iov_base=NULL, iov_len=0}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_TRUNC}, MSG_PEEK|MSG_TRUNC) = 112
+recvmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, msg_namelen=12, msg_iov=[{iov_base={{len=112, type=RTM_NEWROUTE, flags=0, seq=1535623917, pid=25403}, {rtm_family=AF_INET, rtm_dst_len=32, rtm_src_len=0, rtm_tos=0, rtm_table=RT_TABLE_MAIN, rtm_protocol=RTPROT_UNSPEC, rtm_scope=RT_SCOPE_UNIVERSE, rtm_type=RTN_UNICAST, rtm_flags=RTM_F_CLONED}, [{{nla_len=8, nla_type=RTA_TABLE}, RT_TABLE_MAIN}, {{nla_len=8, nla_type=RTA_DST}, 8.8.8.8}, {{nla_len=8, nla_type=RTA_OIF}, if_nametoindex("enp0s3")}, {{nla_len=8, nla_type=RTA_PREFSRC}, 192.168.0.120}, {{nla_len=8, nla_type=RTA_GATEWAY}, 192.168.0.1}, {{nla_len=8, nla_type=RTA_UID}, 1000}, {{nla_len=36, nla_type=RTA_CACHEINFO}, {rta_clntref=2, rta_lastuse=0, rta_expires=0, rta_error=0, rta_used=0, rta_id=0, rta_ts=0, rta_tsage=0}}]}, iov_len=112}], msg_iovlen=1, msg_controllen=0, msg_flags=0}, 0) = 112
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 1), ...}) = 0
+access("/proc/net", R_OK)               = 0
+access("/proc/net/unix", R_OK)          = 0
+socket(AF_UNIX, SOCK_DGRAM|SOCK_CLOEXEC, 0) = 4
+ioctl(4, SIOCGIFNAME, {ifr_index=2, ifr_name="enp0s3"}) = 0
+close(4)                                = 0
+write(1, "8.8.8.8 via 192.168.0.1 dev enp0"..., 638.8.8.8 via 192.168.0.1 dev enp0s3 src 192.168.0.120 uid 1000
+
+
+------------------------------------------------------
+
+strace -f ip route get 172.17.0.3 from  172.17.0.1
+
+
+execve("/sbin/ip", ["ip", "route", "get", "172.17.0.3", "from", "172.17.0.1"], 0x7ffc8186ad50 /* 34 vars */) = 0
+brk(NULL)                               = 0x5652d1ef3000
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+fstat(3, {st_mode=S_IFREG|0644, st_size=156541, ...}) = 0
+mmap(NULL, 156541, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f8e982b5000
+close(3)                                = 0
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/usr/lib/x86_64-linux-gnu/libelf.so.1", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\0\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0\0.\0\0\0\0\0\0"..., 832) = 832
+fstat(3, {st_mode=S_IFREG|0644, st_size=104952, ...}) = 0
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f8e982b3000
+mmap(NULL, 2199936, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f8e97e9b000
+mprotect(0x7f8e97eb4000, 2093056, PROT_NONE) = 0
+mmap(0x7f8e980b3000, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x18000) = 0x7f8e980b3000
+close(3)                                = 0
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libmnl.so.0", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\0\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0@\31\0\0\0\0\0\0"..., 832) = 832
+fstat(3, {st_mode=S_IFREG|0644, st_size=22520, ...}) = 0
+mmap(NULL, 2117648, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f8e97c95000
+mprotect(0x7f8e97c9a000, 2093056, PROT_NONE) = 0
+mmap(0x7f8e97e99000, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x4000) = 0x7f8e97e99000
+close(3)                                = 0
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libdl.so.2", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\0\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0P\16\0\0\0\0\0\0"..., 832) = 832
+fstat(3, {st_mode=S_IFREG|0644, st_size=14560, ...}) = 0
+mmap(NULL, 2109712, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f8e97a91000
+mprotect(0x7f8e97a94000, 2093056, PROT_NONE) = 0
+mmap(0x7f8e97c93000, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x2000) = 0x7f8e97c93000
+close(3)                                = 0
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\3\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0\260\34\2\0\0\0\0\0"..., 832) = 832
+fstat(3, {st_mode=S_IFREG|0755, st_size=2030544, ...}) = 0
+mmap(NULL, 4131552, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f8e976a0000
+mprotect(0x7f8e97887000, 2097152, PROT_NONE) = 0
+mmap(0x7f8e97a87000, 24576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1e7000) = 0x7f8e97a87000
+mmap(0x7f8e97a8d000, 15072, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x7f8e97a8d000
+close(3)                                = 0
+access("/etc/ld.so.nohwcap", F_OK)      = -1 ENOENT (No such file or directory)
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libz.so.1", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\0\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0\220\37\0\0\0\0\0\0"..., 832) = 832
+fstat(3, {st_mode=S_IFREG|0644, st_size=116960, ...}) = 0
+mmap(NULL, 2212016, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f8e97483000
+mprotect(0x7f8e9749f000, 2093056, PROT_NONE) = 0
+mmap(0x7f8e9769e000, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1b000) = 0x7f8e9769e000
+close(3)                                = 0
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f8e982b1000
+arch_prctl(ARCH_SET_FS, 0x7f8e982b20c0) = 0
+mprotect(0x7f8e97a87000, 16384, PROT_READ) = 0
+mprotect(0x7f8e9769e000, 4096, PROT_READ) = 0
+mprotect(0x7f8e97c93000, 4096, PROT_READ) = 0
+mprotect(0x7f8e97e99000, 4096, PROT_READ) = 0
+mprotect(0x7f8e980b3000, 4096, PROT_READ) = 0
+mprotect(0x5652d0550000, 8192, PROT_READ) = 0
+mprotect(0x7f8e982dc000, 4096, PROT_READ) = 0
+munmap(0x7f8e982b5000, 156541)          = 0
+socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC, NETLINK_ROUTE) = 3
+setsockopt(3, SOL_SOCKET, SO_SNDBUF, [32768], 4) = 0
+setsockopt(3, SOL_SOCKET, SO_RCVBUF, [1048576], 4) = 0
+setsockopt(3, SOL_NETLINK, NETLINK_EXT_ACK, [1], 4) = 0
+bind(3, {sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, 12) = 0
+getsockname(3, {sa_family=AF_NETLINK, nl_pid=26813, nl_groups=00000000}, [12]) = 0
+sendmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, msg_namelen=12, msg_iov=[{iov_base={{len=44, type=RTM_GETROUTE, flags=NLM_F_REQUEST, seq=1535625963, pid=0}, {rtm_family=AF_INET, rtm_dst_len=32, rtm_src_len=32, rtm_tos=0, rtm_table=RT_TABLE_UNSPEC, rtm_protocol=RTPROT_UNSPEC, rtm_scope=RT_SCOPE_UNIVERSE, rtm_type=RTN_UNSPEC, rtm_flags=RTM_F_LOOKUP_TABLE}, [{{nla_len=8, nla_type=RTA_DST}, 172.17.0.3}, {{nla_len=8, nla_type=RTA_SRC}, 172.17.0.1}]}, iov_len=44}], msg_iovlen=1, msg_controllen=0, msg_flags=0}, 0) = 44
+recvmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, msg_namelen=12, msg_iov=[{iov_base=NULL, iov_len=0}], msg_iovlen=1, msg_controllen=0, msg_flags=MSG_TRUNC}, MSG_PEEK|MSG_TRUNC) = 104
+brk(NULL)                               = 0x5652d1ef3000
+brk(0x5652d1f14000)                     = 0x5652d1f14000
+recvmsg(3, {msg_name={sa_family=AF_NETLINK, nl_pid=0, nl_groups=00000000}, msg_namelen=12, msg_iov=[{iov_base={{len=104, type=RTM_NEWROUTE, flags=0, seq=1535625963, pid=26813}, {rtm_family=AF_INET, rtm_dst_len=32, rtm_src_len=32, rtm_tos=0, rtm_table=RT_TABLE_MAIN, rtm_protocol=RTPROT_UNSPEC, rtm_scope=RT_SCOPE_UNIVERSE, rtm_type=RTN_UNICAST, rtm_flags=RTM_F_CLONED}, [{{nla_len=8, nla_type=RTA_TABLE}, RT_TABLE_MAIN}, {{nla_len=8, nla_type=RTA_DST}, 172.17.0.3}, {{nla_len=8, nla_type=RTA_SRC}, 172.17.0.1}, {{nla_len=8, nla_type=RTA_OIF}, if_nametoindex("docker0")}, {{nla_len=8, nla_type=RTA_UID}, 1000}, {{nla_len=36, nla_type=RTA_CACHEINFO}, {rta_clntref=2, rta_lastuse=0, rta_expires=0, rta_error=0, rta_used=0, rta_id=0, rta_ts=0, rta_tsage=0}}]}, iov_len=104}], msg_iovlen=1, msg_controllen=0, msg_flags=0}, 0) = 104
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 1), ...}) = 0
+access("/proc/net", R_OK)               = 0
+access("/proc/net/unix", R_OK)          = 0
+socket(AF_UNIX, SOCK_DGRAM|SOCK_CLOEXEC, 0) = 4
+ioctl(4, SIOCGIFNAME, {ifr_index=9, ifr_name="docker0"}) = 0
+close(4)                                = 0
+write(1, "172.17.0.3 from 172.17.0.1 dev d"..., 49172.17.0.3 from 172.17.0.1 dev docker0 uid 1000
+) = 49
+write(1, "    cache \n", 11    cache
+)            = 11
+exit_group(0)                           = ?
+

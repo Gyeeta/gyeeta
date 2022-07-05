@@ -1,0 +1,37 @@
+
+
+----------------------------------------- Connecting from ubuntu docker to lxc nc 5555 ------------------------------------
+
+   [NEW]  src=172.17.0.2 dst=10.166.20.126 proto=6 sport=41906 dport=5555  <-Reply-> src=10.166.20.126 dst=10.166.20.1 proto=6 sport=5555 dport=41906
+
+[10/01 18:51:51.072841]:[INFO]: Event : IPv4 TCP Connect, Time diff : 35.741713392, Process PID : 17752, Process TID : 17752, Process name : nc, Source IPv4 : 172.17.0.2, Dest IPv4 : 10.166.20.126, Source TCP Port : 41906, Dest TCP Port : 5555, NetNS : 4026532421, Bytes Received 0, Bytes Sent 0, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable
+
+[10/01 18:51:51.075554]:[INFO]: Event : IPv4 TCP Accept, Time diff : 35.745271233, Process PID : 17751, Process TID : 17751, Process name : nc, Source IPv4 : 10.166.20.126, Dest IPv4 : 10.166.20.1, Source TCP Port : 5555, Dest TCP Port : 41906, NetNS : 4026532272, Bytes Received 0, Bytes Sent 0, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable
+
+
+[10/01 18:52:21.080308]:[INFO]: Response time of 3773 msec for Client IP : 10.166.20.1,  Client TCP Port : 41906,  Client NetNS 4026532272 to Server IP : 10.166.20.126,  Server TCP Port : 5555,  Server NetNS 4026532272 : Event bytes_received 4 bytes_acked 0 lsndtime 997611982 lrcvtime 997608209
+
+[10/01 18:52:41.771993]:[INFO]: Starting inet diag for NetNS 4026532272
+[10/01 18:52:41.773039]:[INFO]: [NetNS 4026532272 : Start PID 2721]: TCP Connection : TCP Conn : Client IP : 10.166.20.126,  Client TCP Port : 5555,  Client NetNS 0-Server IP : 0.0.0.0,  Server TCP Port : 0,  Server NetNS 0 - Conn State : LISTEN Remote Client conn Remote Server conn  : UID 165536 : Inode 2935937 : Stats 
+
+[10/01 18:52:41.773047]:[INFO]: [NetNS 4026532272 : Start PID 2721]: TCP Connection : TCP Conn : Client IP : ::,  Client TCP Port : 22,  Client NetNS 0-Server IP : ::,  Server TCP Port : 0,  Server NetNS 0 - Conn State : LISTEN Remote Client conn Remote Server conn  : UID 165536 : Inode 37181 : Stats 
+
+[10/01 18:52:41.773051]:[INFO]: [NetNS 4026532272 : Start PID 2721]: TCP Connection : TCP Conn : Client IP : 0.0.0.0,  Client TCP Port : 22,  Client NetNS 0-Server IP : 0.0.0.0,  Server TCP Port : 0,  Server NetNS 0 - Conn State : LISTEN Remote Client conn Remote Server conn  : UID 165536 : Inode 37179 : Stats 
+
+[10/01 18:52:41.773076]:[INFO]: [NetNS 4026532272 : Start PID 2721]: TCP Connection : TCP Conn : Client IP : 10.166.20.126,  Client TCP Port : 5555,  Client NetNS 0-Server IP : 10.166.20.1,  Server TCP Port : 41906,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : UID 165536 : Inode 2935938 : Stats TCP Connection Properties : Bytes Acked 32, Bytes Received 16, Send MBps 597.155, Pacing Rate 1188.687 MBps, Delivery Rate 120.080 MBps, rtt 0.185 rtt variance 0.085, Last Send was before 11392 msec, Last receive was before 4168772 msec, Sock Busy Time 8000 usec, 
+
+[10/01 18:52:41.773094]:[INFO]: Execution time for do_inet_diag_info() : 152 was 1040176 nsec (1040 usec) (0.001040176 sec)
+
+[10/01 18:52:41.773099]:[INFO]: Starting inet diag for NetNS 4026532421
+[10/01 18:52:41.773995]:[INFO]: [NetNS 4026532421 : Start PID 2722]: TCP Connection : TCP Conn : Client IP : 172.17.0.2,  Client TCP Port : 41906,  Client NetNS 0-Server IP : 10.166.20.126,  Server TCP Port : 5555,  Server NetNS 0 - Conn State : ESTABLISHED Remote Client conn Remote Server conn  : UID 0 : Inode 2929287 : Stats TCP Connection Properties : Bytes Acked 17, Bytes Received 32, Send MBps 516.232, Pacing Rate 1032.464 MBps, Delivery Rate 122.748 MBps, rtt 0.214 rtt variance 0.083, Last Send was before 4168772 msec, Last receive was before 11392 msec, 
+
+[10/01 18:52:49.408659]:[INFO]: Response time of 1308 msec for Client IP : 10.166.20.1,  Client TCP Port : 41906,  Client NetNS 4026532272 to Server IP : 10.166.20.126,  Server TCP Port : 5555,  Server NetNS 4026532272 : Event bytes_received 47 bytes_acked 22 lsndtime 997619064 lrcvtime 997617756
+
+[10/01 18:52:51.738233]:[INFO]: Event : IPv4 TCP Close, Time diff : 96.409346162, Process PID : 17752, Process TID : 17752, Process name : nc, Source IPv4 : 172.17.0.2, Dest IPv4 : 10.166.20.126, Source TCP Port : 41906, Dest TCP Port : 5555, NetNS : 4026532421, Bytes Received 71, Bytes Sent 48, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable
+
+[10/01 18:52:51.740398]:[INFO]: Event : IPv4 TCP Close, Time diff : 96.411406101, Process PID : 17751, Process TID : 17751, Process name : nc, Source IPv4 : 10.166.20.126, Dest IPv4 : 10.166.20.1, Source TCP Port : 5555, Dest TCP Port : 41906, NetNS : 4026532272, Bytes Received 48, Bytes Sent 71, Source Addr Desc : IPv4 - Private Address - Not Globally Routable , Dest Addr Desc : IPv4 - Private Address - Not Globally Routable
+
+------------------------------------------------------------------------------------------------
+
+
+
