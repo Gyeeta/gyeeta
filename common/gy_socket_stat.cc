@@ -1016,11 +1016,9 @@ bool TCP_SOCK_HANDLER::notify_tcp_conn(TCP_CONN *ptcp, uint64_t close_usec_time,
 		
 		auto sendcb = [&, this](void *palloc, size_t sz, FREE_FPTR free_fp, size_t nelems) -> bool
 		{
-			CONDEXEC(
-				DEBUGEXECN(1,
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn info to Madhava server : Payload size %lu\n",
-						nelems, sz);
-				);
+			DEBUGEXECN(1,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn info to Madhava server : Payload size %lu\n",
+					nelems, sz);
 			);
 
 			auto		pser = SERVER_COMM::get_singleton();
@@ -4591,23 +4589,19 @@ int TCP_SOCK_HANDLER::listener_inode_validate(int & nclconfirm) noexcept
 							if (16 >= abs(pdatanode->plistener_->ns_ip_port_.ip_port_.port_ - ptcp->nat_cli_.port_)) {
 								is_same = true;
 
-								CONDEXEC(
-									DEBUGEXECN(1,
-										INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_ITALIC, "Clustered Listener match seen for %s "
-											"based on binary with TCP Port adjacency\n", 
-											pdatanode->plistener_->print_short_string(STRING_BUFFER<512>().get_str_buf()));
-									);
+								DEBUGEXECN(1,
+									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_ITALIC, "Clustered Listener match seen for %s "
+										"based on binary with TCP Port adjacency\n", 
+										pdatanode->plistener_->print_short_string(STRING_BUFFER<512>().get_str_buf()));
 								);
 
 								return CB_BREAK_LOOP;
 							}	
 						}	
 						else {
-							CONDEXEC(
-								DEBUGEXECN(1,
-									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_ITALIC, "Clustered Listener match seen for %s based on binary match\n", 
-										pdatanode->plistener_->print_short_string(STRING_BUFFER<512>().get_str_buf()));
-								);
+							DEBUGEXECN(1,
+								INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_ITALIC, "Clustered Listener match seen for %s based on binary match\n", 
+									pdatanode->plistener_->print_short_string(STRING_BUFFER<512>().get_str_buf()));
 							);
 
 							is_same = true;
@@ -4623,12 +4617,11 @@ int TCP_SOCK_HANDLER::listener_inode_validate(int & nclconfirm) noexcept
 				return is_same;
 			}	
 
-			CONDEXEC(
-				DEBUGEXECN(1,
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_ITALIC, "Clustered Listener match seen for Related Listener \'%s\' based on binary from Client TCP connection %s\n",
-						prel->init_comm_, ptcp->print_string(STRING_BUFFER<512>().get_str_buf()));
-				);
+			DEBUGEXECN(1,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_ITALIC, "Clustered Listener match seen for Related Listener \'%s\' based on binary from Client TCP connection %s\n",
+					prel->init_comm_, ptcp->print_string(STRING_BUFFER<512>().get_str_buf()));
 			);
+
 			return true;
 		};	
 
@@ -6249,12 +6242,10 @@ int TCP_SOCK_HANDLER::upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 										
 										psocktbl->emplace(sock_inode, std::move(sock));
 
-										CONDEXEC(
-											DEBUGEXECN(10, 
-												INFOPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "TCP Conn not found for %s : will try adding later\n", 
-													orig_tup.print_string(STRING_BUFFER<512>().get_str_buf())); 
-											);
-										);	
+										DEBUGEXECN(10, 
+											INFOPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "TCP Conn not found for %s : will try adding later\n", 
+												orig_tup.print_string(STRING_BUFFER<512>().get_str_buf())); 
+										);
 									}
 								}
 								catch(...) {
@@ -6519,12 +6510,10 @@ int TCP_SOCK_HANDLER::upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 										
 								psocktbl->emplace(sock_inode, std::move(sock));
 
-								CONDEXEC(
-									DEBUGEXECN(10, 
-										INFOPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "TCP Conn not found for %s : will try adding later\n", 
-											act_tup.print_string(STRING_BUFFER<512>().get_str_buf())); 
-									);
-								);	
+								DEBUGEXECN(10, 
+									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "TCP Conn not found for %s : will try adding later\n", 
+										act_tup.print_string(STRING_BUFFER<512>().get_str_buf())); 
+								);
 							}
 						}
 						catch(...) {
@@ -7592,15 +7581,13 @@ int TCP_SOCK_HANDLER::check_listener_depends_misc() noexcept
 									prelated->nlocal_id_depends_.fetch_add_relaxed(1);
 								}	
 
-								CONDEXEC(
-									DEBUGEXECN(1,
-										INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, 
-											"Related Listener %s : New Listener Dependency seen on %s : "
-											"Outbound Traffic sent for %d times (vs %d) (%lu #load balancers) in last few minutes\n",
-											prelated->init_comm_, pdepend->identifier_str_, dep_ntimes_seen, ntimes_data_seen, 
-											nload_balanced);
-									);
-								);	
+								DEBUGEXECN(1,
+									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, 
+										"Related Listener %s : New Listener Dependency seen on %s : "
+										"Outbound Traffic sent for %d times (vs %d) (%lu #load balancers) in last few minutes\n",
+										prelated->init_comm_, pdepend->identifier_str_, dep_ntimes_seen, ntimes_data_seen, 
+										nload_balanced);
+								);
 							}
 							else if ((pdepend->last_chg_cusec_ > min_depends_cusec) && 
 								server_ok && depvec.size() < comm::LISTENER_DEPENDENCY_NOTIFY::MAX_DEPENDS_PER_LISTEN) {
@@ -7628,14 +7615,12 @@ int TCP_SOCK_HANDLER::check_listener_depends_misc() noexcept
 							prelated->nlocal_id_depends_.fetch_sub_relaxed_0(1);
 						}	
 
-						CONDEXEC(
-							DEBUGEXECN(1,
-								INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, 
-									"Related Listener %s : Listener Dependency no longer seen on %s : "
-									"Outbound Traffic sent for %d times (vs %d) (%lu #load balancers) in last few minutes\n",
-									prelated->init_comm_, pdepend->identifier_str_, dep_ntimes_seen, ntimes_data_seen, nload_balanced);
-							)
-						);							
+						DEBUGEXECN(1,
+							INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, 
+								"Related Listener %s : Listener Dependency no longer seen on %s : "
+								"Outbound Traffic sent for %d times (vs %d) (%lu #load balancers) in last few minutes\n",
+								prelated->init_comm_, pdepend->identifier_str_, dep_ntimes_seen, ntimes_data_seen, nload_balanced);
+						);
 					}	
 
 					 
@@ -7841,10 +7826,8 @@ int TCP_SOCK_HANDLER::notify_init_listeners() noexcept
 			return 0;
 		}	
 
-		CONDEXEC(
-			DEBUGEXECN(1,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Pre-existing Listener info to Madhava server : Payload size %lu\n", nelems, totalsz);
-			);
+		DEBUGEXECN(1,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Pre-existing Listener info to Madhava server : Payload size %lu\n", nelems, totalsz);
 		);
 
 		COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);
@@ -7945,10 +7928,8 @@ int TCP_SOCK_HANDLER::notify_init_tcp_conns() noexcept
 			return 0;
 		}	
 
-		CONDEXEC(
-			DEBUGEXECN(1,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Pre-existing TCP Conn info to Madhava server : Payload size %lu\n", nelems, totalsz);
-			);
+		DEBUGEXECN(1,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Pre-existing TCP Conn info to Madhava server : Payload size %lu\n", nelems, totalsz);
 		);
 
 		COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);

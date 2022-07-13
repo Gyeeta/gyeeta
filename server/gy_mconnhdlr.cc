@@ -4023,12 +4023,10 @@ int MCONN_HANDLER::handle_l1(GY_THREAD *pthr)
 							}	
 
 							if (sret < 0 || conn_closed) {
-								CONDEXEC(	
-									DEBUGEXECN(10,
-										INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, "Closing %s\n",
-											pconn->print_conn(STRING_BUFFER<512>().get_str_buf()));
-									);							
-								);	
+								DEBUGEXECN(10,
+									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, "Closing %s\n",
+										pconn->print_conn(STRING_BUFFER<512>().get_str_buf()));
+								);							
 
 								pconn->signal_conn_close();
 								mconntrack.erase(cfd);
@@ -6627,13 +6625,11 @@ bool MCONN_HANDLER::add_remote_conn_task_ref(MADHAVA_INFO *pcli_madhava, uint64_
 			if (bret == true) {	
 				newadd = true;
 
-				CONDEXEC(
-					DEBUGEXECN(11,
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Adding new Remote Madhava Handled Task Aggr from TCP Conn"
-							": Comm \'%s\' : from Remote Madhava %s for local Listener \'%s\'\n", 
-							pcli_comm, pcli_madhava->get_domain(), plistener->comm_);
-					);	
-				);
+				DEBUGEXECN(11,
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Adding new Remote Madhava Handled Task Aggr from TCP Conn"
+						": Comm \'%s\' : from Remote Madhava %s for local Listener \'%s\'\n", 
+						pcli_comm, pcli_madhava->get_domain(), plistener->comm_);
+				);	
 			}	
 		}
 		else {
@@ -6770,23 +6766,20 @@ bool MCONN_HANDLER::add_local_conn_task_ref(PARTHA_INFO *pcli_partha, uint64_t a
 			bret = pcli_partha->task_aggr_tbl_.insert_unique(pmtaskelem, aggr_task_id, taskhash, palam, true);
 
 			if (bret == true) {	
-				CONDEXEC(
-					DEBUGEXECN(10,
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Adding new Task Aggr from TCP Conn : Comm \'%s\' : from Partha : %s\n",
-							pcli_comm, pcli_partha->print_string(STRING_BUFFER<256>().get_str_buf()));
-					);	
-				);
+				DEBUGEXECN(10,
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Adding new Task Aggr from TCP Conn : Comm \'%s\' : from Partha : %s\n",
+						pcli_comm, pcli_partha->print_string(STRING_BUFFER<256>().get_str_buf()));
+				);	
+
 				newadd = true;
 			}	
 		}
 		else {
-			CONDEXEC(
-				DEBUGEXECN(5,
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, 
-						"Missed Adding TCP conn Task Reference as Task with comm \'%s\' from %s not present and inadequate data seen\n",
-						pcli_comm, pcli_partha->print_string(STRING_BUFFER<256>().get_str_buf()));
-				);	
-			);
+			DEBUGEXECN(5,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, 
+					"Missed Adding TCP conn Task Reference as Task with comm \'%s\' from %s not present and inadequate data seen\n",
+					pcli_comm, pcli_partha->print_string(STRING_BUFFER<256>().get_str_buf()));
+			);	
 
 			pcli_partha->cli_task_missed_++;
 			return false;
@@ -7362,12 +7355,10 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages to Client Partha %s\n",
-					parclivec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages to Client Partha %s\n",
+				parclivec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nparcliinfo += parclivec.size();
 
@@ -7382,12 +7373,10 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Remote Client Info Messages to Server Partha %s\n",
-					parservec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Remote Client Info Messages to Server Partha %s\n",
+				parservec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nparserinfo += parservec.size();
 
@@ -7628,12 +7617,10 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages using NAT info to Client Partha %s\n",
-					parclivec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages using NAT info to Client Partha %s\n",
+				parclivec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nparcliconn += parclivec.size();
 
@@ -7648,12 +7635,10 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Remote Client Info Messages using NAT info to Server Partha %s\n",
-					parservec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Remote Client Info Messages using NAT info to Server Partha %s\n",
+				parservec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nparserconn += parservec.size();
 
@@ -7950,12 +7935,10 @@ bool MCONN_HANDLER::partha_aggr_task_state(const std::shared_ptr<PARTHA_INFO> & 
 
 				schedule_l1_send_data(shrconn, comm::COMM_EVENT_NOTIFY, EPOLL_IOVEC_ARR(2, false, palloc, totalsz, free_fp, gpadbuf, phdr->get_pad_len(), nullptr));
 
-				CONDEXEC(
-					DEBUGEXECN(5,
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Aggr Task States to Remote Madhava %s\n",
-							commset.size(), pmad->print_string(STRING_BUFFER<256>().get_str_buf()));
-					);
-				);	
+				DEBUGEXECN(5,
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Aggr Task States to Remote Madhava %s\n",
+						commset.size(), pmad->print_string(STRING_BUFFER<256>().get_str_buf()));
+				);
 
 				nremmadhav++;
 			}
@@ -8223,11 +8206,9 @@ void MCONN_HANDLER::handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int 
 		parclivec.emplace_back(pone->tup_, pone->ser_partha_machine_id_, plistener->glob_id_, pone->ser_madhava_id_, pone->ser_related_listen_id_, 
 					pone->cli_ser_diff_clusters_, plistener->comm_);
 
-		CONDEXEC(
-			DEBUGEXECN(10,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, "Updated TCP Client Conn using Shyama info : Orig Tuple %s : Remote Madhava Listener is \'%s\'\n",
-					pone->tup_.print_string(STRING_BUFFER<128>().get_str_buf()), plistener->comm_);
-			);
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, "Updated TCP Client Conn using Shyama info : Orig Tuple %s : Remote Madhava Listener is \'%s\'\n",
+				pone->tup_.print_string(STRING_BUFFER<128>().get_str_buf()), plistener->comm_);
 		);
 
 		add_local_conn_task_ref(pclihost, pone->cli_task_aggr_id_, plistener, "", 0, "", pthrpoolarr, tusec_start);
@@ -8245,12 +8226,10 @@ void MCONN_HANDLER::handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int 
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages using Shyama Client info to Client Partha %s\n",
-					parclivec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages using Shyama Client info to Client Partha %s\n",
+				parclivec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		send_mp_cli_tcp_info(parshr.get(), parclivec.data(), parclivec.size(), pthrpoolarr);
 	}	
@@ -8350,12 +8329,10 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 		parservec.emplace_back(pone->cli_partha_machine_id_, pone->cli_task_aggr_id_, pone->cli_madhava_id_, pone->cli_related_listen_id_, pone->cli_comm_, 
 					pone->ser_nat_ip_port_, pone->ser_conn_hash_, pone->ser_sock_inode_);
 	
-		CONDEXEC(
-			DEBUGEXECN(11,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, 
-					"Updated TCP Server Conn using Shyama info for listener \'%s\' : : Remote Client is \'%s\' : Remote Madhava from \'%s\'\n",
-					plistener->comm_, pone->cli_comm_, premotemad->get_domain());
-			);
+		DEBUGEXECN(11,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, 
+				"Updated TCP Server Conn using Shyama info for listener \'%s\' : : Remote Client is \'%s\' : Remote Madhava from \'%s\'\n",
+				plistener->comm_, pone->cli_comm_, premotemad->get_domain());
 		);
 
 		add_remote_conn_task_ref(premotemad, pone->cli_task_aggr_id_, pone->cli_partha_machine_id_, plistener, pone->cli_comm_, 
@@ -8374,12 +8351,10 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages using Shyama Server info to Server Partha %s\n",
-					parservec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Listener Info Messages using Shyama Server info to Server Partha %s\n",
+				parservec.size(), parshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		send_mp_ser_tcp_info(parshr.get(), parservec.data(), parservec.size(), pthrpoolarr);
 	}	
@@ -8574,14 +8549,12 @@ size_t MCONN_HANDLER::handle_dependency_issue(MTCP_LISTENER *plistener, const co
 				
 				++nlisten_resolved;
 
-				CONDEXEC(
-					DEBUGEXECN(5,
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Listener Issue Resolved : %s state %d : "
-							"Source of issue is%s Listener \'%s\' ID %016lx located %d Tiers upstream : Neighbor upstream Listener \'%s\'\n",
-							pdeplistener->print_string(STRING_BUFFER<512>().get_str_buf()), pdeplistener->state_.curr_state_,
-							is_remote_listener ? " Remote Madhava" : "", resol.issue_src_comm_, resol.issue_src_glob_id_, src_upstream_tier,
-							plistener->comm_);
-					);
+				DEBUGEXECN(5,
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Listener Issue Resolved : %s state %d : "
+						"Source of issue is%s Listener \'%s\' ID %016lx located %d Tiers upstream : Neighbor upstream Listener \'%s\'\n",
+						pdeplistener->print_string(STRING_BUFFER<512>().get_str_buf()), pdeplistener->state_.curr_state_,
+						is_remote_listener ? " Remote Madhava" : "", resol.issue_src_comm_, resol.issue_src_glob_id_, src_upstream_tier,
+						plistener->comm_);
 				);
 
 				/*
@@ -8986,13 +8959,11 @@ bool MCONN_HANDLER::partha_listener_state(const std::shared_ptr<PARTHA_INFO> & p
 
 							++nlisten_resolved;
 
-							CONDEXEC(
-								DEBUGEXECN(5,
-									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Listener Issue Resolved by prior state : %s state %d : "
-										"Source of issue is Listener \'%s\' ID %016lx located %d Tiers upstream\n",
-										plistener->print_string(STRING_BUFFER<512>().get_str_buf()), plistener->state_.curr_state_,
-										resol.issue_src_comm_, resol.issue_src_glob_id_, relshr->issue_resol_.src_upstream_tier_);
-								);
+							DEBUGEXECN(5,
+								INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Listener Issue Resolved by prior state : %s state %d : "
+									"Source of issue is Listener \'%s\' ID %016lx located %d Tiers upstream\n",
+									plistener->print_string(STRING_BUFFER<512>().get_str_buf()), plistener->state_.curr_state_,
+									resol.issue_src_comm_, resol.issue_src_glob_id_, relshr->issue_resol_.src_upstream_tier_);
 							);
 
 							nlisten_resolved += (int)handle_dependency_issue(plistener, resol, 
@@ -9047,12 +9018,11 @@ bool MCONN_HANDLER::partha_listener_state(const std::shared_ptr<PARTHA_INFO> & p
 			}
 
 			nremmaddel++;
-			CONDEXEC(
-				DEBUGEXECN(5,
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Listener Delete Messages to Remote Madhava %s\n",
-						madvec.size(), shrconn->print_peer(STRING_BUFFER<256>().get_str_buf()));
-				);
-			);	
+
+			DEBUGEXECN(5,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Listener Delete Messages to Remote Madhava %s\n",
+					madvec.size(), shrconn->print_peer(STRING_BUFFER<256>().get_str_buf()));
+			);
 
 			size_t			fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + madvec.size() * sizeof(MM_LISTENER_DELETE);
 			FREE_FPTR		free_fp;
@@ -9319,12 +9289,10 @@ done1 :
 			nissues, nmissed, ndeleted, nerrors, nlisten_resolved, nremmad, nremmaddel, nnatip, ndbarr);
 	}
 
-	CONDEXEC(
-		if (nerrors > 0) {
-			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "%s : Received %d Errored Listener States which were ignored.\n",
-				prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), nerrors);
-		}	
-	);
+	if (nerrors > 0) {
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "%s : Received %d Errored Listener States which were ignored.\n",
+			prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), nerrors);
+	}	
 
 	return true;
 }	
@@ -9503,12 +9471,11 @@ size_t MCONN_HANDLER::send_mm_listener_issue(MM_LISTENER_ISSUE_MAP & mmissue_map
 		}
 
 		nremmad++;
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu%s Listener Issue Resolve Messages to Remote Madhava %s : Total Downstream Listeners referenced %lu\n",
-					resmap.size(), is_remote ? " Remote" : "", shrconn->print_peer(STRING_BUFFER<256>().get_str_buf()), totaldownvec_count);
-			);
-		);	
+
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu%s Listener Issue Resolve Messages to Remote Madhava %s : Total Downstream Listeners referenced %lu\n",
+				resmap.size(), is_remote ? " Remote" : "", shrconn->print_peer(STRING_BUFFER<256>().get_str_buf()), totaldownvec_count);
+		);
 
 		size_t			fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + resmap.size() * sizeof(MM_LISTENER_ISSUE_RESOL) + 
 						totaldownvec_count * sizeof(MM_LISTENER_ISSUE_RESOL::DOWNSTREAM_ONE) + resmap.size() * 8 /* alignment */ + 64;
@@ -9599,12 +9566,10 @@ bool MCONN_HANDLER::handle_mm_listener_ping(const std::shared_ptr<MCONNTRACK> &c
 
 	slowlock.unlock();
 
-	CONDEXEC(
-		DEBUGEXECN(10, 
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Remote Listener Ping : Pings for %d listeners of total %d from Remote %s\n",
-				npings, nevents, pmadhava->print_string(STRING_BUFFER<256>().get_str_buf()));
-		)
-	);	
+	DEBUGEXECN(10, 
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Remote Listener Ping : Pings for %d listeners of total %d from Remote %s\n",
+			npings, nevents, pmadhava->print_string(STRING_BUFFER<256>().get_str_buf()));
+	);
 
 	return true;
 }	
@@ -9944,12 +9909,10 @@ next1 :
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Listener Dependency Messages to Remote Madhava %s\n",
-					madlistmap.size(), shrconn->print_peer(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu Listener Dependency Messages to Remote Madhava %s\n",
+				madlistmap.size(), shrconn->print_peer(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		size_t			fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + madlistmap.size() * sizeof(MM_LISTENER_DEPENDS);
 		FREE_FPTR		free_fp;
@@ -10182,11 +10145,9 @@ bool MCONN_HANDLER::handle_listener_domain_notify(const std::shared_ptr<PARTHA_I
 
 	slowlock.unlock();
 
-	CONDEXEC(
-		DEBUGEXECN(5, 
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "%s : Received %d Listener Domain updates of which %d were missed.\n",
-				prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), nevents, nmissed);
-		);
+	DEBUGEXECN(5, 
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "%s : Received %d Listener Domain updates of which %d were missed.\n",
+			prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), nevents, nmissed);
 	);
 
 	return true;
@@ -10470,11 +10431,9 @@ bool MCONN_HANDLER::handle_listener_day_stats(const std::shared_ptr<PARTHA_INFO>
 
 	slowlock.unlock();
 
-	CONDEXEC(
-		DEBUGEXECN(5, 
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "%s : Received %d Listener Day Stats of which %d were missed.\n",
-				prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), nevents, nmissed);
-		);
+	DEBUGEXECN(5, 
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "%s : Received %d Listener Day Stats of which %d were missed.\n",
+			prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), nevents, nmissed);
 	);
 
 	return true;

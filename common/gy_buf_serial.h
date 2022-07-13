@@ -82,12 +82,10 @@ public :
 			}	
 		}
 		GY_CATCH_EXCEPTION(
-			CONDEXEC(
-				DEBUGEXECN(1,
-					ERRORPRINTCOLOR(GY_COLOR_BOLD_RED, "Exception caught while in place constructor serializing %s : %s\n", 
-						__PRETTY_FUNCTION__, GY_GET_EXCEPT_STRING);
-				);
-			);	
+			DEBUGEXECN(1,
+				ERRORPRINTCOLOR(GY_COLOR_BOLD_RED, "Exception caught while in place constructor serializing %s : %s\n", 
+					__PRETTY_FUNCTION__, GY_GET_EXCEPT_STRING);
+			);
 
 			cur_sz_ = 0;
 		);

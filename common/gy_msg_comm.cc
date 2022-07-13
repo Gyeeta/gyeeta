@@ -86,12 +86,10 @@ int COMM_MSG_C::recv_msg(int fd, COMM_MSG_C & msg, uint8_t *poptbuf, size_t max_
 		if (gy_unlikely(msg.opt_bufsize_ > max_sz_popt)) {
 
 			// Drain the msg and ignore
-			CONDEXEC(
-				DEBUGEXECN(1,
-					ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Invalid Msg Optional Buffersize received in %s : %lu : Max allowed %lu...\n", 
-							__FUNCTION__, msg.opt_bufsize_, max_sz_popt);
-				);	
-			);
+			DEBUGEXECN(1,
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Invalid Msg Optional Buffersize received in %s : %lu : Max allowed %lu...\n", 
+						__FUNCTION__, msg.opt_bufsize_, max_sz_popt);
+			);	
 
 			do {
 				size_t 		tsz = (msg.opt_bufsize_ > max_sz_popt ? max_sz_popt : msg.opt_bufsize_);

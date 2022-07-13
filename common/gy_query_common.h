@@ -606,11 +606,9 @@ public :
 
 		if (ntotalcrit || *starttime_) {
 
-			CONDEXEC(
-				if (*table_alias_prefix) {
-					assert(table_alias_prefix[strlen(table_alias_prefix) - 1] == '.');
-				}	
-			);
+			if (*table_alias_prefix) {
+				assert(table_alias_prefix[strlen(table_alias_prefix) - 1] == '.');
+			}	
 
 			strbuf.appendconst(" where ");
 

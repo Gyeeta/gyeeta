@@ -958,11 +958,9 @@ public :
 			}	
 
 			if (wait_response_if_unavail) {
-				CONDEXEC(
-					DEBUGEXECN(20,
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "No idle Postgres Pool connections exist for %s. Now waiting for any result...\n", name_.c_str());
-					);	
-				);
+				DEBUGEXECN(20,
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "No idle Postgres Pool connections exist for %s. Now waiting for any result...\n", name_.c_str());
+				);	
 
 				ret = wait_one_response(max_msec_wait, nullptr, true /* ignore_cb_except */, false /* timeout_replace_cb */, false /* cancel_on_timeout */);
 

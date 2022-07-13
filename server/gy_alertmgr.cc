@@ -5288,10 +5288,8 @@ bool ALERTMGR::cleanup_alert_stat(uint32_t alertid, ALERT_STATS & astat, time_t 
 			return true;
 		}	
 		
-		CONDEXEC(
-			DEBUGEXECN(1,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Closing Alert : %s\n", astat.print_string().get());
-			);
+		DEBUGEXECN(1,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Closing Alert : %s\n", astat.print_string().get());
 		);
 
 		if (fired_alert) {
@@ -5528,10 +5526,8 @@ bool ALERTMGR::add_alert_stat(comm::ALERT_STAT_INFO & stat, time_t tcurr, uint64
 		WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Alertmgr : Invalid new Alert for Alert ID \'%08x\' name \'%s\' : Alert Json invalid\n\n", 
 			stat.alertid_, pdefname);
 
-		CONDEXEC(
-			DEBUGEXECN(11,
-				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Alert JSON sent was : \'%s\'\n", pjson);
-			);
+		DEBUGEXECN(11,
+			WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Alert JSON sent was : \'%s\'\n", pjson);
 		);
 
 		ninvalid_alerts_++;

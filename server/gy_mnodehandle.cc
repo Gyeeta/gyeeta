@@ -40,10 +40,8 @@ bool MCONN_HANDLER::handle_node_query(const std::shared_ptr<MCONNTRACK> & connsh
 			jdoc.ParseInsitu(pjson);	
 		}
 		else {
-			CONDEXEC(
-				DEBUGEXECN(1, 
-					WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Input JSON from Node not null terminated...\n");
-				);	
+			DEBUGEXECN(11, 
+				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Input JSON from Node not null terminated...\n");
 			);	
 
 			if (pendptr <= pjson) {

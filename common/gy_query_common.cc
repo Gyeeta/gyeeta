@@ -564,11 +564,9 @@ char * QUERY_OPTIONS::get_db_select_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E su
 		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid subsystem %d specified for select query creation", (int)subsys);
 	}	
 
-	CONDEXEC(
-		if (*table_alias_prefix) {
-			assert(table_alias_prefix[strlen(table_alias_prefix) - 1] == '.');
-		}	
-	);
+	if (*table_alias_prefix) {
+		assert(table_alias_prefix[strlen(table_alias_prefix) - 1] == '.');
+	}	
 
 	char			tabalias[128];
 

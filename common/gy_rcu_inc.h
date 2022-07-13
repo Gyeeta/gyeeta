@@ -129,9 +129,7 @@ public :
 
 		gy_rcu_thread_offline();
 
-		CONDEXEC(
-			DEBUGEXECN(11, INFOPRINTCOLOR(GY_COLOR_CYAN, "RCU Registration of thread %d done\n", thrid_););
-		);
+		DEBUGEXECN(11, INFOPRINTCOLOR(GY_COLOR_CYAN, "RCU Registration of thread %d done\n", thrid_););
 	}	
 
 	RCU_THREAD_LOCAL(const RCU_THREAD_LOCAL & other) 		= 	delete;

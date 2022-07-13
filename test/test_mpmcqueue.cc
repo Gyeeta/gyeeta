@@ -53,10 +53,6 @@ public :
 		slen = std::min(currsz, (uint32_t)sizeof(buf) - 1);
 		std::memcpy(buf, pbuf, slen);
 		buf[slen] = '\0';
-
-		CONDEXEC(
-			INFOPRINTCOLOR(GY_COLOR_GREEN, "serial_str from varbuf is %s\n", buf);
-		);	
 	}	
 
 	const char *	get_buffer() const noexcept

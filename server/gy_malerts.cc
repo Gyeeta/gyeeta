@@ -300,12 +300,10 @@ bool MRT_ALERTDEF::is_astat_msg(uint64_t id, MALERT_MSG & amsg, time_t tcurr, GY
 		if (numhits > 1 && pstat->numcheckfor_ > 1 && toldlasthit + pstat->multi_iter_chk_sec_ <= tcurr) {
 			// Flapping Alert : Reset checks
 
-			CONDEXEC(
-				DEBUGEXECN(15, 
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Flapping Realtime Alert seen for Alert ID %08x of Definition \'%08x\' : "
-						"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
-						pstat->alertid_, pstat->adef_id_, pstat->numcheckfor_, pstat->numhits_.load(mo_relaxed), tcurr - toldlasthit);
-				);
+			DEBUGEXECN(15, 
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Flapping Realtime Alert seen for Alert ID %08x of Definition \'%08x\' : "
+					"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
+					pstat->alertid_, pstat->adef_id_, pstat->numcheckfor_, pstat->numhits_.load(mo_relaxed), tcurr - toldlasthit);
 			);
 
 			pstat->numhits_.store(1, mo_relaxed);
@@ -1719,12 +1717,10 @@ void MRT_ALERT_HDLR::validate_timemap(time_t tcurr, bool check_all) noexcept
 					nalertclose_++;
 				}
 
-				CONDEXEC(
-					DEBUGEXECN(5, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by hit timeout for Realtime Alert for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_.load(mo_relaxed), tcurr - tlast_hit);
-					);
+				DEBUGEXECN(5, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by hit timeout for Realtime Alert for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_.load(mo_relaxed), tcurr - tlast_hit);
 				);
 
 				RCU_LOCK_SLOW			slowlock;
@@ -1743,12 +1739,10 @@ void MRT_ALERT_HDLR::validate_timemap(time_t tcurr, bool check_all) noexcept
 				nalertclose_++;
 				nforceclose_++;
 
-				CONDEXEC(
-					DEBUGEXECN(5, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by Alert Expiry for Realtime Alert for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_.load(mo_relaxed), tcurr - tlast_hit);
-					);
+				DEBUGEXECN(5, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by Alert Expiry for Realtime Alert for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_.load(mo_relaxed), tcurr - tlast_hit);
 				);
 
 				RCU_LOCK_SLOW			slowlock;
@@ -2287,11 +2281,9 @@ bool MDB_ALERT_HDLR::db_resp_cb(GyPGConn & conn, GyPGresult && gyres, bool is_co
 				return false;
 			}	
 
-			CONDEXEC(
-				DEBUGEXECN(1, 
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : New DB Alert Object of Alert ID %08x for Definition \'%s\' : "
-						"Total Timemap entries %lu\n", pstat->alertid_, name, atimemap_.size());
-				);
+			DEBUGEXECN(1, 
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : New DB Alert Object of Alert ID %08x for Definition \'%s\' : "
+					"Total Timemap entries %lu\n", pstat->alertid_, name, atimemap_.size());
 			);
 
 			isnew = true;
@@ -2324,12 +2316,10 @@ bool MDB_ALERT_HDLR::db_resp_cb(GyPGConn & conn, GyPGresult && gyres, bool is_co
 			if (numhits > 1 && pstat->numcheckfor_ > 1 && ((toldlasthit + 30 < pdef->tlast_query_) || (toldlasthit + 2 * pdef->query_interval_sec_ + 10 <= tcurr))) {
 				// Flapping Alert : Reset checks
 
-				CONDEXEC(
-					DEBUGEXECN(15, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Flapping DB Alert seen for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, name, pstat->numcheckfor_, numhits, tcurr - toldlasthit);
-					);
+				DEBUGEXECN(15, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Flapping DB Alert seen for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, name, pstat->numcheckfor_, numhits, tcurr - toldlasthit);
 				);
 
 				pstat->numhits_ = 1;
@@ -2739,12 +2729,10 @@ void MDB_ALERT_HDLR::validate_timemap(time_t tcurr, bool check_all) noexcept
 
 				GY_CC_BARRIER();
 
-				CONDEXEC(
-					DEBUGEXECN(5, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by hit timeout for DB Alert for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
-					);
+				DEBUGEXECN(5, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by hit timeout for DB Alert for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
 				);
 
 				atimemap_.erase(it);
@@ -2760,12 +2748,10 @@ void MDB_ALERT_HDLR::validate_timemap(time_t tcurr, bool check_all) noexcept
 				nalertclose_++;
 				nforceclose_++;
 
-				CONDEXEC(
-					DEBUGEXECN(5, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by Alert Expiry for DB Alert for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
-					);
+				DEBUGEXECN(5, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Alert Handler : Erasing by Alert Expiry for DB Alert for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
 				);
 
 				pdef->astat_tbl_.erase(pstat->id_);

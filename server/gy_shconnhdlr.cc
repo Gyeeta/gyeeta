@@ -2966,12 +2966,10 @@ int SHCONN_HANDLER::handle_l1(GY_THREAD *pthr)
 							}	
 
 							if (sret < 0 || conn_closed) {
-								CONDEXEC(	
-									DEBUGEXECN(10,
-										INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, "Closing %s\n",
-											pconn->print_conn(STRING_BUFFER<512>().get_str_buf()));
-									);							
-								);	
+								DEBUGEXECN(10,
+									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, "Closing %s\n",
+										pconn->print_conn(STRING_BUFFER<512>().get_str_buf()));
+								);							
 
 								pconn->signal_conn_close();
 								mconntrack.erase(cfd);
@@ -4028,12 +4026,10 @@ bool SHCONN_HANDLER::madhava_tcp_conn_info(const std::shared_ptr<MADHAVA_INFO> &
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Client Side Info Messages to Madhava %s\n",
-					madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Client Side Info Messages to Madhava %s\n",
+				madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nmadcli += madvec.size();
 
@@ -4048,12 +4044,10 @@ bool SHCONN_HANDLER::madhava_tcp_conn_info(const std::shared_ptr<MADHAVA_INFO> &
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Server Side Info Messages to Madhava %s\n",
-					madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Server Side Info Messages to Madhava %s\n",
+				madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nmadser += madvec.size();
 
@@ -4245,12 +4239,10 @@ bool SHCONN_HANDLER::handle_madhava_nat_notify(comm::NAT_TCP_NOTIFY * pone, int 
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Client Side Info Messages to Madhava %s\n",
-					madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Client Side Info Messages to Madhava %s\n",
+				madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nmadcli += madvec.size();
 
@@ -4265,12 +4257,10 @@ bool SHCONN_HANDLER::handle_madhava_nat_notify(comm::NAT_TCP_NOTIFY * pone, int 
 			continue;
 		}
 
-		CONDEXEC(
-			DEBUGEXECN(5,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Server Side Info Messages to Madhava %s\n",
-					madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
-			);
-		);	
+		DEBUGEXECN(5,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sending %lu TCP Conn Server Side Info Messages to Madhava %s\n",
+				madvec.size(), madshr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
 
 		nmadser += madvec.size();
 

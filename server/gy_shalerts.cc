@@ -387,11 +387,9 @@ bool SHALERT_HDLR::set_astat_on_alert(comm::ALERT_STAT_INFO & astat, SHALERTDEF 
 			return false;
 		}	
 
-		CONDEXEC(
-			DEBUGEXECN(1, 
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alerts : New RT Alert Object of Alert ID %08x for Definition \'%s\' : "
-					"Total Timemap entries %lu\n", pstat->alertid_, pdef->name(), atimemap_.size());
-			);
+		DEBUGEXECN(5, 
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alerts : New RT Alert Object of Alert ID %08x for Definition \'%s\' : "
+				"Total Timemap entries %lu\n", pstat->alertid_, pdef->name(), atimemap_.size());
 		);
 
 		isnew = true;
@@ -416,12 +414,10 @@ bool SHALERT_HDLR::set_astat_on_alert(comm::ALERT_STAT_INFO & astat, SHALERTDEF 
 		if (numhits > 1 && pstat->numcheckfor_ > 1 && toldlasthit + pdef->get_rt_max_multi_iter_sec() <= tcurr) {
 			// Flapping Alert : Reset checks
 
-			CONDEXEC(
-				DEBUGEXECN(15, 
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alerts : Flapping RT Alert seen for Alert ID %08x of Definition \'%s\' : "
-						"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
-						pstat->alertid_, pdef->name(), pstat->numcheckfor_, numhits, tcurr - toldlasthit);
-				);
+			DEBUGEXECN(15, 
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alerts : Flapping RT Alert seen for Alert ID %08x of Definition \'%s\' : "
+					"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
+					pstat->alertid_, pdef->name(), pstat->numcheckfor_, numhits, tcurr - toldlasthit);
 			);
 
 			pstat->numhits_ = 1;
@@ -672,11 +668,9 @@ bool SHALERT_HDLR::sdb_resp_cb(GyPGConn & conn, GyPGresult && gyres, bool is_com
 				return false;
 			}	
 
-			CONDEXEC(
-				DEBUGEXECN(1, 
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : New DB Alert Object of Alert ID %08x for Definition \'%s\' : "
-						"Total Timemap entries %lu\n", pstat->alertid_, name, atimemap_.size());
-				);
+			DEBUGEXECN(5, 
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : New DB Alert Object of Alert ID %08x for Definition \'%s\' : "
+					"Total Timemap entries %lu\n", pstat->alertid_, name, atimemap_.size());
 			);
 
 			isnew = true;
@@ -708,12 +702,10 @@ bool SHALERT_HDLR::sdb_resp_cb(GyPGConn & conn, GyPGresult && gyres, bool is_com
 			if (numhits > 1 && pstat->numcheckfor_ > 1 && ((toldlasthit + 30 < pdef->tlast_query_) || (toldlasthit + 2 * pdef->query_interval_sec_ + 10 <= tcurr))) {
 				// Flapping Alert : Reset checks
 
-				CONDEXEC(
-					DEBUGEXECN(15, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : Flapping DB Alert seen for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, name, pstat->numcheckfor_, numhits, tcurr - toldlasthit);
-					);
+				DEBUGEXECN(15, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : Flapping DB Alert seen for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor_ %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, name, pstat->numcheckfor_, numhits, tcurr - toldlasthit);
 				);
 
 				pstat->numhits_ = 1;
@@ -1149,12 +1141,10 @@ void SHALERT_HDLR::validate_timemap(time_t tcurr, bool check_all) noexcept
 
 				GY_CC_BARRIER();
 
-				CONDEXEC(
-					DEBUGEXECN(5, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : Erasing by hit timeout for Alert for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
-					);
+				DEBUGEXECN(5, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : Erasing by hit timeout for Alert for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
 				);
 
 				atimemap_.erase(it);
@@ -1168,12 +1158,10 @@ void SHALERT_HDLR::validate_timemap(time_t tcurr, bool check_all) noexcept
 				nalertclose_++;
 				nforceclose_++;
 
-				CONDEXEC(
-					DEBUGEXECN(5, 
-						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : Erasing by Alert Expiry for Alert for Alert ID %08x of Definition \'%s\' : "
-							"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
-							pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
-					);
+				DEBUGEXECN(5, 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW_UNDERLINE, "Shyama Alert : Erasing by Alert Expiry for Alert for Alert ID %08x of Definition \'%s\' : "
+						"numcheckfor %u, numhits %u, Time since last hit %ld sec\n", 
+						pstat->alertid_, pdef->name(), pstat->numcheckfor_, pstat->numhits_, tcurr - tlast_hit);
 				);
 
 				pdef->astat_tbl_.erase(pstat->id_);

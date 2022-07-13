@@ -196,12 +196,11 @@ void SVC_NET_CAPTURE::add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) 
 						}	
 
 						if (!portused && nports >= MAX_NETNS_PORTS) {
-							CONDEXEC(
-								DEBUGEXECN(1,
-									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Skipping Network Capture for Listener %s as Max Ports Monitored breached %u\n",
-										listenshr->comm_, nports);
-								);
+							DEBUGEXECN(1,
+								INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Skipping Network Capture for Listener %s as Max Ports Monitored breached %u\n",
+									listenshr->comm_, nports);
 							);
+
 							nskipped++;
 							continue;
 						}
@@ -282,11 +281,9 @@ void SVC_NET_CAPTURE::del_listeners(const GlobIDInodeMap & nslistmap) noexcept
 							continue;
 						}
 
-						CONDEXEC(
-							DEBUGEXECN(1,
-								INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Deleting Network Capture for Listener %s Port %hu as delete request seen\n",
-									psvc->listenshr_ ? psvc->listenshr_->comm_ : "", psvc->serport_);
-							);
+						DEBUGEXECN(1,
+							INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Deleting Network Capture for Listener %s Port %hu as delete request seen\n",
+								psvc->listenshr_ ? psvc->listenshr_->comm_ : "", psvc->serport_);
 						);
 
 						if (!torestart && (1 >= nsone.port_listen_tbl_.count_duplicate_elems(port, get_uint32_hash(port), 2))) {
@@ -1134,7 +1131,7 @@ bool NETNS_CAP_ONE::handle_resp_err_locked(SVC_CAP_ONE & svc, const GY_IP_ADDR &
 	if (is_cli_err && svc.listenshr_) {
 		if (!retranchk_ || (false == retranchk_->is_retranmit(tcp.seq, tcp.ack_seq, tcp.dest))) {
 			CONDEXEC(
-				DEBUGEXECN(11,
+				DEBUGEXECN(15,
 					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Listener %s Port %hu : A Client HTTP Error 4xx seen from network capture\n",
 						svc.listenshr_->comm_, svc.serport_);
 				);
@@ -1145,7 +1142,7 @@ bool NETNS_CAP_ONE::handle_resp_err_locked(SVC_CAP_ONE & svc, const GY_IP_ADDR &
 	else if (is_ser_err && svc.listenshr_) {
 		if (!retranchk_ || (false == retranchk_->is_retranmit(tcp.seq, tcp.ack_seq, tcp.dest))) {
 			CONDEXEC(
-				DEBUGEXECN(11,
+				DEBUGEXECN(15,
 					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Listener %s Port %hu : A Server HTTP Error 5xx seen from network capture\n",
 						svc.listenshr_->comm_, svc.serport_);
 				);

@@ -756,10 +756,8 @@ done1 :
 		nloops++;
 		
 		if (nloops > MAX_LOOP_CHECKS) {
-			CONDEXEC(
-				DEBUGEXECN(20,
-					WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Too many loops seen while tiny regex match. Bailing out...\n");
-				);
+			DEBUGEXECN(20,
+				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Too many loops seen while tiny regex match. Bailing out...\n");
 			);
 			return 0;
 		}	

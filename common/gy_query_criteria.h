@@ -1904,11 +1904,9 @@ start1 :
 		size_t			s, nc;
 		const char		*cfallback = (l1_oper_ == OPER_OR ? "(false)" : "(true)");
 
-		CONDEXEC(
-			if (*table_alias_prefix) {
-				assert(table_alias_prefix[strlen(table_alias_prefix) - 1] == '.');
-			}	
-		);
+		if (*table_alias_prefix) {
+			assert(table_alias_prefix[strlen(table_alias_prefix) - 1] == '.');
+		}	
 
 		if (total_crit_ == 0) {
 			strbuf.append(fallback);
