@@ -1,3 +1,4 @@
+
 # Prerequisites
 *.d
 
@@ -39,5 +40,8 @@ install/
 partha/partha
 server/madhava
 server/shyama
+
+# Logs
+*.log
 
 
