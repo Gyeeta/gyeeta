@@ -3,7 +3,7 @@ include ../Makefile.common
 
 INC_MAKE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
-INSTALLDIR := $(INC_MAKE_DIR)/install/server/
+BASEINSTALLDIR := $(INC_MAKE_DIR)/install/
 
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<	
@@ -34,7 +34,8 @@ shyama: $(SHYAMAOBJS) $(COMMONOBJS) $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $^ $(EXTRALDLIBS) $(LDLIBS) -o $@
 
 install::
-	cp -p $(BINARIES) ./runmadhava.sh ./runshyama.sh $(INSTALLDIR)/
+	cp -p ./madhava ./runmadhava.sh $(BASEINSTALLDIR)/madhava/
+	cp -p ./shyama ./runshyama.sh $(BASEINSTALLDIR)/shyama/
 
 clean:
 	rm -f *.o $(BINARIES) core core.* vgcore.* *.da *.bb *.bbg *.gcda *.gcno *.d .depend
