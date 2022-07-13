@@ -30,7 +30,7 @@ partha: $(PARTHAOBJS) $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $^ $(EXTRALDLIBS) $(BCCLIBS) $(LDLIBS) -o $@
 
 install::
-	cp -p $(BINARIES) ./runpartha.sh $(INSTALLDIR)/
+	cp -p $(BINARIES) ./runpartha.sh ./setperm.sh ./sample_partha_main.json $(INSTALLDIR)/
 	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep $(INSTALLDIR)/partha || echo
 
 
