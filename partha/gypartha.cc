@@ -54,7 +54,7 @@ int PARTHA_C::init_all_singletons()
 		get_root_mount_ns_info(OS_INFO::get_singleton(), pcmd_child_, SYS_HARDWARE::get_singleton()->is_uts_ns_container());
 	}	
 	
-#if 1	 
+#if 0	 
 	/*
 	 * Code to test out multiple partha on a single node
 	 */
