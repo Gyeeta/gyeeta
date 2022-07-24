@@ -44,7 +44,7 @@ public :
 	bool				auto_respawn_on_exit				{true};
 	bool				log_use_utc_time				{false};
 
-	MA_SETTINGS_C(const char *cfgdir);
+	MA_SETTINGS_C(char *pjson);
 };	
 
 class MADHAVA_C

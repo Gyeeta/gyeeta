@@ -129,46 +129,246 @@ int SHYAMA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 }
 
 
-SA_SETTINGS_C::SA_SETTINGS_C(const char *cfgdir)
+// Mutable pjson
+SA_SETTINGS_C::SA_SETTINGS_C(char *pjson)
 {
-	char			cfgfile[GY_PATH_MAX], *preadbuf = nullptr;
-	struct stat		stat1;
-	int			ret;
-	size_t			readsz = 0;
+	JSON_DOCUMENT<2048, 2048>	jdoc, ejdoc;
+	auto				& doc = jdoc.get_doc();
+	auto				& edoc = ejdoc.get_doc();
 
-	snprintf(cfgfile, sizeof(cfgfile), "%s/shyama_main.json", cfgdir);
+	STACK_JSON_WRITER<8192, 4096>	ewriter;
+	const char			*penvjson, *penv;
 	
-	ret = stat(cfgfile, &stat1);
-	if (ret != 0) {
-		GY_THROW_SYS_EXCEPTION("Config file not found : %s ", cfgfile);
-	}
-	else {
-		preadbuf = read_file_to_alloc_buffer(cfgfile, &readsz, 512 * 1024);
-	}
+	JSON_MEM_ITER			aiter;
+	int				ret;
 
-	if (!preadbuf) {
-		GY_THROW_SYS_EXCEPTION("Failed to read Global shyama config file %s", cfgfile);
+	assert(pjson);
+
+	// First populate config json from env if any
+	ewriter.StartObject();
+	
+	penv = getenv("CFG_LISTENER_DOMAINS");
+	if (penv) {
+		ewriter.KeyConst("listener_domains");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kArrayType);
 	}	
 
-	GY_SCOPE_EXIT {
-		free(preadbuf);
-	};	
+	penv = getenv("CFG_LISTENER_PORTS");
+	if (penv) {
+		ewriter.KeyConst("listener_ports");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kArrayType);
+	}	
 
-	INFOPRINT("Shyama Config file options are %s\n", preadbuf);
+	penv = getenv("CFG_SERVICE_HOSTNAME");
+	if (penv) {
+		ewriter.KeyConst("service_hostname");
 
-	JSON_DOCUMENT<2048, 2048>		jdoc;
-	auto					& doc = jdoc.get_doc();
-
-	try {
-		if (doc.ParseInsitu(preadbuf).HasParseError()) {
-			GY_THROW_EXCEPTION("Invalid json : Error at offset %lu : Error is \'%s\'", 
-				doc.GetErrorOffset(), rapidjson::GetParseError_En(doc.GetParseError()));
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
 		}	
-	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINT("Invalid shyama config file %s format : %s\n", cfgfile, GY_GET_EXCEPT_STRING);
-		throw;
-	);	
+	}	
+
+	penv = getenv("CFG_SERVICE_PORT");
+	if (penv) {
+		ewriter.KeyConst("service_port");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_SHYAMA_NAME");
+	if (penv) {
+		ewriter.KeyConst("shyama_name");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_SHYAMA_SECRET");
+	if (penv) {
+		ewriter.KeyConst("shyama_secret");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_CLOUD_TYPE");
+	if (penv) {
+		ewriter.KeyConst("cloud_type");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}	
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_REGION_NAME");
+	if (penv) {
+		ewriter.KeyConst("region_name");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_ZONE_NAME");
+	if (penv) {
+		ewriter.KeyConst("zone_name");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_MIN_MADHAVA");
+	if (penv) {
+		ewriter.KeyConst("min_madhava");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_POSTGRES_HOSTNAME");
+	if (penv) {
+		ewriter.KeyConst("postgres_hostname");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_POSTGRES_PORT");
+	if (penv) {
+		ewriter.KeyConst("postgres_port");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_POSTGRES_USER");
+	if (penv) {
+		ewriter.KeyConst("postgres_user");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_POSTGRES_PASSWORD");
+	if (penv) {
+		ewriter.KeyConst("postgres_password");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_POSTGRES_STORAGE_DAYS");
+	if (penv) {
+		ewriter.KeyConst("postgres_storage_days");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_DB_LOGGING");
+	if (penv) {
+		ewriter.KeyConst("db_logging");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_WEBSERVER_URL");
+	if (penv) {
+		ewriter.KeyConst("webserver_url");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_AUTO_RESPAWN_ON_EXIT");
+	if (penv) {
+		ewriter.KeyConst("auto_respawn_on_exit");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_LOG_USE_UTC_TIME");
+	if (penv) {
+		ewriter.KeyConst("log_use_utc_time");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	ewriter.EndObject();
+
+	penvjson = ewriter.get_string();
+
+	INFOPRINT("Shyama Config from config file is : \n%s\n\nShyama Config from Environment Variables is : \n%s\n\n", pjson, penvjson); 
+
+	if (doc.ParseInsitu(pjson).HasParseError()) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Not valid JSON : Error at offset %lu : Error is \'%s\'", 
+			doc.GetErrorOffset(), rapidjson::GetParseError_En(doc.GetParseError()));
+	}	
+
+	if (edoc.Parse(penvjson).HasParseError()) {
+		GY_THROW_EXCEPTION("Shyama Config Environment Variables set but not valid JSON : Error at offset %lu : Error is \'%s\'", 
+			edoc.GetErrorOffset(), rapidjson::GetParseError_En(edoc.GetParseError()));
+	}	
+
+	if (false == doc.IsObject()) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Config not in JSON Object format");
+	}	
+
 
 	/*
 	 * Current format of cfg/shyama_main.json :
@@ -201,221 +401,303 @@ SA_SETTINGS_C::SA_SETTINGS_C(const char *cfgdir)
 	}
 	 */ 
 	
-	try {
-		if (auto aiter = doc.FindMember("listener_domains"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-				if (false == aiter->value[i].IsString()) {
-					GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'listener_domains\' is not an Array of strings");
-				}	
-				listener_domains.emplace_back(aiter->value[i].GetString());
-			}
-		}
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'listener_domains\' not found or is not an Array Type in config json");
-
-		}	
-
-		if (auto aiter = doc.FindMember("listener_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-				if (false == aiter->value[i].IsUint()) {
-					GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_ports\' is not an Array of Ports");
-				}	
-				listener_ports.emplace_back(aiter->value[i].GetUint());
-			}
-		}
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'listener_ports\' not found or is not an Array Type in config json");
-		}	
-
-		if (listener_ports.size() != listener_domains.size()) {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Config option listener_ports and listener_domains have different sizes");
-		}
-		else if ((listener_domains.size() == 0) || (listener_domains.size() > 16)) {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Config option listener_domains size %lu invalid : Must be between 1 and 16", listener_domains.size());
-		}	
-
-		if (auto aiter = doc.FindMember("shyama_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_db_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(shyama_name), "Shyama Name from config");
-
-			GY_STRNCPY(shyama_name, aiter->value.GetString(), sizeof(shyama_name));
-
-			if (0 != memcmp(shyama_name, "shyama", GY_CONST_STRLEN("shyama"))) {
-				GY_THROW_EXCEPTION("Invalid Shyama Config : Config option shyama_name \'%s\' invalid : Must start with keyword \'shyama\' for example \'shyama1\'", 
-					shyama_name);
+	if (aiter = doc.FindMember("listener_domains"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsString()) {
+				GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'listener_domains\' array element not of String type");
 			}	
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'shyama_name\' not found or is not a String Type in config json");
-		}	
-
-		if (auto aiter = doc.FindMember("shyama_secret"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			if (aiter->value.GetStringLength() >= sizeof(shyama_secret) || aiter->value.GetString() == 0) {
-				GY_THROW_EXCEPTION("Invalid Shyama Config : Config option shyama_secret size %u invalid : Must be between 1 and 63 bytes", aiter->value.GetStringLength());
+			listener_domains.emplace_back(aiter->value[i].GetString());
+		}
+	}
+	else if (aiter = edoc.FindMember("listener_domains"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsString()) {
+				GY_THROW_EXCEPTION("Invalid Shyama Config from Environment Variable : Mandatory Config option \'listener_domains\' array element not of String type");
 			}	
-
-			GY_STRNCPY(shyama_secret, aiter->value.GetString(), sizeof(shyama_secret));
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'shyama_secret\' not found or is not a String Type in config json");
-		}	
-
-		if (auto aiter = doc.FindMember("service_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(service_hostname), "Service Hostname from config", false /* firstalphaonly */);
-
-			GY_STRNCPY(service_hostname, aiter->value.GetString(), sizeof(service_hostname));
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'service_hostname\' not found or is not a String Type in config json");
-		}	
-
-		if (auto aiter = doc.FindMember("service_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
-			service_port = aiter->value.GetUint();
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'service_port\' not found or is not an Integer Type in config json");
-		}	
-
-		if (auto aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
-
-			GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
+			listener_domains.emplace_back(aiter->value[i].GetString());
 		}
+	}
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'listener_domains\' not found or is not an Array Type in config json");
 
-		if (auto aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
+	}	
 
-			GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+	if (aiter = doc.FindMember("listener_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsUint()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_ports\' array element not of integer type");
+			}	
+			listener_ports.emplace_back(aiter->value[i].GetUint());
 		}
+	}
+	else if (aiter = edoc.FindMember("listener_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsUint()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'listener_ports\' array element not of integer type");
+			}	
+			listener_ports.emplace_back(aiter->value[i].GetUint());
+		}
+	}
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'listener_ports\' not found or is not an Array Type in config json");
+	}	
 
-		if (auto aiter = doc.FindMember("postgres_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			GY_STRNCPY(postgres_hostname, aiter->value.GetString(), sizeof(postgres_hostname));
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_hostname\' not found or of invalid type in config json");
+	if (listener_ports.size() != listener_domains.size()) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Config option listener_ports and listener_domains have different array sizes");
+	}
+	else if ((listener_domains.size() == 0) || (listener_domains.size() > 16)) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Config option listener_domains array size %lu invalid : Max allowed 16 elements", listener_domains.size());
+	}	
+
+	if (aiter = doc.FindMember("shyama_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_db_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(shyama_name), "Shyama Name from config");
+
+		GY_STRNCPY(shyama_name, aiter->value.GetString(), sizeof(shyama_name));
+
+	}	
+	else if (aiter = edoc.FindMember("shyama_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_db_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(shyama_name), "Shyama Name from Environment Variable");
+
+		GY_STRNCPY(shyama_name, aiter->value.GetString(), sizeof(shyama_name));
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'shyama_name\' not found or is not a String Type in config json");
+	}	
+
+	if (0 != memcmp(shyama_name, "shyama", GY_CONST_STRLEN("shyama"))) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Config option shyama_name \'%s\' invalid : Must start with keyword \'shyama\' for example \'shyama1\'", shyama_name);
+	}	
+
+	if (aiter = doc.FindMember("shyama_secret"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		if (aiter->value.GetStringLength() >= sizeof(shyama_secret) || aiter->value.GetStringLength() == 0) {
+			GY_THROW_EXCEPTION("Invalid Shyama Config : Config option shyama_secret size %u invalid : Must be between 1 and 63 bytes", aiter->value.GetStringLength());
 		}	
 
-		if (auto aiter = doc.FindMember("postgres_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
-			postgres_port = aiter->value.GetUint();
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option postgres_port not found or of invalid type in config json");
-		}	
-
-		if (auto aiter = doc.FindMember("postgres_user"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			GY_STRNCPY(postgres_user, aiter->value.GetString(), sizeof(postgres_user));
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_user\' not found or of invalid type in config json");
+		GY_STRNCPY(shyama_secret, aiter->value.GetString(), sizeof(shyama_secret));
+	}	
+	else if (aiter = edoc.FindMember("shyama_secret"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		if (aiter->value.GetStringLength() >= sizeof(shyama_secret) || aiter->value.GetStringLength() == 0) {
+			GY_THROW_EXCEPTION("Invalid Shyama Config from Environment Variable : Config option shyama_secret size %u invalid : Must be between 1 and 63 bytes", aiter->value.GetStringLength());
 		}	
 
-		if (auto aiter = doc.FindMember("postgres_password"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			GY_STRNCPY(postgres_password, aiter->value.GetString(), sizeof(postgres_password));
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_password\' not found or of invalid type in config json");
-		}	
+		GY_STRNCPY(shyama_secret, aiter->value.GetString(), sizeof(shyama_secret));
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'shyama_secret\' not found or is not a String Type in config json");
+	}	
+
+	if (aiter = doc.FindMember("service_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(service_hostname), "Service Hostname from config", false /* firstalphaonly */);
+
+		GY_STRNCPY(service_hostname, aiter->value.GetString(), sizeof(service_hostname));
+	}	
+	else if (aiter = edoc.FindMember("service_hostname"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(service_hostname), "Service Hostname from Environment Variable", false /* firstalphaonly */);
+
+		GY_STRNCPY(service_hostname, aiter->value.GetString(), sizeof(service_hostname));
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'service_hostname\' not found or is not a String Type in config json");
+	}	
+
+	if (aiter = doc.FindMember("service_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+		service_port = aiter->value.GetUint();
+	}	
+	else if (aiter = edoc.FindMember("service_port"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+		service_port = aiter->value.GetUint();
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'service_port\' not found or is not an Integer Type in config json");
+	}	
+
+	if (aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
+
+		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
+	}
+	else if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from Environment Variable", false /* firstalphaonly */);
+
+		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
+	}
+
+	if (aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
+
+		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+	}
+	else if (aiter = edoc.FindMember("zone_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from Environment Variable", false /* firstalphaonly */);
+
+		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+	}
+
+	if (aiter = doc.FindMember("postgres_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_hostname, aiter->value.GetString(), sizeof(postgres_hostname));
+	}	
+	else if (aiter = edoc.FindMember("postgres_hostname"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_hostname, aiter->value.GetString(), sizeof(postgres_hostname));
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_hostname\' not found or of invalid type in config json");
+	}	
+
+	if (0 == *postgres_hostname) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_hostname\' must not be an empty string in config json");
+	}	
+
+	if (aiter = doc.FindMember("postgres_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+		postgres_port = aiter->value.GetUint();
+	}	
+	else if (aiter = edoc.FindMember("postgres_port"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+		postgres_port = aiter->value.GetUint();
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option postgres_port not found or of invalid type in config json");
+	}	
+
+	if (aiter = doc.FindMember("postgres_user"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_user, aiter->value.GetString(), sizeof(postgres_user));
+	}	
+	else if (aiter = edoc.FindMember("postgres_user"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_user, aiter->value.GetString(), sizeof(postgres_user));
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_user\' not found or of invalid type in config json");
+	}	
+
+	if (0 == *postgres_user) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_user\' must not be an empty string in config json");
+	}	
+
+	if (aiter = doc.FindMember("postgres_password"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_password, aiter->value.GetString(), sizeof(postgres_password));
+	}	
+	else if (aiter = edoc.FindMember("postgres_password"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_password, aiter->value.GetString(), sizeof(postgres_password));
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_password\' not found or of invalid type in config json");
+	}	
 
 #if 0		 
-		/* 
-		 * Currently we do not supprt spawning DB
-		 */
-		if (auto aiter = doc.FindMember("spawn_postgres_db"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			spawn_postgres_db = aiter->value.GetBool();
+	/* 
+	 * Currently we do not supprt spawning DB
+	 */
+	if (aiter = doc.FindMember("spawn_postgres_db"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		spawn_postgres_db = aiter->value.GetBool();
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'spawn_postgres_db\' not found or of invalid type in config json");
+	}	
+
+	if (spawn_postgres_db) {
+
+		if (aiter = doc.FindMember("postgres_conf_path"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+			GY_STRNCPY(postgres_conf_path, aiter->value.GetString(), sizeof(postgres_conf_path));
 		}	
 		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'spawn_postgres_db\' not found or of invalid type in config json");
+			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_conf_path\' not found or of invalid type in config json");
 		}	
 
-		if (spawn_postgres_db) {
-
-			if (auto aiter = doc.FindMember("postgres_conf_path"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-				GY_STRNCPY(postgres_conf_path, aiter->value.GetString(), sizeof(postgres_conf_path));
-			}	
-			else {
-				GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_conf_path\' not found or of invalid type in config json");
-			}	
-
-			if (auto aiter = doc.FindMember("postgres_data_dir"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-				GY_STRNCPY(postgres_data_dir, aiter->value.GetString(), sizeof(postgres_conf_path));
-			}	
-			else {
-				GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_data_dir\' not found or of invalid type in config json");
-			}	
-
-			if (0 != access(postgres_conf_path, R_OK)) {
-				GY_THROW_SYS_EXCEPTION("Failed to read Postgres config file %s", postgres_conf_path);
-			}	
-
-			struct stat		dstat;
-
-			ret = stat(postgres_data_dir, &dstat);
-			if ((ret != 0) || (false == S_ISDIR(dstat.st_mode))) {
-				GY_THROW_SYS_EXCEPTION("Invalid Postgres Data Directory %s", postgres_data_dir);
-			}	
+		if (aiter = doc.FindMember("postgres_data_dir"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+			GY_STRNCPY(postgres_data_dir, aiter->value.GetString(), sizeof(postgres_conf_path));
 		}	
+		else {
+			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_data_dir\' not found or of invalid type in config json");
+		}	
+
+		if (0 != access(postgres_conf_path, R_OK)) {
+			GY_THROW_SYS_EXCEPTION("Failed to read Postgres config file %s", postgres_conf_path);
+		}	
+
+		struct stat		dstat;
+
+		ret = stat(postgres_data_dir, &dstat);
+		if ((ret != 0) || (false == S_ISDIR(dstat.st_mode))) {
+			GY_THROW_SYS_EXCEPTION("Invalid Postgres Data Directory %s", postgres_data_dir);
+		}	
+	}	
 #endif
 
-		if (auto aiter = doc.FindMember("postgres_storage_days"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
-			postgres_storage_days = aiter->value.GetUint();
+	if (aiter = doc.FindMember("postgres_storage_days"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+		postgres_storage_days = aiter->value.GetUint();
+	}	
+	else if (aiter = edoc.FindMember("postgres_storage_days"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+		postgres_storage_days = aiter->value.GetUint();
+	}	
+	else {
+		postgres_storage_days = 7;
+	}	
 
-			if (postgres_storage_days < 3) postgres_storage_days = 3;
+	if (postgres_storage_days < 3) postgres_storage_days = 3;
+	if (postgres_storage_days > 60) postgres_storage_days = 60;
 
-			if (postgres_storage_days > 60) postgres_storage_days = 60;
-		}	
-		else {
-			postgres_storage_days = 15;
-		}	
-
-		if (auto aiter = doc.FindMember("webserver_url"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			if (aiter->value.GetStringLength() >= sizeof(webserver_url)) {
-				GY_THROW_EXCEPTION("Invalid Shyama Config : Config option \'webserver_url\' length too large : %u : Max allowed = %lu bytes",
-					aiter->value.GetStringLength(), sizeof(webserver_url) - 1);
-			}
-			
-			GY_STRNCPY(webserver_url, aiter->value.GetString(), sizeof(webserver_url));
-
-			if ((0 != std::memcmp(webserver_url, "http://", 7)) && (0 != std::memcmp(webserver_url, "https://", 8))) {
-				GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'webserver_url\' specified \'%s\' not in valid format in config json : "
-						"Please specify the complete URL as in http://webserver.local:10039 or https://webserver.local:8443", webserver_url);
-			}	
-
-			auto			escurl = gy_escape_json<8192>(webserver_url, aiter->value.GetStringLength(), false);
-
-			esc_webserver_url.assign(escurl.data(), escurl.size());
-		}	
-		else {
-			GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'webserver_url\' not found or of invalid type in config json");
-		}	
-
-		if (auto aiter = doc.FindMember("min_madhava"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
-			min_madhava = aiter->value.GetUint();
-
-			if (min_madhava > comm::MAX_MADHAVA_PER_SHYAMA) {
-				GY_THROW_EXCEPTION("Invalid Shyama Config : Config option \'min_madhava\' value %u is invalid : Valid values between 1 and %lu", 
-							min_madhava, comm::MAX_MADHAVA_PER_SHYAMA);
-			}	
-
-			if (min_madhava == 0) {
-				min_madhava = 1;
-			}	
+	if (aiter = doc.FindMember("webserver_url"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		if (aiter->value.GetStringLength() >= sizeof(webserver_url)) {
+			GY_THROW_EXCEPTION("Invalid Shyama Config : Config option \'webserver_url\' length too large : %u : Max allowed = %lu bytes",
+				aiter->value.GetStringLength(), sizeof(webserver_url) - 1);
 		}
+		
+		GY_STRNCPY(webserver_url, aiter->value.GetString(), sizeof(webserver_url));
+	}	
+	else if (aiter = edoc.FindMember("webserver_url"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		if (aiter->value.GetStringLength() >= sizeof(webserver_url)) {
+			GY_THROW_EXCEPTION("Invalid Shyama Config from Environment Variable : Config option \'webserver_url\' length too large : %u : Max allowed = %lu bytes",
+				aiter->value.GetStringLength(), sizeof(webserver_url) - 1);
+		}
+		
+		GY_STRNCPY(webserver_url, aiter->value.GetString(), sizeof(webserver_url));
+	}	
+	else {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'webserver_url\' not found or of invalid type in config json");
+	}	
 
-		if (auto aiter = doc.FindMember("db_logging"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			db_logging = get_db_logging_level(aiter->value.GetString());
-		}	
+	if ((0 != std::memcmp(webserver_url, "http://", 7)) && (0 != std::memcmp(webserver_url, "https://", 8))) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'webserver_url\' specified \'%s\' not in valid format in config json : "
+				"Please specify the complete URL as in http://webserver.local:10039 or https://webserver.local:8443", webserver_url);
+	}	
+	else {
+		auto			escurl = gy_escape_json<8192>(webserver_url, aiter->value.GetStringLength(), false);
 
-		if (auto aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			auto_respawn_on_exit = aiter->value.GetBool();
-		}	
-
-		if (auto aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			log_use_utc_time = aiter->value.GetBool();
-		}	
+		esc_webserver_url.assign(escurl.data(), escurl.size());
 	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINT("Exception caught while parsing shyama config file %s : %s\n", cfgfile, GY_GET_EXCEPT_STRING);
-		throw;
-	);
+
+	if (aiter = doc.FindMember("min_madhava"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+		min_madhava = aiter->value.GetUint();
+	}
+	else if (aiter = edoc.FindMember("min_madhava"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+		min_madhava = aiter->value.GetUint();
+	}
+
+	if (min_madhava > comm::MAX_MADHAVA_PER_SHYAMA) {
+		GY_THROW_EXCEPTION("Invalid Shyama Config : Config option \'min_madhava\' value %u is invalid : Valid values between 1 and %lu", 
+					min_madhava, comm::MAX_MADHAVA_PER_SHYAMA);
+	}	
+	if (min_madhava == 0) {
+		min_madhava = 1;
+	}	
+
+	if (aiter = doc.FindMember("db_logging"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		db_logging = get_db_logging_level(aiter->value.GetString());
+	}	
+	else if (aiter = edoc.FindMember("db_logging"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		db_logging = get_db_logging_level(aiter->value.GetString());
+	}	
+
+	if (aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		auto_respawn_on_exit = aiter->value.GetBool();
+	}	
+	else if (aiter = edoc.FindMember("auto_respawn_on_exit"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		auto_respawn_on_exit = aiter->value.GetBool();
+	}	
+
+	if (aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		log_use_utc_time = aiter->value.GetBool();
+	}	
+	else if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		log_use_utc_time = aiter->value.GetBool();
+	}	
 }
 
 static std::atomic<int>		gsig_mon_rcvd(0);	
@@ -779,7 +1061,32 @@ SHYAMA_C::SHYAMA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		INFOPRINT("All new files created will have their ownership set to UID %d GID %d\n", chown_uid_, chown_gid_);
 	}
 
-	psettings_ = new SA_SETTINGS_C(pinitproc_->get_cfg_dir()); 
+	if (true) {
+		char			cfgfile[GY_PATH_MAX], *preadbuf = nullptr;
+		struct stat		stat1;
+		size_t			readsz = 0;
+
+		snprintf(cfgfile, sizeof(cfgfile), "%s/shyama_main.json", pinitproc_->get_cfg_dir());
+		
+		ret = stat(cfgfile, &stat1);
+		if (ret != 0) {
+			WARNPRINT("Shyama Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
+			preadbuf = strdup("{}");
+		}
+		else {
+			preadbuf = read_file_to_alloc_buffer(cfgfile, &readsz, 512 * 1024);
+		}
+
+		if (!preadbuf) {
+			GY_THROW_SYS_EXCEPTION("Failed to read global shyama config file %s", cfgfile);
+		}	
+
+		GY_SCOPE_EXIT {
+			free(preadbuf);
+		};	
+
+		psettings_ = new SA_SETTINGS_C(preadbuf); 
+	}
 
 	if (psettings_->log_use_utc_time) {
 		INFOPRINT("All subsequent log timestamps will be in UTC timezone...\n\n");

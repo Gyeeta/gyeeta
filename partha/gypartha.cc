@@ -236,8 +236,6 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 	
 	assert(pjson);
 
-	INFOPRINT("Partha Config is %s\n", pjson); 
-
 	JSON_DOCUMENT<2048, 2048>	jdoc, ejdoc;
 	auto				& doc = jdoc.get_doc();
 	auto				& edoc = ejdoc.get_doc();
@@ -351,6 +349,8 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 	ewriter.EndObject();
 
 	penvjson = ewriter.get_string();
+
+	INFOPRINT("Partha Config from config file is : \n%s\n\nPartha Config from Environment Variables is : \n%s\n\n", pjson, penvjson); 
 
 	if (doc.ParseInsitu(pjson).HasParseError()) {
 		GY_THROW_EXCEPTION("Invalid Partha Config : Not valid JSON : Error at offset %lu : Error is \'%s\'", 
@@ -495,18 +495,18 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		response_sampling_percent = pct;
 	}
 
-	if (auto aiter = doc.FindMember("capture_errcode"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+	if (aiter = doc.FindMember("capture_errcode"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_errcode = aiter->value.GetBool();
 	}	
-	else if (auto aiter = edoc.FindMember("capture_errcode"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = edoc.FindMember("capture_errcode"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_errcode = aiter->value.GetBool();
 	}	
 
 #if 0		
-	if (auto aiter = doc.FindMember("capture_api_call"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+	if (aiter = doc.FindMember("capture_api_call"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_api_call = aiter->value.GetBool();
 	}	
-	else if (auto aiter = edoc.FindMember("capture_api_call"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = edoc.FindMember("capture_api_call"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_api_call = aiter->value.GetBool();
 	}	
 #endif
@@ -993,7 +993,7 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		}
 
 		if (!preadbuf) {
-			GY_THROW_SYS_EXCEPTION("Failed to read Global partha config file %s", cfgfile);
+			GY_THROW_SYS_EXCEPTION("Failed to read global partha config file %s", cfgfile);
 		}	
 
 		GY_SCOPE_EXIT {

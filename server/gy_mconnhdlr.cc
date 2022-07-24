@@ -1261,62 +1261,37 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 {
 	size_t 				maxcore		= gy_get_proc_cpus_allowed(getpid());
 	size_t 				maxmem		= CPU_MEM_INFO::get_singleton()->get_total_memory();	// No need to check mems_allowed as this is advisory
-	bool				remotedb	= pmadhava_->psettings_->is_db_remote;
 
 	static_assert(comm::MAX_PARTHA_PER_MADHAVA > 1000);
 
-	if (remotedb) {
-		if (maxcore >= 24 && maxmem >= GY_UP_GB(64 - 1)) {
-			max_partha_allowed_	= 1000;
-		}
-		else if (maxcore >= 16 && maxmem >= GY_UP_GB(64 - 1)) {
-			max_partha_allowed_	= 750;
-		}	
-		else if (maxcore >= 12 && maxmem >= GY_UP_GB(32 - 1)) {
-			max_partha_allowed_	= 500;
-		}	
-		else if (maxcore >= 8 && maxmem >= GY_UP_GB(32 - 1)) {
-			max_partha_allowed_	= 350;
-		}	
-		else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
-			max_partha_allowed_	= 250;
-		}	
-		else if (maxcore >= 4 && maxmem >= GY_UP_GB(8 - 1)) {
-			max_partha_allowed_	= 80;
-		}	
-		else {
-			WARNPRINT_OFFLOAD("Max Processor cores allowed (%lu) and Memory (%lu GB) is too low : Madhava Response times may be affected...\n",
-				maxcore, GY_DOWN_GB(maxmem));
-			max_partha_allowed_	= 40;
-		}	
-	}
+	/*
+	 * NOTE : We limit the max Partha Hosts Count to a low value as otherwise multi host querying will
+	 * take more time. This does have a side-effect that we may miss some short lived TCP connection
+	 * flow evaluations (> 15 sec and < 30 sec) durations...
+	 */
+
+	if (maxcore >= 16 && maxmem >= GY_UP_GB(64 - 1)) {
+		max_partha_allowed_	= 500;
+	}	
+	else if (maxcore >= 12 && maxmem >= GY_UP_GB(32 - 1)) {
+		max_partha_allowed_	= 350;
+	}	
+	else if (maxcore >= 8 && maxmem >= GY_UP_GB(32 - 1)) {
+		max_partha_allowed_	= 200;
+	}	
+	else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
+		max_partha_allowed_	= 150;
+	}	
+	else if (maxcore >= 4 && maxmem >= GY_UP_GB(8 - 1)) {
+		max_partha_allowed_	= 75;
+	}	
 	else {
-		if (maxcore >= 24 && maxmem >= GY_UP_GB(128 - 1)) {
-			max_partha_allowed_	= 600;
-		}
-		else if (maxcore >= 16 && maxmem >= GY_UP_GB(64 - 1)) {
-			max_partha_allowed_	= 450;
-		}	
-		else if (maxcore >= 12 && maxmem >= GY_UP_GB(32 - 1)) {
-			max_partha_allowed_	= 250;
-		}	
-		else if (maxcore >= 8 && maxmem >= GY_UP_GB(32 - 1)) {
-			max_partha_allowed_	= 150;
-		}	
-		else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
-			max_partha_allowed_	= 75;
-		}	
-		else if (maxcore >= 4 && maxmem >= GY_UP_GB(8 - 1)) {
-			max_partha_allowed_	= 30;
-		}	
-		else {
-			WARNPRINT_OFFLOAD("Max Processor cores allowed (%lu) and Memory (%lu GB) is too low : Postgres/Madhava Response times may be affected...\n",
-				maxcore, GY_DOWN_GB(maxmem));
-			max_partha_allowed_	= 20;
-		}	
+		WARNPRINT_OFFLOAD("Max Processor cores allowed (%lu) and Memory (%lu GB) is too low : Postgres/Madhava Response times may be affected...\n",
+			maxcore, GY_DOWN_GB(maxmem));
+		max_partha_allowed_	= 40;
 	}	
 
-	INFOPRINT_OFFLOAD("Setting Maximum Partha Handled count to %u with Postgres DB %s\n", max_partha_allowed_, remotedb ? "on a Remote Host" : "on Same Host");
+	INFOPRINT_OFFLOAD("Setting Maximum Partha Hosts Handled count to %u\n", max_partha_allowed_);
 }
 
 void MCONN_HANDLER::spawn_init_threads()

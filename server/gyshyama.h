@@ -43,7 +43,7 @@ public :
 	bool				auto_respawn_on_exit				{true};
 	bool				log_use_utc_time				{false};
 
-	SA_SETTINGS_C(const char *cfgdir);
+	SA_SETTINGS_C(char *pjson);
 };	
 	
 
