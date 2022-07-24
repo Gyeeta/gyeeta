@@ -229,47 +229,142 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 	);		 
 }	
 
-
-PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(const char *cfgdir)
+// Mutable pjson
+PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 {
-	char			cfgfile[GY_PATH_MAX], *preadbuf = nullptr;
-	struct stat		stat1;
 	int			ret;
-	size_t			readsz = 0;
-
-	snprintf(cfgfile, sizeof(cfgfile), "%s/partha_main.json", cfgdir);
 	
-	ret = stat(cfgfile, &stat1);
-	if (ret != 0) {
-		GY_THROW_SYS_EXCEPTION("Config file not found : %s ", cfgfile);
-	}
-	else {
-		preadbuf = read_file_to_alloc_buffer(cfgfile, &readsz, 512 * 1024);
-	}
+	assert(pjson);
 
-	if (!preadbuf) {
-		GY_THROW_SYS_EXCEPTION("Failed to read Global partha config file %s", cfgfile);
+	INFOPRINT("Partha Config is %s\n", pjson); 
+
+	JSON_DOCUMENT<2048, 2048>	jdoc, ejdoc;
+	auto				& doc = jdoc.get_doc();
+	auto				& edoc = ejdoc.get_doc();
+
+	STACK_JSON_WRITER<8192, 4096>	ewriter;
+	const char			*penvjson, *penv;
+	
+	JSON_MEM_ITER			aiter;
+
+	// First populate config json from env if any
+	ewriter.StartObject();
+	
+	penv = getenv("CFG_CLUSTER_NAME");
+	if (penv) {
+		ewriter.KeyConst("cluster_name");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
 	}	
 
-	GY_SCOPE_EXIT {
-		free(preadbuf);
-	};	
+	penv = getenv("CFG_CLOUD_TYPE");
+	if (penv) {
+		ewriter.KeyConst("cloud_type");
 
-	INFOPRINT("Partha Config file options are %s\n", preadbuf); 
-
-	JSON_DOCUMENT<2048, 2048>	jdoc;
-	auto				& doc = jdoc.get_doc();
-
-	try {
-		if (doc.ParseInsitu(preadbuf).HasParseError()) {
-			GY_THROW_EXCEPTION("Invalid json : Error at offset %lu : Error is \'%s\'", 
-				doc.GetErrorOffset(), rapidjson::GetParseError_En(doc.GetParseError()));
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
 		}	
-	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINT("Invalid partha config file %s format : %s\n", cfgfile, GY_GET_EXCEPT_STRING);
-		throw;
-	);	
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_REGION_NAME");
+	if (penv) {
+		ewriter.KeyConst("region_name");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_ZONE_NAME");
+	if (penv) {
+		ewriter.KeyConst("zone_name");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
+	penv = getenv("CFG_SHYAMA_HOSTS");
+	if (penv) {
+		ewriter.KeyConst("shyama_hosts");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kArrayType);
+	}	
+
+	penv = getenv("CFG_SHYAMA_PORTS");
+	if (penv) {
+		ewriter.KeyConst("shyama_ports");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kArrayType);
+	}	
+
+	penv = getenv("CFG_RESPONSE_SAMPLING_PERCENT");
+	if (penv) {
+		ewriter.KeyConst("response_sampling_percent");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_CAPTURE_ERRCODE");
+	if (penv) {
+		ewriter.KeyConst("capture_errcode");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);		// kNumberType is just a placeholder
+	}	
+
+	penv = getenv("CFG_AUTO_RESPAWN_ON_EXIT");
+	if (penv) {
+		ewriter.KeyConst("auto_respawn_on_exit");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_IS_KUBERNETES");
+	if (penv) {
+		ewriter.KeyConst("is_kubernetes");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	penv = getenv("CFG_LOG_USE_UTC_TIME");
+	if (penv) {
+		ewriter.KeyConst("log_use_utc_time");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
+	ewriter.EndObject();
+
+	penvjson = ewriter.get_string();
+
+	if (doc.ParseInsitu(pjson).HasParseError()) {
+		GY_THROW_EXCEPTION("Invalid Partha Config : Not valid JSON : Error at offset %lu : Error is \'%s\'", 
+			doc.GetErrorOffset(), rapidjson::GetParseError_En(doc.GetParseError()));
+	}	
+
+	if (edoc.Parse(penvjson).HasParseError()) {
+		GY_THROW_EXCEPTION("Partha Config Environment Variables set but not valid JSON : Error at offset %lu : Error is \'%s\'", 
+			edoc.GetErrorOffset(), rapidjson::GetParseError_En(edoc.GetParseError()));
+	}	
+
+	if (false == doc.IsObject()) {
+		GY_THROW_EXCEPTION("Invalid Partha Config : Config not in JSON Object format");
+	}	
 
 	/*
 	 * Current format of cfg/partha_main.json :
@@ -290,96 +385,152 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(const char *cfgdir)
 	}
 	 */ 
 
-	try {
-		if (auto aiter = doc.FindMember("cluster_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from config", false /* firstalphaonly */);
+	if (aiter = doc.FindMember("cluster_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from config", false /* firstalphaonly */);
 
-			GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
-		}	
-
-		if (auto aiter = doc.FindMember("cloud_type"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from config");
-
-			GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
-		}
-
-		if (auto aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
-
-			GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
-		}
-
-		if (auto aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-			validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
-
-			GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
-		}
-
-		if (auto aiter = doc.FindMember("shyama_hosts"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-				if (false == aiter->value[i].IsString()) {
-					GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' is not an Array of strings");
-				}	
-				shyama_hosts.emplace_back(aiter->value[i].GetString());
-			}
-		}
-		else {
-			GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' not found or is not an Array Type in config json");
-		}	
-
-		if (auto aiter = doc.FindMember("shyama_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-				if (false == aiter->value[i].IsUint()) {
-					GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_ports\' is not an Array of Ports");
-				}	
-				shyama_ports.emplace_back(aiter->value[i].GetUint());
-			}
-		}
-		else {
-			GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_ports\' not found or is not an Array Type in config json");
-		}	
-
-		if (shyama_ports.size() != shyama_hosts.size()) {
-			GY_THROW_EXCEPTION("Invalid Partha Config : Config option shyama_ports and shyama_hosts have different sizes");
-		}
-		else if ((shyama_hosts.size() == 0) || (shyama_hosts.size() > 16)) {
-			GY_THROW_EXCEPTION("Invalid Partha Config : Config option shyama_hosts size %lu invalid : Must be between 1 and 16", shyama_hosts.size());
-		}	
-
-		if (auto aiter = doc.FindMember("response_sampling_percent"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
-			uint32_t		pct = aiter->value.GetUint();
-
-			if (pct > 100) {
-				pct = 100;
-			}
-
-			response_sampling_percent = pct;
-		}	
-
-		if (auto aiter = doc.FindMember("capture_errcode"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			capture_errcode = aiter->value.GetBool();
-		}	
-
-		if (auto aiter = doc.FindMember("capture_api_call"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			capture_api_call = aiter->value.GetBool();
-		}	
-
-		if (auto aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			auto_respawn_on_exit = aiter->value.GetBool();
-		}	
-
-		if (auto aiter = doc.FindMember("is_kubernetes"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			is_kubernetes = aiter->value.GetBool();
-		}	
-
-		if (auto aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-			log_use_utc_time = aiter->value.GetBool();
-		}	
+		GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
 	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINT("Exception caught while parsing partha config file %s : %s\n", cfgfile, GY_GET_EXCEPT_STRING);
-		throw;
-	);
+	else if (aiter = edoc.FindMember("cluster_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from Environment Variable", false /* firstalphaonly */);
+
+		GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
+	}
+
+	if (aiter = doc.FindMember("cloud_type"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from config");
+
+		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
+	}
+	else if (aiter = edoc.FindMember("cloud_type"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from Environment Variable");
+
+		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
+	}
+
+	if (aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
+
+		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
+	}
+	else if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from Environment Variable", false /* firstalphaonly */);
+
+		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
+	}
+
+	if (aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
+
+		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+	}
+	else if (aiter = edoc.FindMember("zone_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from Environment Variable", false /* firstalphaonly */);
+
+		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+	}
+
+	if (aiter = doc.FindMember("shyama_hosts"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsString()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' Array element not of string type");
+			}	
+			shyama_hosts.emplace_back(aiter->value[i].GetString());
+		}
+	}
+	else if (aiter = edoc.FindMember("shyama_hosts"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsString()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'shyama_hosts\' Array element not of string type");
+			}	
+			shyama_hosts.emplace_back(aiter->value[i].GetString());
+		}
+	}
+	else {
+		GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_hosts\' not found or is not an Array Type in config json");
+	}	
+
+	if (aiter = doc.FindMember("shyama_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsUint()) {
+				GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_ports\' is not an Array of Ports");
+			}	
+			shyama_ports.emplace_back(aiter->value[i].GetUint());
+		}
+	}
+	else if (aiter = edoc.FindMember("shyama_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsUint()) {
+				GY_THROW_EXCEPTION("Invalid Partha Config from Environment Variable : Mandatory Config option \'shyama_ports\' is not an Array of Ports");
+			}	
+			shyama_ports.emplace_back(aiter->value[i].GetUint());
+		}
+	}
+	else {
+		GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_ports\' not found or is not an Array Type in config json");
+	}	
+
+	if (shyama_ports.size() != shyama_hosts.size()) {
+		GY_THROW_EXCEPTION("Invalid Partha Config : Config option shyama_ports and shyama_hosts have different array sizes");
+	}
+	else if ((shyama_hosts.size() == 0) || (shyama_hosts.size() > 16)) {
+		GY_THROW_EXCEPTION("Invalid Partha Config : Config option shyama_hosts array size %lu not valid : Max allowed 16 elements", shyama_hosts.size());
+	}	
+
+	if (aiter = doc.FindMember("response_sampling_percent"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+		uint32_t		pct = aiter->value.GetUint();
+
+		if (pct > 100) {
+			pct = 100;
+		}
+
+		response_sampling_percent = pct;
+	}	
+	else if (aiter = edoc.FindMember("response_sampling_percent"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+		uint32_t		pct = aiter->value.GetUint();
+
+		if (pct > 100) {
+			pct = 100;
+		}
+
+		response_sampling_percent = pct;
+	}
+
+	if (auto aiter = doc.FindMember("capture_errcode"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		capture_errcode = aiter->value.GetBool();
+	}	
+	else if (auto aiter = edoc.FindMember("capture_errcode"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		capture_errcode = aiter->value.GetBool();
+	}	
+
+#if 0		
+	if (auto aiter = doc.FindMember("capture_api_call"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		capture_api_call = aiter->value.GetBool();
+	}	
+	else if (auto aiter = edoc.FindMember("capture_api_call"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		capture_api_call = aiter->value.GetBool();
+	}	
+#endif
+
+	if (aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		auto_respawn_on_exit = aiter->value.GetBool();
+	}	
+	else if (aiter = edoc.FindMember("auto_respawn_on_exit"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		auto_respawn_on_exit = aiter->value.GetBool();
+	}	
+
+	if (aiter = doc.FindMember("is_kubernetes"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		is_kubernetes = aiter->value.GetBool();
+	}	
+	else if (aiter = edoc.FindMember("is_kubernetes"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		is_kubernetes = aiter->value.GetBool();
+	}	
+
+	if (aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		log_use_utc_time = aiter->value.GetBool();
+	}	
+	else if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		log_use_utc_time = aiter->value.GetBool();
+	}	
 }
 
 static std::atomic<int>		gsig_mon_rcvd(0);	
@@ -825,7 +976,32 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		INFOPRINT("All new files created will have their ownership set to UID %d GID %d\n", chown_uid_, chown_gid_);
 	}
 		
-	psettings_ = new PA_SETTINGS_C(pinitproc_->get_cfg_dir()); 
+	if (true) {
+		char			cfgfile[GY_PATH_MAX], *preadbuf = nullptr;
+		struct stat		stat1;
+		size_t			readsz = 0;
+
+		snprintf(cfgfile, sizeof(cfgfile), "%s/partha_main.json", pinitproc_->get_cfg_dir());
+		
+		ret = stat(cfgfile, &stat1);
+		if (ret != 0) {
+			WARNPRINT("Partha Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
+			preadbuf = strdup("{}");
+		}
+		else {
+			preadbuf = read_file_to_alloc_buffer(cfgfile, &readsz, 512 * 1024);
+		}
+
+		if (!preadbuf) {
+			GY_THROW_SYS_EXCEPTION("Failed to read Global partha config file %s", cfgfile);
+		}	
+
+		GY_SCOPE_EXIT {
+			free(preadbuf);
+		};	
+
+		psettings_ = new PA_SETTINGS_C(preadbuf); 
+	}
 
 	if (psettings_->log_use_utc_time) {
 		INFOPRINT("All subsequent log timestamps will be in UTC timezone...\n\n");

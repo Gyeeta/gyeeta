@@ -37,7 +37,7 @@ public :
 		bool				is_kubernetes					{false};
 		bool				log_use_utc_time				{false};
 
-		PA_SETTINGS_C(const char *cfgdir);
+		PA_SETTINGS_C(char *pjson);
 	};	
 		
 	GY_CAPABILITIES			proc_cap_;
