@@ -245,7 +245,7 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 	
 	JSON_MEM_ITER			aiter;
 
-	// First populate config json from env if any
+	// First populate config json from env if any : env will override config file options
 	ewriter.StartObject();
 	
 	penv = getenv("CFG_CLUSTER_NAME");
@@ -385,62 +385,67 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 	}
 	 */ 
 
-	if (aiter = doc.FindMember("cluster_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from config", false /* firstalphaonly */);
 
-		GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
-	}
-	else if (aiter = edoc.FindMember("cluster_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+	if (aiter = edoc.FindMember("cluster_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from Environment Variable", false /* firstalphaonly */);
 
 		GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
 	}
+	else if (aiter = doc.FindMember("cluster_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from config", false /* firstalphaonly */);
 
-	if (aiter = doc.FindMember("cloud_type"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from config");
-
-		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
+		GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
 	}
-	else if (aiter = edoc.FindMember("cloud_type"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+
+
+	if (aiter = edoc.FindMember("cloud_type"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from Environment Variable");
 
 		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
 	}
+	else if (aiter = doc.FindMember("cloud_type"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from config");
 
-	if (aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
-
-		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
+		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
 	}
-	else if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+
+
+	if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from Environment Variable", false /* firstalphaonly */);
 
 		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
 	}
+	else if (aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
 
-	if (aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
-
-		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
 	}
-	else if (aiter = edoc.FindMember("zone_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+
+
+	if (aiter = edoc.FindMember("zone_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from Environment Variable", false /* firstalphaonly */);
 
 		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
 	}
+	else if (aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
 
-	if (aiter = doc.FindMember("shyama_hosts"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+	}
+
+
+	if (aiter = edoc.FindMember("shyama_hosts"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsString()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' Array element not of string type");
+				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'shyama_hosts\' Array element not of string type");
 			}	
 			shyama_hosts.emplace_back(aiter->value[i].GetString());
 		}
 	}
-	else if (aiter = edoc.FindMember("shyama_hosts"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+	else if (aiter = doc.FindMember("shyama_hosts"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsString()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'shyama_hosts\' Array element not of string type");
+				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' Array element not of string type");
 			}	
 			shyama_hosts.emplace_back(aiter->value[i].GetString());
 		}
@@ -449,18 +454,19 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_hosts\' not found or is not an Array Type in config json");
 	}	
 
-	if (aiter = doc.FindMember("shyama_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+
+	if (aiter = edoc.FindMember("shyama_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsUint()) {
-				GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_ports\' is not an Array of Ports");
+				GY_THROW_EXCEPTION("Invalid Partha Config from Environment Variable : Mandatory Config option \'shyama_ports\' is not an Array of Ports");
 			}	
 			shyama_ports.emplace_back(aiter->value[i].GetUint());
 		}
 	}
-	else if (aiter = edoc.FindMember("shyama_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+	else if (aiter = doc.FindMember("shyama_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsUint()) {
-				GY_THROW_EXCEPTION("Invalid Partha Config from Environment Variable : Mandatory Config option \'shyama_ports\' is not an Array of Ports");
+				GY_THROW_EXCEPTION("Invalid Partha Config : Mandatory Config option \'shyama_ports\' is not an Array of Ports");
 			}	
 			shyama_ports.emplace_back(aiter->value[i].GetUint());
 		}
@@ -476,7 +482,8 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Partha Config : Config option shyama_hosts array size %lu not valid : Max allowed 16 elements", shyama_hosts.size());
 	}	
 
-	if (aiter = doc.FindMember("response_sampling_percent"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+	
+	if (aiter = edoc.FindMember("response_sampling_percent"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
 		uint32_t		pct = aiter->value.GetUint();
 
 		if (pct > 100) {
@@ -484,8 +491,8 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		}
 
 		response_sampling_percent = pct;
-	}	
-	else if (aiter = edoc.FindMember("response_sampling_percent"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+	}
+	else if (aiter = doc.FindMember("response_sampling_percent"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
 		uint32_t		pct = aiter->value.GetUint();
 
 		if (pct > 100) {
@@ -495,40 +502,42 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		response_sampling_percent = pct;
 	}
 
-	if (aiter = doc.FindMember("capture_errcode"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+	if (aiter = edoc.FindMember("capture_errcode"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_errcode = aiter->value.GetBool();
 	}	
-	else if (aiter = edoc.FindMember("capture_errcode"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = doc.FindMember("capture_errcode"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_errcode = aiter->value.GetBool();
 	}	
 
 #if 0		
-	if (aiter = doc.FindMember("capture_api_call"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+	if (aiter = edoc.FindMember("capture_api_call"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_api_call = aiter->value.GetBool();
 	}	
-	else if (aiter = edoc.FindMember("capture_api_call"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = doc.FindMember("capture_api_call"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		capture_api_call = aiter->value.GetBool();
 	}	
 #endif
 
-	if (aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+	if (aiter = edoc.FindMember("auto_respawn_on_exit"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		auto_respawn_on_exit = aiter->value.GetBool();
 	}	
-	else if (aiter = edoc.FindMember("auto_respawn_on_exit"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		auto_respawn_on_exit = aiter->value.GetBool();
 	}	
 
-	if (aiter = doc.FindMember("is_kubernetes"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+
+	if (aiter = edoc.FindMember("is_kubernetes"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		is_kubernetes = aiter->value.GetBool();
 	}	
-	else if (aiter = edoc.FindMember("is_kubernetes"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = doc.FindMember("is_kubernetes"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		is_kubernetes = aiter->value.GetBool();
 	}	
 
-	if (aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+
+	if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		log_use_utc_time = aiter->value.GetBool();
 	}	
-	else if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		log_use_utc_time = aiter->value.GetBool();
 	}	
 }

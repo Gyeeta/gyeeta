@@ -143,7 +143,7 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 
 	assert(pjson);
 
-	// First populate config json from env if any
+	// First populate config json from env if any : env will override config file options 
 	ewriter.StartObject();
 	
 	penv = getenv("CFG_LISTENER_DOMAINS");
@@ -389,15 +389,8 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 	}
 	 */ 
  
-	if (aiter = doc.FindMember("listener_domains"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsString()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_domains\' array element not of String type");
-			}	
-			listener_domains.emplace_back(aiter->value[i].GetString());
-		}
-	}
-	else if (aiter = edoc.FindMember("listener_domains"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+
+	if (aiter = edoc.FindMember("listener_domains"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsString()) {
 				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'listener_domains\' array element not of String type");
@@ -405,26 +398,34 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 			listener_domains.emplace_back(aiter->value[i].GetString());
 		}
 	}
+	else if (aiter = doc.FindMember("listener_domains"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsString()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_domains\' array element not of String type");
+			}	
+			listener_domains.emplace_back(aiter->value[i].GetString());
+		}
+	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_domains\' not found or is not an Array Type in config json");
 	}	
 
-	if (aiter = doc.FindMember("listener_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+	if (aiter = edoc.FindMember("listener_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsUint()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'listener_ports\' array element not of integer type");
+			}	
+			listener_ports.emplace_back(aiter->value[i].GetUint());
+		}
+	}
+	else if (aiter = doc.FindMember("listener_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsUint()) {
 				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_ports\' array element not of integer type");
 			}	
 			listener_ports.emplace_back(aiter->value[i].GetUint());
 		}
-	}
-	else if (aiter = edoc.FindMember("listener_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsUint()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_ports\' array element not of integer type");
-			}	
-			listener_ports.emplace_back(aiter->value[i].GetUint());
-		}
-	}
+	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_ports\' not found or is not an Array Type in config json");
 	}	
@@ -436,14 +437,14 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Config option listener_domains array size %lu invalid : Max allowed 16 elements", listener_domains.size());
 	}	
 
-	if (aiter = doc.FindMember("madhava_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_db_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(madhava_name), "Madhava Name from config");
+	if (aiter = edoc.FindMember("madhava_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_db_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(madhava_name), "Madhava Name from Environment Variable");
 		
 		GY_STRNCPY(madhava_name, aiter->value.GetString(), sizeof(madhava_name));
 	
 	}	
-	else if (aiter = edoc.FindMember("madhava_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_db_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(madhava_name), "Madhava Name from Environment Variable");
+	else if (aiter = doc.FindMember("madhava_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_db_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(madhava_name), "Madhava Name from config");
 		
 		GY_STRNCPY(madhava_name, aiter->value.GetString(), sizeof(madhava_name));
 	
@@ -457,13 +458,13 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 			madhava_name);
 	}
 
-	if (aiter = doc.FindMember("service_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(service_hostname), "Service Hostname from config", false /* firstalphaonly */);
+	if (aiter = edoc.FindMember("service_hostname"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(service_hostname), "Service Hostname from Environment Variable", false /* firstalphaonly */);
 
 		GY_STRNCPY(service_hostname, aiter->value.GetString(), sizeof(service_hostname));
 	}	
-	else if (aiter = edoc.FindMember("service_hostname"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(service_hostname), "Service Hostname from Environment Variable", false /* firstalphaonly */);
+	else if (aiter = doc.FindMember("service_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), sizeof(service_hostname), "Service Hostname from config", false /* firstalphaonly */);
 
 		GY_STRNCPY(service_hostname, aiter->value.GetString(), sizeof(service_hostname));
 	}	
@@ -471,25 +472,17 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'service_hostname\' not found or is not a String Type in config json");
 	}	
 
-	if (aiter = doc.FindMember("service_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+	if (aiter = edoc.FindMember("service_port"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
 		service_port = aiter->value.GetUint();
 	}	
-	else if (aiter = edoc.FindMember("service_port"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+	else if (aiter = doc.FindMember("service_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
 		service_port = aiter->value.GetUint();
 	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'service_port\' not found or is not an Integer Type in config json");
 	}	
 
-	if (aiter = doc.FindMember("shyama_hosts"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsString()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' array element not of String type");
-			}	
-			shyama_hosts.emplace_back(aiter->value[i].GetString());
-		}
-	}
-	else if (aiter = edoc.FindMember("shyama_hosts"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+	if (aiter = edoc.FindMember("shyama_hosts"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsString()) {
 				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'shyama_hosts\'  array element not of String Type");
@@ -497,19 +490,19 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 			shyama_hosts.emplace_back(aiter->value[i].GetString());
 		}
 	}
+	else if (aiter = doc.FindMember("shyama_hosts"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsString()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' array element not of String type");
+			}	
+			shyama_hosts.emplace_back(aiter->value[i].GetString());
+		}
+	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_hosts\' not found or is not an Array Type in config json");
 	}	
 
-	if (aiter = doc.FindMember("shyama_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsUint()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_ports\' array element not of integer type");
-			}	
-			shyama_ports.emplace_back(aiter->value[i].GetUint());
-		}
-	}
-	else if (aiter = edoc.FindMember("shyama_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
+	if (aiter = edoc.FindMember("shyama_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
 		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
 			if (false == aiter->value[i].IsUint()) {
 				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'shyama_ports\' array element not of integer type");
@@ -517,6 +510,14 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 			shyama_ports.emplace_back(aiter->value[i].GetUint());
 		}
 	}
+	else if (aiter = doc.FindMember("shyama_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+			if (false == aiter->value[i].IsUint()) {
+				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_ports\' array element not of integer type");
+			}	
+			shyama_ports.emplace_back(aiter->value[i].GetUint());
+		}
+	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_ports\' not found or is not an Array Type in config json");
 	}	
@@ -528,17 +529,17 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Config option shyama_hosts array size %lu invalid : Max allowed 16 elements", shyama_hosts.size());
 	}	
 
-	if (aiter = doc.FindMember("shyama_secret"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+	if (aiter = edoc.FindMember("shyama_secret"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		if (aiter->value.GetStringLength() >= sizeof(shyama_secret) || aiter->value.GetStringLength() == 0) {
-			GY_THROW_EXCEPTION("Invalid Madhava Config : Config option shyama_secret size %u invalid : Must be between 1 and 63 bytes", aiter->value.GetStringLength());
+			GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Config option shyama_secret size %u invalid : Must be between 1 and 63 bytes", 
+				aiter->value.GetStringLength());
 		}	
 
 		GY_STRNCPY(shyama_secret, aiter->value.GetString(), sizeof(shyama_secret));
 	}	
-	else if (aiter = edoc.FindMember("shyama_secret"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+	else if (aiter = doc.FindMember("shyama_secret"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
 		if (aiter->value.GetStringLength() >= sizeof(shyama_secret) || aiter->value.GetStringLength() == 0) {
-			GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Config option shyama_secret size %u invalid : Must be between 1 and 63 bytes", 
-				aiter->value.GetStringLength());
+			GY_THROW_EXCEPTION("Invalid Madhava Config : Config option shyama_secret size %u invalid : Must be between 1 and 63 bytes", aiter->value.GetStringLength());
 		}	
 
 		GY_STRNCPY(shyama_secret, aiter->value.GetString(), sizeof(shyama_secret));
@@ -547,34 +548,34 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_secret\' not found or is not a String Type in config json");
 	}	
 
-	if (aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
-
-		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
-	}
-	else if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+	if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from Environment Variable", false /* firstalphaonly */);
 
 		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
 	}
+	else if (aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
 
-	if (aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
-
-		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
 	}
-	else if (aiter = edoc.FindMember("zone_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+
+	if (aiter = edoc.FindMember("zone_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from Environment Variable", false /* firstalphaonly */);
 
 		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
 	}
+	else if (aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
 
-	if (aiter = doc.FindMember("postgres_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		GY_STRNCPY(postgres_hostname, aiter->value.GetString(), sizeof(postgres_hostname));
-	}	
-	else if (aiter = edoc.FindMember("postgres_hostname"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
+	}
+
+	if (aiter = edoc.FindMember("postgres_hostname"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		GY_STRNCPY(postgres_hostname, aiter->value.GetString(), sizeof(postgres_hostname));
 	}
+	else if (aiter = doc.FindMember("postgres_hostname"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_hostname, aiter->value.GetString(), sizeof(postgres_hostname));
+	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'postgres_hostname\' not found or of invalid type in config json");
 	}	
@@ -583,22 +584,22 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'postgres_hostname\' must not be an empty string in config json");
 	}
 
-	if (aiter = doc.FindMember("postgres_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
-		postgres_port = aiter->value.GetUint();
-	}	
-	else if (aiter = edoc.FindMember("postgres_port"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+	if (aiter = edoc.FindMember("postgres_port"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
 		postgres_port = aiter->value.GetUint();
 	}		
+	else if (aiter = doc.FindMember("postgres_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+		postgres_port = aiter->value.GetUint();
+	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option postgres_port not found or of invalid type in config json");
 	}	
 
-	if (aiter = doc.FindMember("postgres_user"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		GY_STRNCPY(postgres_user, aiter->value.GetString(), sizeof(postgres_user));
-	}	
-	else if (aiter = edoc.FindMember("postgres_user"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+	if (aiter = edoc.FindMember("postgres_user"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		GY_STRNCPY(postgres_user, aiter->value.GetString(), sizeof(postgres_user));
 	}		
+	else if (aiter = doc.FindMember("postgres_user"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		GY_STRNCPY(postgres_user, aiter->value.GetString(), sizeof(postgres_user));
+	}	
 	else {
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'postgres_user\' not found or of invalid type in config json");
 	}	
@@ -607,10 +608,10 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'postgres_user\' must not be an empty string in config json");
 	}	
 
-	if (aiter = doc.FindMember("postgres_password"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+	if (aiter = edoc.FindMember("postgres_password"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		GY_STRNCPY(postgres_password, aiter->value.GetString(), sizeof(postgres_password));
 	}	
-	else if (aiter = edoc.FindMember("postgres_password"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+	else if (aiter = doc.FindMember("postgres_password"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
 		GY_STRNCPY(postgres_password, aiter->value.GetString(), sizeof(postgres_password));
 	}	
 	else {
@@ -657,10 +658,10 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 	}	
 #endif		
 
-	if (aiter = doc.FindMember("postgres_storage_days"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+	if (aiter = edoc.FindMember("postgres_storage_days"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
 		postgres_storage_days = aiter->value.GetUint();
 	}	
-	else if (aiter = edoc.FindMember("postgres_storage_days"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+	else if (aiter = doc.FindMember("postgres_storage_days"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
 		postgres_storage_days = aiter->value.GetUint();
 	}	
 	else {
@@ -670,26 +671,26 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 	if (postgres_storage_days < 3) postgres_storage_days = 3;
 	if (postgres_storage_days > 60) postgres_storage_days = 60;
 
-	if (aiter = doc.FindMember("db_logging"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+	if (aiter = edoc.FindMember("db_logging"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		db_logging = get_db_logging_level(aiter->value.GetString());
 	}	
-	else if (aiter = edoc.FindMember("db_logging"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+	else if (aiter = doc.FindMember("db_logging"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
 		db_logging = get_db_logging_level(aiter->value.GetString());
 	}	
 
-	if (aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+	if (aiter = edoc.FindMember("auto_respawn_on_exit"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		auto_respawn_on_exit = aiter->value.GetBool();
 	}	
-	else if (aiter = edoc.FindMember("auto_respawn_on_exit"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	else if (aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		auto_respawn_on_exit = aiter->value.GetBool();
 	}	
 
-	if (aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-		log_use_utc_time = aiter->value.GetBool();
-	}	
-	else if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+	if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		log_use_utc_time = aiter->value.GetBool();
 	}		
+	else if (aiter = doc.FindMember("log_use_utc_time"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		log_use_utc_time = aiter->value.GetBool();
+	}	
 }
 
 static std::atomic<int>		gsig_mon_rcvd(0);	
