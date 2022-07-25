@@ -13,8 +13,8 @@ namespace shyama {
 class SA_SETTINGS_C
 {
 public :		
-	std::vector<std::string>	listener_domains;
-	std::vector<uint16_t>		listener_ports;
+	std::vector<std::string>	listener_ip;
+	std::vector<uint16_t>		listener_port;
 
 	char				service_hostname[MAX_DOMAINNAME_SIZE]		{};
 	uint16_t			service_port					{0};

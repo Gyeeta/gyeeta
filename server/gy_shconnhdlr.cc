@@ -40,7 +40,7 @@ SHCONN_HANDLER::SHCONN_HANDLER(SHYAMA_C *pshyama)
 
 	auto psettings = pshyama_->psettings_;
 
-	if (psettings->listener_domains.size() > MAX_TCP_LISTENERS) {
+	if (psettings->listener_ip.size() > MAX_TCP_LISTENERS) {
 		GY_THROW_EXCEPTION("Too many Listener IP/Ports specified. Max allowed is %lu", MAX_TCP_LISTENERS);
 	}	
 	
@@ -63,8 +63,8 @@ SHCONN_HANDLER::SHCONN_HANDLER(SHYAMA_C *pshyama)
 		INFOPRINT("Starting Shyama Server Listener Initialization : Shyama Name \'%s\' Shyama Service hostname \'%s\' Service port %hu : ID %016lx...\n", 
 			shyama_name_, psettings->service_hostname, psettings->service_port, gshyama_id_);
 
-		listen_host_vec_	= psettings->listener_domains;
-		listen_port_vec_	= psettings->listener_ports;
+		listen_host_vec_	= psettings->listener_ip;
+		listen_port_vec_	= psettings->listener_port;
 
 		min_madhava_		= psettings->min_madhava;
 		db_storage_days_	= psettings->postgres_storage_days;

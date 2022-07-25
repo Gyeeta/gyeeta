@@ -146,16 +146,16 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 	// First populate config json from env if any : env will override config file options 
 	ewriter.StartObject();
 	
-	penv = getenv("CFG_LISTENER_DOMAINS");
+	penv = getenv("CFG_LISTENER_IP");
 	if (penv) {
-		ewriter.KeyConst("listener_domains");
-		ewriter.RawValue(penv, strlen(penv), rapidjson::kArrayType);
+		ewriter.KeyConst("listener_ip");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
 	}	
 
-	penv = getenv("CFG_LISTENER_PORTS");
+	penv = getenv("CFG_LISTENER_PORT");
 	if (penv) {
-		ewriter.KeyConst("listener_ports");
-		ewriter.RawValue(penv, strlen(penv), rapidjson::kArrayType);
+		ewriter.KeyConst("listener_port");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
 	}	
 
 	penv = getenv("CFG_SERVICE_HOSTNAME");
@@ -363,8 +363,8 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 	/*
 	 * Current format of cfg/madhava_main.json :
 	{
-		"listener_domains"	 	:	["192.168.0.1", "127.0.0.1"],
-		"listener_ports"		:	[10038, 10038],
+		"listener_ip"	 		:	"0.0.0.0",
+		"listener_port"			:	10038,
 		"madhava_name"			:	"madhava-us-east-1a-1",
 		"service_hostname"		:	"madhava.test1.local",
 		"service_port"			:	10038,
@@ -390,51 +390,72 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 	 */ 
  
 
-	if (aiter = edoc.FindMember("listener_domains"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsString()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'listener_domains\' array element not of String type");
-			}	
-			listener_domains.emplace_back(aiter->value[i].GetString());
+	if (aiter = edoc.FindMember("listener_ip"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString() || aiter->value.IsArray()))) {
+		if (aiter->value.IsString()) {
+			listener_ip.emplace_back(aiter->value.GetString());
+		}
+		else {
+			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+				if (false == aiter->value[i].IsString()) {
+					GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Config option \'listener_ip\' array element not of String type");
+				}	
+				listener_ip.emplace_back(aiter->value[i].GetString());
+			}
 		}
 	}
-	else if (aiter = doc.FindMember("listener_domains"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsString()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_domains\' array element not of String type");
-			}	
-			listener_domains.emplace_back(aiter->value[i].GetString());
+	else if (aiter = doc.FindMember("listener_ip"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString() || aiter->value.IsArray()))) {
+		if (aiter->value.IsString()) {
+			listener_ip.emplace_back(aiter->value.GetString());
+		}
+		else {
+			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+				if (false == aiter->value[i].IsString()) {
+					GY_THROW_EXCEPTION("Invalid Madhava Config : Config option \'listener_ip\' array element not of String type");
+				}	
+				listener_ip.emplace_back(aiter->value[i].GetString());
+			}
 		}
 	}	
 	else {
-		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_domains\' not found or is not an Array Type in config json");
+		// Default 0.0.0.0
+		listener_ip.emplace_back("0.0.0.0");
 	}	
 
-	if (aiter = edoc.FindMember("listener_ports"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsUint()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'listener_ports\' array element not of integer type");
-			}	
-			listener_ports.emplace_back(aiter->value[i].GetUint());
+	if (aiter = edoc.FindMember("listener_port"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint() || aiter->value.IsArray()))) {
+		if (aiter->value.IsUint()) {
+			listener_port.emplace_back(aiter->value.GetUint());
+		}
+		else {
+			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+				if (false == aiter->value[i].IsUint()) {
+					GY_THROW_EXCEPTION("Invalid Madhava Config from Environment Variable : Mandatory Config option \'listener_port\' array element not of integer type");
+				}	
+				listener_port.emplace_back(aiter->value[i].GetUint());
+			}
 		}
 	}
-	else if (aiter = doc.FindMember("listener_ports"); ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
-		for (uint32_t i = 0; i < aiter->value.Size(); i++) {
-			if (false == aiter->value[i].IsUint()) {
-				GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_ports\' array element not of integer type");
-			}	
-			listener_ports.emplace_back(aiter->value[i].GetUint());
+	else if (aiter = doc.FindMember("listener_port"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint() || aiter->value.IsArray()))) {
+		if (aiter->value.IsUint()) {
+			listener_port.emplace_back(aiter->value.GetUint());
+		}
+		else {
+			for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+				if (false == aiter->value[i].IsUint()) {
+					GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_port\' array element not of integer type");
+				}	
+				listener_port.emplace_back(aiter->value[i].GetUint());
+			}
 		}
 	}	
 	else {
-		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_ports\' not found or is not an Array Type in config json");
+		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'listener_port\' not found in config json");
 	}	
 
-	if (listener_ports.size() != listener_domains.size()) {
-		GY_THROW_EXCEPTION("Invalid Madhava Config : Config option listener_ports and listener_domains have different array sizes");
+	if (listener_port.size() != listener_ip.size()) {
+		GY_THROW_EXCEPTION("Invalid Madhava Config : Config option listener_port and listener_ip have different array sizes");
 	}
-	else if ((listener_domains.size() == 0) || (listener_domains.size() > 16)) {
-		GY_THROW_EXCEPTION("Invalid Madhava Config : Config option listener_domains array size %lu invalid : Max allowed 16 elements", listener_domains.size());
+	else if ((listener_ip.size() == 0) || (listener_ip.size() > 16)) {
+		GY_THROW_EXCEPTION("Invalid Madhava Config : Config option listener_ip array size %lu invalid : Max allowed 16 elements", listener_ip.size());
 	}	
 
 	if (aiter = edoc.FindMember("madhava_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {

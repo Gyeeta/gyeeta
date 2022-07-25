@@ -34,7 +34,9 @@ shyama: $(SHYAMAOBJS) $(COMMONOBJS) $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $^ $(EXTRALDLIBS) $(LDLIBS) -o $@
 
 install::
+	[ -f $(BASEINSTALLDIR)/madhava/runmadhava.sh ] && $(BASEINSTALLDIR)/madhava/runmadhava.sh stop
 	cp -p ./madhava ./runmadhava.sh ./sample_madhava_main.json $(BASEINSTALLDIR)/madhava/
+	[ -f $(BASEINSTALLDIR)/shyama/runshyama.sh ] && $(BASEINSTALLDIR)/shyama/runshyama.sh stop
 	cp -p ./shyama ./runshyama.sh ./sample_shyama_main.json $(BASEINSTALLDIR)/shyama/
 
 clean:

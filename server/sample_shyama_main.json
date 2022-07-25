@@ -1,7 +1,7 @@
 
 {
-		"listener_domains"	 	:	["0.0.0.0"],
-		"listener_ports"		:	[10037],
+		"listener_ip"	 		:	"0.0.0.0",
+		"listener_port"			:	10037,
 		"service_hostname"		:	"shyama1.local",
 		"service_port"			:	10037,
 		"cloud_type"			:	"gcp",

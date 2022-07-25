@@ -1,7 +1,7 @@
 
 {
-		"listener_domains"	 	:	["0.0.0.0"],
-		"listener_ports"		:	[10038],
+		"listener_ip"		 	:	"0.0.0.0",
+		"listener_port"			:	10038,
 		"madhava_name"			:	"madhava_useast1",
 		"service_hostname"		:	"madhava-useast1.local",
 		"service_port"			:	10038,

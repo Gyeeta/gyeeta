@@ -31,7 +31,7 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 	: pmadhava_(pmadhava), 
 	pdb_scheduler_(GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG_DURATION)),
 	pdbmain_scheduler_(GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_MAINTENANCE)),
-	listen_host_vec_(pmadhava->psettings_->listener_domains), listen_port_vec_(pmadhava->psettings_->listener_ports)
+	listen_host_vec_(pmadhava->psettings_->listener_ip), listen_port_vec_(pmadhava->psettings_->listener_port)
 {
 	if (nullptr == pdb_scheduler_ || nullptr == pdbmain_scheduler_) {
 		GY_THROW_EXCEPTION("Scheduler Singleton objects not yet initialized");
@@ -40,7 +40,7 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 	auto 			psettings = pmadhava_->psettings_;
 	time_t			tcurr, tnxt;
 
-	if (psettings->listener_domains.size() > MAX_TCP_LISTENERS) {
+	if (psettings->listener_ip.size() > MAX_TCP_LISTENERS) {
 		GY_THROW_EXCEPTION("Too many Listener IP/Ports specified. Max allowed is %lu", MAX_TCP_LISTENERS);
 	}	
 	
