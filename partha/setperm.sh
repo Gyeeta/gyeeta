@@ -75,10 +75,10 @@ check_kernel_headers()
 
 	printf "\nERROR : Missing Kernel Headers Package : These are required by partha : Please install your Distribution package as per instructions below : \n\n"
 
-	printf "\t\tFor Ubuntu or Debian based systems : \n\t\tsudo apt-get -y install linux-headers-$(uname -r)\n"
+	printf '\t\tFor Ubuntu or Debian based systems : \n\t\tsudo apt-get -y install linux-headers-$(uname -r)\n'
 	printf "\t\tIf above package not found error seen, run the command (sudo apt update) and then retry thereafter\n\n"
 
-	printf "\t\tFor CentOS, RHEL, Fedora, Amazon Linux based systems : \n\t\tsudo yum -y install kernel-devel-$(uname -r)\n\n"
+	printf '\t\tFor CentOS, RHEL, Fedora, Amazon Linux based systems : \n\t\tsudo yum -y install kernel-devel-$(uname -r)\n\n'
 
 	printf "\t\tFor OpenSUSE based systems : \n\t\tsudo zypper -n install kernel-default-devel-$(uname -r | awk -F- '{print $1}')\n"
 	printf "\t\tIf above package not found error seen, run the command (sudo zypper -n dist-upgrade) and then retry thereafter\n\n"
