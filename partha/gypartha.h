@@ -67,6 +67,8 @@ public :
 
 	int				update_server_status(const char *status) noexcept;
 
+	void				verify_caps_kernhdr();
+
 	static PARTHA_C *		get_singleton() noexcept;
 
 private :

@@ -20,6 +20,8 @@
 #include		"gy_query_common.h"
 #include		"gy_libcurl.h"
 
+#include 		<sys/utsname.h>
+
 namespace gyeeta {
 namespace partha {
 
@@ -944,14 +946,8 @@ static int partha_cmd_proc(CHILD_PROC *pchildproc) noexcept
 	return -1;
 }	
 
-PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core)
-	: proc_cap_(getpid()), log_debug_level_(gdebugexecn), allow_core_(allow_core)
+void PARTHA_C::verify_caps_kernhdr()
 {
-
-	pid_t			childpid1, childpid2;
-	char			logpath[GY_PATH_MAX], descbuf[128];
-	int			ret;
-
 	constexpr const char	*capstring[] = 				{"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_IPC_LOCK", "CAP_KILL",
 											"CAP_MAC_ADMIN", "CAP_MKNOD", "CAP_SYS_CHROOT", "CAP_SYS_RESOURCE", "CAP_SETPCAP",
 											"CAP_SYS_PTRACE", "CAP_SYS_ADMIN", "CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_SYS_MODULE"};
@@ -969,6 +965,31 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		}	
 	}
 		
+	struct utsname		uts;	
+	char			kernpath[512];
+	struct stat		stat1;
+	int			ret;
+	
+	ret = uname(&uts);
+	if (!ret) {
+		snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/include", uts.release);
+
+		ret = lstat(kernpath, &stat1);
+		if (ret == -1) {
+			GY_THROW_EXCEPTION("Missing Kernel Headers Package : These are required by partha : Please install your Distribution Kernel Headers package");
+		}	
+	}	
+}	
+
+PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core)
+	: proc_cap_(getpid()), log_debug_level_(gdebugexecn), allow_core_(allow_core)
+{
+	pid_t			childpid1, childpid2;
+	char			logpath[GY_PATH_MAX], descbuf[128];
+	int			ret;
+
+	verify_caps_kernhdr();
+
 	snprintf(descbuf, sizeof(descbuf), "partha - Gyeeta's Host Agent : Version %s", get_version_str());
 		
 	pgpartha = this;

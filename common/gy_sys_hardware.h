@@ -560,15 +560,10 @@ public :
 
 			if ((ret == 0) && (is_pid_namespace || is_net_namespace || is_cgroup_namespace)) {
 				if (error_on_nonroot_pidns) {
-					if (ret > 0) {
-						GY_THROW_EXCEPTION("This process seems to be running under a non root PID/Net/Cgroup Namespace (Container). Please run from the root Namespace");
-					}
-					else {
-						GY_THROW_EXCEPTION("Check for run inside a container failed");	
-					}		
+					GY_THROW_EXCEPTION("This process seems to be running under a non Host PID/Net/Cgroup Namespace Container. Please run from the Host Namespace");
 				}	
 
-				INFOPRINT("We seems to be running under a container or non root PID/Net/cgroup Namespace. This is errorprone...\n");
+				INFOPRINT("We seem to be running under a container with non Host PID/Net/cgroup Namespace. This is errorprone...\n");
 			}	
 		}
 
