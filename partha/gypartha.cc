@@ -1008,22 +1008,32 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		
 	if (true) {
 		char			cfgfile[GY_PATH_MAX], *preadbuf = nullptr;
+		const char		*penv;
 		struct stat		stat1;
 		size_t			readsz = 0;
 
-		snprintf(cfgfile, sizeof(cfgfile), "%s/partha_main.json", pinitproc_->get_cfg_dir());
-		
+		// First check if CFG_JSON_FILE env set
+		penv = getenv("CFG_JSON_FILE");
+		if (penv) {
+			GY_STRNCPY(cfgfile, penv, sizeof(cfgfile));
+		}
+		else {
+			snprintf(cfgfile, sizeof(cfgfile), "%s/partha_main.json", pinitproc_->get_cfg_dir());
+		}
+			
 		ret = stat(cfgfile, &stat1);
 		if (ret != 0) {
-			WARNPRINT("Partha Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
-			preadbuf = strdup("{}");
+			if (!penv) {
+				WARNPRINT("Partha Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
+				preadbuf = strdup("{}");
+			}
 		}
 		else {
 			preadbuf = read_file_to_alloc_buffer(cfgfile, &readsz, 512 * 1024);
 		}
 
 		if (!preadbuf) {
-			GY_THROW_SYS_EXCEPTION("Failed to read global partha config file %s", cfgfile);
+			GY_THROW_SYS_EXCEPTION("Failed to read global partha config file %s%s", cfgfile, penv ? " as per CFG_JSON_FILE env" : "");
 		}	
 
 		GY_SCOPE_EXIT {

@@ -43,15 +43,6 @@ print_ps()
 '
 }
 
-print_configure()
-{
-	echo 
-	echo ' Option <configure> - To configure partha settings : 
-
- ./runpartha.sh configure
-'
-}
-
 print_version()
 {
 	echo
@@ -66,7 +57,7 @@ print_complete_set()
 printf "\n\n		Complete Set of Options : \n"
 
 printf "	
-	configure 	ps 	restart 	start		stop 	version 
+	ps 	restart 	start		stop 	version 
 
 	For Help on any option : please type 
 	
@@ -329,12 +320,6 @@ case "$1" in
 
 		;;
 
-	configure)
-
-		exit 0
-		;;
-
-
 	ps)
 
 		printf "\n\tPID status of partha package components : "
@@ -392,6 +377,16 @@ case "$1" in
 
 		exit 0
 
+		;;
+
+	printpids)
+		shift
+
+		GLOB_PRINT_PID=1
+		
+		gy_pgrep ${1:-"partha"}
+
+		exit 0;
 		;;
 
 	restart)
