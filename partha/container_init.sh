@@ -8,6 +8,40 @@ if [ ! -f /partha/partha ]; then
 	exit 1
 fi
 
+check_processor()
+{
+	PROCINFO=$( cat /proc/cpuinfo )
+
+	if [ $( echo "$PROCINFO" | grep -w flags | grep -ic avx ) -eq 0 ]; then
+		echo -e "\n\nERROR : This container can run on hosts with processors having avx instruction support (Intel Sandybridge (2012) or above).\n\nYour processor seems to be a very old one. Please install on a machine with a newer processor.\n\nExiting ...\n\n"
+		exit 1
+	fi
+}
+
+
+check_linux_kernel_version()
+{
+	KERN_VER=`uname -r`
+
+	KERN_NUM1=$( echo $KERN_VER | awk -F. '{print $1}' )
+	KERN_NUM2=$( echo $KERN_VER | awk -F. '{print $2}' )
+	KERN_NUM3=$( echo $KERN_VER | awk -F. '{print $3}' | awk -F- '{print $1}' )
+
+	MIN_VER="4.4.0"
+
+	if [ $KERN_NUM1 -lt 4 ]; then
+		printf "ERROR : Host Linux Kernel version $KERN_NUM1 is less than minimum $MIN_VER required for partha. Exiting...\n\n"
+		exit 1
+	elif [ $KERN_NUM1 -eq 4 ] && [ $KERN_NUM2 -lt 4 ]; then
+		printf "ERROR : Host Linux Kernel version $KERN_NUM1 is less than minimum $MIN_VER required for partha. Exiting...\n\n"
+		exit 1
+	fi
+}
+
+check_processor
+
+check_linux_kernel_version
+
 CAPBND=`capsh --decode=$( cat /proc/self/status | grep CapBnd | awk -F: '{print $2}' | awk '{print $1}' )`
 
 for i in cap_chown cap_dac_override cap_dac_read_search cap_fowner cap_fsetid cap_ipc_lock cap_kill cap_mac_admin cap_mknod cap_sys_chroot cap_sys_resource cap_setpcap cap_sys_ptrace cap_sys_admin cap_net_admin cap_net_raw cap_sys_module; do 
