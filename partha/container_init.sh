@@ -69,6 +69,8 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	while `true`; do
 		sleep 30
 
+		./runpartha.sh ps
+
 		echo -e "Latest partha.log snippet : \n\n"
 
 		tail -10 /hostdata/log/partha.log 2> /dev/null
