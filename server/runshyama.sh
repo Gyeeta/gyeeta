@@ -294,6 +294,16 @@ case "$1" in
 
 		;;
 
+	printpids)
+		shift
+
+		GLOB_PRINT_PID=1
+		
+		gy_pgrep ${1:-"shyama"}
+
+		exit 0;
+		;;
+
 	restart)
 	
 		shift 

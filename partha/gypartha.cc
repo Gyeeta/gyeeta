@@ -352,7 +352,7 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 
 	penvjson = ewriter.get_string();
 
-	INFOPRINT("Partha Config from config file is : \n%s\n\nPartha Config from Environment Variables is : \n%s\n\n", pjson, penvjson); 
+	INFOPRINT("Partha Config from config file is : \n%s\n\nPartha Config from Environment Variables or Command Line Options is : \n\t%s\n\n", pjson, penvjson); 
 
 	if (doc.ParseInsitu(pjson).HasParseError()) {
 		GY_THROW_EXCEPTION("Invalid Partha Config : Not valid JSON : Error at offset %lu : Error is \'%s\'", 
@@ -1016,6 +1016,8 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		penv = getenv("CFG_JSON_FILE");
 		if (penv) {
 			GY_STRNCPY(cfgfile, penv, sizeof(cfgfile));
+
+			INFOPRINT("Using %s as the partha Config file as per environment variable CFG_JSON_FILE ...\n", cfgfile);
 		}
 		else {
 			snprintf(cfgfile, sizeof(cfgfile), "%s/partha_main.json", pinitproc_->get_cfg_dir());
@@ -1213,9 +1215,7 @@ static void partha_usage(const char *pname) noexcept
 	IRPRINT("\nUsage : %s \n"	/* Keep this \n as the runpartha.sh skips the first line */
 			"\t\t--nolog (Use if no separate log files : Will directly write to stdout/stderr : Will override --logdir if specified)\n"
 			"\t\t--logdir <Directory where log files are created> (Optional : Default ./log)\n"
-			"\t\t--cfgdir <Directory where cfg files are present> (Optional : Default ./cfg)\n"
 			"\t\t--tmpdir <Directory where temporary files will be created> (Optional : Default ./tmp)\n"
-			"\t\t--logutc (Print Log messages in UTC Timezone : Default is local timezone)\n"
 			"\n\n", pname);
 }	
 
@@ -1290,13 +1290,22 @@ static int start_partha(int argc, char **argv)
 			_exit(!bret);
 		}	
 
-		constexpr uint32_t		hash_nolog		= fnv1_consthash("--nolog"),
-						hash_logdir 		= fnv1_consthash("--logdir"),
-						hash_cfgdir		= fnv1_consthash("--cfgdir"),
-						hash_tmpdir		= fnv1_consthash("--tmpdir"),
-						hash_debuglevel		= fnv1_consthash("--debuglevel"),
-						hash_core		= fnv1_consthash("--core"),
-						hash_logutc		= fnv1_consthash("--logutc");
+		static constexpr uint32_t	hash_nolog		= fnv1_consthash("--nolog"), 		hash_logdir 		= fnv1_consthash("--logdir"),
+						hash_cfgdir		= fnv1_consthash("--cfgdir"), 		hash_tmpdir		= fnv1_consthash("--tmpdir"),
+						hash_debuglevel		= fnv1_consthash("--debuglevel"), 	hash_core		= fnv1_consthash("--core"),
+						hash_logutc		= fnv1_consthash("--logutc"),
+
+						// Config Options
+
+						hash_cfg_cluster_name	= fnv1_consthash("--cfg_cluster_name"),	hash_cfg_cloud_type	= fnv1_consthash("--cfg_cloud_type"),
+						hash_cfg_region_name	= fnv1_consthash("--cfg_region_name"),	hash_cfg_zone_name	= fnv1_consthash("--cfg_zone_name"),
+						hash_cfg_shyama_hosts	= fnv1_consthash("--cfg_shyama_hosts"),	hash_cfg_shyama_ports	= fnv1_consthash("--cfg_shyama_ports"),
+						hash_cfg_response_sampling_pct	= fnv1_consthash("--cfg_response_sampling_percent"),
+						hash_cfg_capture_errcode	= fnv1_consthash("--cfg_capture_errcode"),
+						hash_cfg_auto_respawn_on_exit	= fnv1_consthash("--cfg_auto_respawn_on_exit"),
+						hash_cfg_is_kubernetes		= fnv1_consthash("--cfg_is_kubernetes"),
+						hash_cfg_log_use_utc_time	= fnv1_consthash("--cfg_log_use_utc_time"),
+						hash_cfg_json_file		= fnv1_consthash("--cfg_json_file");
 
 		for (int i = 1; i < argc; ++i) {
 
@@ -1354,6 +1363,94 @@ static int start_partha(int argc, char **argv)
 
 			case hash_logutc :
 				guse_utc_time = true;
+				break;
+
+			
+			case hash_cfg_cluster_name :
+				if (i + 1 < argc) {
+					setenv("CFG_CLUSTER_NAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_cloud_type :
+				if (i + 1 < argc) {
+					setenv("CFG_CLOUD_TYPE", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_region_name :
+				if (i + 1 < argc) {
+					setenv("CFG_REGION_NAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_zone_name :
+				if (i + 1 < argc) {
+					setenv("CFG_ZONE_NAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_shyama_hosts :
+				if (i + 1 < argc) {
+					setenv("CFG_SHYAMA_HOSTS", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_shyama_ports :
+				if (i + 1 < argc) {
+					setenv("CFG_SHYAMA_PORTS", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_response_sampling_pct :
+				if (i + 1 < argc) {
+					setenv("CFG_RESPONSE_SAMPLING_PERCENT", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_capture_errcode :
+				if (i + 1 < argc) {
+					setenv("CFG_CAPTURE_ERRCODE", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_auto_respawn_on_exit :
+				if (i + 1 < argc) {
+					setenv("CFG_AUTO_RESPAWN_ON_EXIT", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_is_kubernetes :
+				
+				if (i + 1 < argc) {
+					setenv("CFG_IS_KUBERNETES", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_log_use_utc_time :
+				
+				if (i + 1 < argc) {
+					setenv("CFG_LOG_USE_UTC_TIME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_json_file :
+				
+				if (i + 1 < argc) {
+					setenv("CFG_JSON_FILE", argv[i + 1], 1);
+					i++;
+				}
 				break;
 
 			default :

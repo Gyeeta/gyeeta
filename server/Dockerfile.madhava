@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+
+FROM ubuntu:18.04
+
+LABEL description="This container provides madhava which is the Gyeeta Intermediate Server"
+
+LABEL usage="docker run -td --rm --name madhava --read-only --env CFG_JSON_FILE=/tmp/cfg.json -v /HOST_PATH_TO_CFG/madhava_cfg.json:/tmp/cfg.json:ro  -v /proc:/proc -v madhavavol:/hostdata <madhava Image>"
+
+ARG MADHAVA_VERSION
+ENV MADHAVA_VERSION=${MADHAVA_VERSION}
+
+RUN apt-get update && rm -rf /var/lib/apt/lists/*
+
+# tini handling...
+ARG TINI_VERSION=v0.19.0
+ARG TINI_SHA256="93dcc18adc78c65a028a84799ecf8ad40c936fdfc5f2a57b1acda5a8117fa82c"
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod 0755 /tini
+RUN if [ `sha256sum /tini | awk '{print $1}'` != "$TINI_SHA256" ]; then echo -e "ERROR : SHA256 of tini is different from expected value. Binary has changed. Please contact on Github.\n\n"; return 1; else return 0; fi
+
+# Volume for madhava logs, tmp dir
+VOLUME ["/hostdata"]
+
+COPY . /madhava/
+
+ENTRYPOINT ["/tini", "-s", "-g", "--", "/madhava/container_madhava.sh" ]
+
+CMD ["start"]
+

@@ -42,6 +42,11 @@ check_processor
 
 check_linux_kernel_version
 
+if [ "x""$$" = "x1" ]; then
+	echo -e "\n\nERROR : Partha Container not running in Host PID namespace. Please start the container with --pid=host --network=host --cgroupns=host switches. (For Kubernetes use hostPID: true and hostNetwork: true).\n\n"
+	exit 1
+fi	
+
 CAPBND=`capsh --decode=$( cat /proc/self/status | grep CapBnd | awk -F: '{print $2}' | awk '{print $1}' )`
 
 for i in cap_chown cap_dac_override cap_dac_read_search cap_fowner cap_fsetid cap_ipc_lock cap_kill cap_mac_admin cap_mknod cap_sys_chroot cap_sys_resource cap_setpcap cap_sys_ptrace cap_sys_admin cap_net_admin cap_net_raw cap_sys_module; do 
@@ -85,9 +90,7 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 		exit 1
 	fi
 
-	if [ -d /hostdata/log ]; then
-		TLOGTMP='--logdir /hostdata/log --tmpdir /hostdata/tmp'
-	fi
+	TLOGTMP='--logdir /hostdata/log --tmpdir /hostdata/tmp'
 fi	
 
 ./runpartha.sh ${@:-"start"} $TLOGTMP < /dev/null

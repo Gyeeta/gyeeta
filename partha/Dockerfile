@@ -4,7 +4,7 @@ FROM ubuntu:18.04
 
 LABEL description="This container provides partha which is the Gyeeta Host Monitor Agent to be installed on all hosts which need to be monitored"
 
-LABEL usage="docker run -td --rm --name partha --read-only --privileged --env CFG_CLUSTER_NAME=<Cluster Name> --env CFG_CLOUD_TYPE=<Cloud Type e.g. aws or gcp or azure> --env CFG_SHYAMA_HOSTS=<Shyama Hosts in json e.g. [ \"shyama1.local\", \"shyama2.local\" ]> --env CFG_SHYAMA_PORTS=<Shyama Ports in json e.g. [ 10037, 10037 ]>  --env CFG_IS_KUBERNETES=<true or false> --network=host --pid=host --cgroupns=host -v /proc:/proc -v /sys/:/sys/ -v /usr/src/:/usr/src/:ro -v /lib/modules:/lib/modules:ro -v parthavol:/hostdata <Image>"
+LABEL usage="docker run -td --rm --name partha --read-only --privileged --env CFG_JSON_FILE=/tmp/cfg.json -v /var/HOST_PATH_TO_CFG/partha_cfg.json:/tmp/cfg.json:ro  --network=host --pid=host --cgroupns=host -v /proc:/proc -v /sys/:/sys/ -v /usr/src/:/usr/src/:ro -v /lib/modules:/lib/modules:ro -v parthavol:/hostdata <partha Image>"
 
 ARG PARTHA_VERSION
 ENV PARTHA_VERSION=${PARTHA_VERSION}
@@ -22,7 +22,7 @@ ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
 RUN chmod 0755 /tini
 RUN if [ `sha256sum /tini | awk '{print $1}'` != "$TINI_SHA256" ]; then echo -e "ERROR : SHA256 of tini is different from expected value. Binary has changed. Please contact on Github.\n\n"; return 1; else return 0; fi
 
-# Volume for partha logs
+# Volume for partha logs and tmp dir
 VOLUME ["/hostdata"]
 
 COPY . /partha/

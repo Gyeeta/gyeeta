@@ -1095,22 +1095,34 @@ SHYAMA_C::SHYAMA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 
 	if (true) {
 		char			cfgfile[GY_PATH_MAX], *preadbuf = nullptr;
+		const char		*penv;
 		struct stat		stat1;
 		size_t			readsz = 0;
 
-		snprintf(cfgfile, sizeof(cfgfile), "%s/shyama_main.json", pinitproc_->get_cfg_dir());
-		
+		// First check if CFG_JSON_FILE env set
+		penv = getenv("CFG_JSON_FILE");
+		if (penv) {
+			GY_STRNCPY(cfgfile, penv, sizeof(cfgfile));
+
+			INFOPRINT("Using %s as the shyama Config file as per environment variable CFG_JSON_FILE ...\n", cfgfile);
+		}
+		else {
+			snprintf(cfgfile, sizeof(cfgfile), "%s/shyama_main.json", pinitproc_->get_cfg_dir());
+		}
+			
 		ret = stat(cfgfile, &stat1);
 		if (ret != 0) {
-			WARNPRINT("Shyama Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
-			preadbuf = strdup("{}");
+			if (!penv) {
+				WARNPRINT("Shyama Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
+				preadbuf = strdup("{}");
+			}
 		}
 		else {
 			preadbuf = read_file_to_alloc_buffer(cfgfile, &readsz, 512 * 1024);
 		}
 
 		if (!preadbuf) {
-			GY_THROW_SYS_EXCEPTION("Failed to read global shyama config file %s", cfgfile);
+			GY_THROW_SYS_EXCEPTION("Failed to read global shyama config file %s%s", cfgfile, penv ? " as per CFG_JSON_FILE env" : "");
 		}	
 
 		GY_SCOPE_EXIT {
@@ -1305,10 +1317,7 @@ static void shyama_usage(const char *pname) noexcept
 	IRPRINT("\nUsage : %s \n"	/* Keep this \n as the runshyama.sh skips the first line */
 			"\t\t--nolog (Use if no separate log files : Will directly write to stdout/stderr : Will override --logdir if specified)\n"
 			"\t\t--logdir <Directory where log files are created> (Optional : Default ./log)\n"
-			"\t\t--cfgdir <Directory where cfg files are present> (Optional : Default ./cfg)\n"
 			"\t\t--tmpdir <Directory where temporary files will be created> (Optional : Default ./tmp)\n"
-			"\t\t--reportsdir <Directory where temporary reports will be created> (Optional : Default ./reports)\n"
-			"\t\t--uselocaltime (Will use Local Timezone instead of default UTC)\n"
 			"\n\n", pname);
 }	
 
@@ -1356,15 +1365,37 @@ static int start_shyama(int argc, char **argv)
 			_exit(!bret);
 		}	
 
-		constexpr uint32_t		hash_nolog		= fnv1_consthash("--nolog"),
-						hash_logdir 		= fnv1_consthash("--logdir"),
-						hash_cfgdir		= fnv1_consthash("--cfgdir"),
-						hash_tmpdir		= fnv1_consthash("--tmpdir"),
-						hash_reportsdir		= fnv1_consthash("--reportsdir"),
-						hash_debuglevel		= fnv1_consthash("--debuglevel"),
-						hash_core		= fnv1_consthash("--core"),
-						hash_uselocaltime	= fnv1_consthash("--uselocaltime"),
-						hash_logutc		= fnv1_consthash("--logutc");
+		static constexpr uint32_t	hash_nolog			= fnv1_consthash("--nolog"),
+						hash_logdir 			= fnv1_consthash("--logdir"),
+						hash_cfgdir			= fnv1_consthash("--cfgdir"),
+						hash_tmpdir			= fnv1_consthash("--tmpdir"),
+						hash_reportsdir			= fnv1_consthash("--reportsdir"),
+						hash_debuglevel			= fnv1_consthash("--debuglevel"),
+						hash_core			= fnv1_consthash("--core"),
+						hash_uselocaltime		= fnv1_consthash("--uselocaltime"),
+						hash_logutc			= fnv1_consthash("--logutc"),
+
+						// Config Options
+
+						hash_cfg_listener_ip		= fnv1_consthash("--cfg_listener_ip"),	
+						hash_cfg_listener_port		= fnv1_consthash("--cfg_listener_port"),
+						hash_cfg_service_hostname	= fnv1_consthash("--cfg_service_hostname"),	
+						hash_cfg_service_port		= fnv1_consthash("--cfg_service_port"),	
+						hash_cfg_shyama_name		= fnv1_consthash("--cfg_shyama_name"),	
+						hash_cfg_shyama_secret		= fnv1_consthash("--cfg_shyama_secret"),
+						hash_cfg_cloud_type		= fnv1_consthash("--cfg_cloud_type"),
+						hash_cfg_region_name		= fnv1_consthash("--cfg_region_name"),
+						hash_cfg_zone_name		= fnv1_consthash("--cfg_zone_name"),
+						hash_cfg_min_madhava		= fnv1_consthash("--cfg_min_madhava"),
+						hash_cfg_postgres_hostname	= fnv1_consthash("--cfg_postgres_hostname"),
+						hash_cfg_postgres_port		= fnv1_consthash("--cfg_postgres_port"),
+						hash_cfg_postgres_user		= fnv1_consthash("--cfg_postgres_user"),
+						hash_cfg_postgres_password	= fnv1_consthash("--cfg_postgres_password"),
+						hash_cfg_postgres_storage_days	= fnv1_consthash("--cfg_postgres_storage_days"),
+						hash_cfg_db_logging		= fnv1_consthash("--cfg_db_logging"),
+						hash_cfg_webserver_url		= fnv1_consthash("--cfg_webserver_url"),
+						hash_cfg_auto_respawn_on_exit	= fnv1_consthash("--cfg_auto_respawn_on_exit"),
+						hash_cfg_log_use_utc_time	= fnv1_consthash("--cfg_log_use_utc_time");
 
 		for (int i = 1; i < argc; ++i) {
 
@@ -1438,6 +1469,141 @@ static int start_shyama(int argc, char **argv)
 			case hash_logutc :
 				guse_utc_time = true;
 				break;
+
+			case hash_cfg_listener_ip :
+				if (i + 1 < argc) {
+					setenv("CFG_LISTENER_IP", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_listener_port :
+				if (i + 1 < argc) {
+					setenv("CFG_LISTENER_PORT", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_service_hostname :
+				if (i + 1 < argc) {
+					setenv("CFG_SERVICE_HOSTNAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_service_port :
+				if (i + 1 < argc) {
+					setenv("CFG_SERVICE_PORT", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_shyama_name :
+				if (i + 1 < argc) {
+					setenv("CFG_SHYAMA_NAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_shyama_secret :
+				if (i + 1 < argc) {
+					setenv("CFG_SHYAMA_SECRET", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_cloud_type :
+				if (i + 1 < argc) {
+					setenv("CFG_CLOUD_TYPE", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_region_name :
+				if (i + 1 < argc) {
+					setenv("CFG_REGION_NAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_zone_name :
+				if (i + 1 < argc) {
+					setenv("CFG_ZONE_NAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_min_madhava :
+				if (i + 1 < argc) {
+					setenv("CFG_MIN_MADHAVA", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_postgres_hostname :
+				if (i + 1 < argc) {
+					setenv("CFG_POSTGRES_HOSTNAME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_postgres_port :
+				if (i + 1 < argc) {
+					setenv("CFG_POSTGRES_PORT", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_postgres_user :
+				if (i + 1 < argc) {
+					setenv("CFG_POSTGRES_USER", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_postgres_password :
+				if (i + 1 < argc) {
+					setenv("CFG_POSTGRES_PASSWORD", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_postgres_storage_days :
+				if (i + 1 < argc) {
+					setenv("CFG_POSTGRES_STORAGE_DAYS", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_db_logging :
+				if (i + 1 < argc) {
+					setenv("CFG_DB_LOGGING", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_webserver_url :
+				if (i + 1 < argc) {
+					setenv("CFG_WEBSERVER_URL", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_auto_respawn_on_exit :
+				if (i + 1 < argc) {
+					setenv("CFG_AUTO_RESPAWN_ON_EXIT", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_log_use_utc_time :
+				if (i + 1 < argc) {
+					setenv("CFG_LOG_USE_UTC_TIME", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+
 
 			default :
 				ERRORPRINTCOLOR(GY_COLOR_RED, "Unknown option %s\n", argv[i]);

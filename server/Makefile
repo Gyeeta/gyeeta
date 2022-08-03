@@ -35,9 +35,9 @@ shyama: $(SHYAMAOBJS) $(COMMONOBJS) $(INC_MAKE_DIR)/common/libgycommon.a
 
 install::
 	[ -f $(BASEINSTALLDIR)/madhava/runmadhava.sh ] && $(BASEINSTALLDIR)/madhava/runmadhava.sh stop
-	cp -p ./madhava ./runmadhava.sh ./sample_madhava_main.json $(BASEINSTALLDIR)/madhava/
 	[ -f $(BASEINSTALLDIR)/shyama/runshyama.sh ] && $(BASEINSTALLDIR)/shyama/runshyama.sh stop
-	cp -p ./shyama ./runshyama.sh ./sample_shyama_main.json $(BASEINSTALLDIR)/shyama/
+	cp -p ./madhava ./runmadhava.sh ./container_madhava.sh ./sample_madhava_main.json $(BASEINSTALLDIR)/madhava/
+	cp -p ./shyama ./runshyama.sh ./container_shyama.sh ./sample_shyama_main.json $(BASEINSTALLDIR)/shyama/
 
 clean:
 	rm -f *.o $(BINARIES) core core.* vgcore.* *.da *.bb *.bbg *.gcda *.gcno *.d .depend
@@ -52,4 +52,9 @@ ci:
 ciprof:
 	$(MAKE) ci profile=yes
 
+dockermadhava:
+	DOCKER_BUILDKIT=1 docker build -t gyeeta/madhava:latest -f ./Dockerfile.madhava --build-arg MADHAVA_VERSION="v`./madhava --version | grep Version | cut -d " " -f 4`" $(BASEINSTALLDIR)/madhava
+
+dockershyama:
+	DOCKER_BUILDKIT=1 docker build -t gyeeta/shyama:latest -f ./Dockerfile.shyama --build-arg SHYAMA_VERSION="v`./shyama --version | grep Version | cut -d " " -f 4`" $(BASEINSTALLDIR)/shyama
 
