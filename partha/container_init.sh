@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!bin/bash
 
 PATH=$PATH:/usr/bin:/sbin:/usr/sbin:.
 export PATH
@@ -42,7 +42,7 @@ check_processor
 
 check_linux_kernel_version
 
-if [ "x""$$" = "x1" ]; then
+if [ "x""$PPID" = "x1" ] && [ "x"`cat /proc/1/comm` = "xtini" ]; then
 	echo -e "\n\nERROR : Partha Container not running in Host PID namespace. Please start the container with --pid=host --network=host --cgroupns=host switches. (For Kubernetes use hostPID: true and hostNetwork: true).\n\n"
 	exit 1
 fi	

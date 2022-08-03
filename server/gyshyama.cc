@@ -44,7 +44,7 @@ int SHYAMA_C::init_all_singletons()
 
 	MOUNT_HDLR::init_singleton(false /* mount_proc_if_not */, false /* mount_sys_if_not */, false /* mount_tracefs_if_not */);
 
-	SYS_HARDWARE::init_singleton(false /* ignore_min_kern */, false /* need_root_priv */);
+	SYS_HARDWARE::init_singleton(false /* ignore_min_kern */, false /* need_root_priv */, false /* error_on_no_host_ns */);
 
 	if (true == SYS_HARDWARE::get_singleton()->is_mount_ns_container()) {
 		get_root_mount_ns_info(OS_INFO::get_singleton(), pcmd_child_, SYS_HARDWARE::get_singleton()->is_uts_ns_container());

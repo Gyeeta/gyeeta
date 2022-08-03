@@ -514,7 +514,7 @@ public :
 	bool					is_uts_namespace	{false};
 	bool					is_cgroup_namespace	{false};
 
-	SYS_HARDWARE(bool ignore_min_kern = false, int sysfs_dir_fd_in = -1, int procfs_dir_fd_in = -1, bool error_on_nonroot_pidns = true, bool need_root_priv = false)
+	SYS_HARDWARE(bool ignore_min_kern = false, int sysfs_dir_fd_in = -1, int procfs_dir_fd_in = -1, bool error_on_no_host_ns = true, bool need_root_priv = false)
 		: sysfs_dir_fd(sysfs_dir_fd_in), procfs_dir_fd(procfs_dir_fd_in), close_sysfs_fd(false), close_procfs_fd(false)
 	{
 		int			ret;
@@ -559,7 +559,7 @@ public :
 			ret = detect_container(is_pid_namespace, is_net_namespace, is_mount_namespace, is_uts_namespace, is_cgroup_namespace);
 
 			if ((ret == 0) && (is_pid_namespace || is_net_namespace || is_cgroup_namespace)) {
-				if (error_on_nonroot_pidns) {
+				if (error_on_no_host_ns) {
 					GY_THROW_EXCEPTION("This process seems to be running under a non Host PID/Net/Cgroup Namespace Container. Please run from the Host Namespace");
 				}	
 
@@ -633,7 +633,7 @@ public :
 		
 	void print_system_info() noexcept;
 			
-	static int			init_singleton(bool ignore_min_kern = false, bool need_root_priv = false);
+	static int			init_singleton(bool ignore_min_kern = false, bool need_root_priv = false, bool error_on_no_host_ns = true);
 
 	static SYS_HARDWARE *		get_singleton() noexcept;
 };	

@@ -1598,7 +1598,7 @@ SYS_HARDWARE * SYS_HARDWARE::get_singleton() noexcept
 	return pgsys_hardware;
 }
 	
-int SYS_HARDWARE::init_singleton(bool ignore_min_kern, bool need_root_priv)
+int SYS_HARDWARE::init_singleton(bool ignore_min_kern, bool need_root_priv, bool error_on_no_host_ns)
 {
 	int				texp = 0, tdes = 1;
 	static std::atomic<int>		is_init_done(0);
@@ -1626,7 +1626,7 @@ int SYS_HARDWARE::init_singleton(bool ignore_min_kern, bool need_root_priv)
 	}	
 
 	try {
-		pgsys_hardware = new SYS_HARDWARE(ignore_min_kern, pmountshr->get_sysfs_dir_fd(), pmountshr->get_proc_dir_fd(), true, need_root_priv);
+		pgsys_hardware = new SYS_HARDWARE(ignore_min_kern, pmountshr->get_sysfs_dir_fd(), pmountshr->get_proc_dir_fd(), error_on_no_host_ns, need_root_priv);
 
 		/*
 		 * Schedule a periodic 30 sec check for CPU/Memory changes
