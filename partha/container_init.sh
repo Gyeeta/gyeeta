@@ -1,4 +1,4 @@
-#!bin/bash
+#!/bin/bash
 
 PATH=$PATH:/usr/bin:/sbin:/usr/sbin:.
 export PATH
