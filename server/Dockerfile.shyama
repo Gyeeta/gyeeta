@@ -4,7 +4,7 @@ FROM ubuntu:18.04
 
 LABEL description="This container provides shyama which is the Gyeeta Central Server"
 
-LABEL usage="docker run -td --rm --name shyama --read-only --env CFG_JSON_FILE=/tmp/cfg.json -v /HOST_PATH_TO_CFG/shyama_cfg.json:/tmp/cfg.json:ro  -v /proc:/proc -v shyamavol:/hostdata <shyama Image>"
+LABEL usage="docker run -td --rm --name shyama --read-only -p 10037:10037  --cfg_service_hostname shyama_host.local --env CFG_JSON_FILE=/tmp/cfg.json -v /HOST_PATH_TO_CFG/shyama_cfg.json:/tmp/cfg.json:ro -v shyamavol:/hostdata <shyama Image>"
 
 ARG SHYAMA_VERSION
 ENV SHYAMA_VERSION=${SHYAMA_VERSION}
