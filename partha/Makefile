@@ -48,6 +48,6 @@ ci:
 ciprof:
 	$(MAKE) ci profile=yes
 
-dockerimage:
+dockerpartha:
 	DOCKER_BUILDKIT=1 docker build -t gyeeta/partha:latest -f ./Dockerfile --build-arg PARTHA_VERSION="v`./partha --version | grep Version | cut -d " " -f 4`" $(INSTALLDIR)
 
