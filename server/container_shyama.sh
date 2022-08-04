@@ -31,6 +31,8 @@ trap 'echo "	Exiting now... Cleaning up..."; ./runshyama.sh stop; exit 0' SIGINT
 
 CMD=${1:-"start"}
 
+shift
+
 TLOGTMP=
 
 if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
@@ -59,7 +61,7 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	TLOGTMP='--logdir /hostdata/log --tmpdir /hostdata/tmp --reportsdir /hostdata/reports'
 fi	
 
-./runshyama.sh ${@:-"start"} $TLOGTMP < /dev/null
+./runshyama.sh "$CMD" "$@" $TLOGTMP < /dev/null
 
 if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	sleep 10
@@ -68,6 +70,8 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 		echo -e "\n\nERROR : shyama not running currently. Exiting...\n\n"
 		exit 1
 	fi	
+
+	NRESTART=0
 
 	while `true`; do
 		sleep 30
@@ -82,8 +86,15 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 			sleep 10
 			
 			if [ "x""`./runshyama.sh printpids shyama`" = "x" ]; then
-				echo -e "\n\nERROR : shyama not running currently. Will try restarting...\n\n"
-				./runshyama.sh start $TLOGTMP < /dev/null
+				NRESTART=$(( $NRESTART + 1 ))
+
+				if [ $NRESTART -lt 100 ]; then
+					echo -e "\n\nERROR : shyama not running currently. Will try restarting... : Total restarts $NRESTART\n\n"
+					./runshyama.sh start "$@" $TLOGTMP < /dev/null
+				else
+					echo -e "\n\nERROR : shyama not running currently. Too many restarts seen $NRESTART : Exiting now...\n\n"
+					exit 1
+				fi	
 			fi
 		fi	
 

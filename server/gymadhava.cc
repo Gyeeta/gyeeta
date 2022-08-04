@@ -61,8 +61,6 @@ int MADHAVA_C::init_all_singletons()
 
 	SYS_CPU_STATS::init_singleton();
 
-	TASKSTATS_HDLR::init_singleton();
-
 	auto schedshr = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG_DURATION);
 	schedshr->add_schedule(900, 300'000, 0, "Print Offload print stats", 
 	[] { 

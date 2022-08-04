@@ -69,6 +69,8 @@ trap 'echo "	Exiting now... Cleaning up..."; ./runpartha.sh stop; exit 0' SIGINT
 
 CMD=${1:-"start"}
 
+shift
+
 TLOGTMP=
 
 if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
@@ -93,7 +95,7 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	TLOGTMP='--logdir /hostdata/log --tmpdir /hostdata/tmp'
 fi	
 
-./runpartha.sh ${@:-"start"} $TLOGTMP < /dev/null
+./runpartha.sh "$CMD" "$@" $TLOGTMP < /dev/null
 
 if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	sleep 10
@@ -102,6 +104,8 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 		echo -e "\n\nERROR : partha not running currently. Exiting...\n\n"
 		exit 1
 	fi	
+
+	NRESTART=0
 
 	while `true`; do
 		sleep 30
@@ -116,8 +120,15 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 			sleep 10
 			
 			if [ "x""`./runpartha.sh printpids partha`" = "x" ]; then
-				echo -e "\n\nERROR : partha not running currently. Will try restarting...\n\n"
-				./runpartha.sh start $TLOGTMP < /dev/null
+				NRESTART=$(( $NRESTART + 1 ))
+
+				if [ $NRESTART -lt 100 ]; then
+					echo -e "\n\nERROR : partha not running currently. Will try restarting... : Total restarts $NRESTART\n\n"
+					./runpartha.sh start "$@" $TLOGTMP < /dev/null
+				else
+					echo -e "\n\nERROR : partha not running currently. Too many restarts seen $NRESTART : Exiting now...\n\n"
+					exit 1
+				fi	
 			fi
 		fi	
 
