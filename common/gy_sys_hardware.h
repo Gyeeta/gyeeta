@@ -571,7 +571,7 @@ public :
 		os_info	 	= std::make_unique <OS_INFO> (ignore_min_kern, is_mount_namespace, is_uts_namespace);
 		net_info 	= std::make_unique <NET_IF_HDLR> (procfs_dir_fd, sysfs_dir_fd, rootns_inodes.get_ns_inode(NS_TYPE_NET), true /* is_root_ns */);
 
-		if (is_perm_issue == false) {
+		if (is_perm_issue == false && need_root_priv) {
 			machine_id_128.populate_machineid(sysfs_dir_fd);
 		}
 	}

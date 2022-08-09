@@ -2,9 +2,14 @@
 
 FROM ubuntu:18.04
 
-LABEL description="This container provides shyama which is the Gyeeta Central Server"
+LABEL org.opencontainers.image.description="This container provides shyama which is the Gyeeta Central Server"
 
-LABEL usage="docker run -td --rm --name shyama --read-only -p 10037:10037  --cfg_service_hostname shyama_host.local --env CFG_JSON_FILE=/tmp/cfg.json -v /HOST_PATH_TO_CFG/shyama_cfg.json:/tmp/cfg.json:ro -v shyamavol:/hostdata <shyama Image>"
+LABEL usage="docker run -td --rm --name shyama --read-only --user 1001:1001 -p 10037:10037  --cfg_service_hostname shyama_host.local --env CFG_JSON_FILE=/tmp/cfg.json -v /HOST_PATH_TO_CFG/shyama_cfg.json:/tmp/cfg.json:ro -v shyamavol:/hostdata <shyama Image>"
+
+# LABEL for github repository link
+LABEL org.opencontainers.image.source="https://github.com/gyeeta/gyeeta"
+
+LABEL org.opencontainers.image.authors="https://github.com/gyeeta"
 
 ARG SHYAMA_VERSION
 ENV SHYAMA_VERSION=${SHYAMA_VERSION}
@@ -18,10 +23,16 @@ ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
 RUN chmod 0755 /tini
 RUN if [ `sha256sum /tini | awk '{print $1}'` != "$TINI_SHA256" ]; then echo -e "ERROR : SHA256 of tini is different from expected value. Binary has changed. Please contact on Github.\n\n"; return 1; else return 0; fi
 
+RUN addgroup --gid 1001 gyeeta && adduser --system --no-create-home --uid 1001 --gid 1001 gyeeta
+
+RUN mkdir -p -m 0775 /hostdata; chown -R gyeeta:gyeeta /hostdata
+
 # Volume for shyama logs, tmp dir
 VOLUME ["/hostdata"]
 
-COPY . /shyama/
+COPY --chown=gyeeta:gyeeta . /shyama/
+
+USER gyeeta:gyeeta
 
 ENTRYPOINT ["/tini", "-s", "-g", "--", "/shyama/container_shyama.sh" ]
 

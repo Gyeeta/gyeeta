@@ -43,15 +43,6 @@ print_ps()
 '
 }
 
-print_configure()
-{
-	echo 
-	echo ' Option <configure> - To configure shyama settings : 
-
- ./runshyama.sh configure
-'
-}
-
 print_version()
 {
 	echo
@@ -66,7 +57,7 @@ print_complete_set()
 printf "\n\n		Complete Set of Options : \n"
 
 printf "	
-	configure 	ps 	restart 	start		stop 	version 
+	ps 	restart 	start		stop 	version 
 
 	For Help on any option : please type 
 	
@@ -260,11 +251,6 @@ case "$1" in
 
 		exit 0
 
-		;;
-
-	configure)
-
-		exit 0
 		;;
 
 

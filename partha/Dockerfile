@@ -2,9 +2,14 @@
 
 FROM ubuntu:18.04
 
-LABEL description="This container provides partha which is the Gyeeta Host Monitor Agent to be installed on all hosts which need to be monitored"
+LABEL org.opencontainers.image.description="This container provides partha which is the Gyeeta Host Monitor Agent to be installed on all hosts which need to be monitored"
 
 LABEL usage="docker run -td --rm --name partha --read-only --privileged --env CFG_JSON_FILE=/tmp/cfg.json -v /var/HOST_PATH_TO_CFG/partha_cfg.json:/tmp/cfg.json:ro  --network=host --pid=host --cgroupns=host -v /proc:/proc -v /sys/:/sys/ -v /usr/src/:/usr/src/:ro -v /lib/modules:/lib/modules:ro -v parthavol:/hostdata <partha Image>"
+
+# LABEL for github repository link
+LABEL org.opencontainers.image.source="https://github.com/gyeeta/gyeeta"
+
+LABEL org.opencontainers.image.authors="https://github.com/gyeeta"
 
 ARG PARTHA_VERSION
 ENV PARTHA_VERSION=${PARTHA_VERSION}

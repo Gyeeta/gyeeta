@@ -53,8 +53,8 @@ ciprof:
 	$(MAKE) ci profile=yes
 
 dockermadhava:
-	DOCKER_BUILDKIT=1 docker build -t gyeeta/madhava:latest -f ./Dockerfile.madhava --build-arg MADHAVA_VERSION="v`./madhava --version | grep Version | cut -d " " -f 4`" $(BASEINSTALLDIR)/madhava
+	DOCKER_BUILDKIT=1 docker build -t gyeeta/madhava:latest -t ghcr.io/gyeeta/madhava:latest -f ./Dockerfile.madhava --build-arg MADHAVA_VERSION="v`./madhava --version | grep Version | cut -d " " -f 4`" $(BASEINSTALLDIR)/madhava
 
 dockershyama:
-	DOCKER_BUILDKIT=1 docker build -t gyeeta/shyama:latest -f ./Dockerfile.shyama --build-arg SHYAMA_VERSION="v`./shyama --version | grep Version | cut -d " " -f 4`" $(BASEINSTALLDIR)/shyama
+	DOCKER_BUILDKIT=1 docker build -t gyeeta/shyama:latest -t ghcr.io/gyeeta/shyama:latest -f ./Dockerfile.shyama --build-arg SHYAMA_VERSION="v`./shyama --version | grep Version | cut -d " " -f 4`" $(BASEINSTALLDIR)/shyama
 
