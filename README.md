@@ -1,2 +1,2 @@
 # gyeeta
-Gyeeta Agent and Server C++ code
+Gyeeta Host Agent and Server C++ code
