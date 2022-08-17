@@ -56,6 +56,6 @@ dockermadhava:
 	$(shell export DOCKER_BUILDKIT=1; export MADHAVA_VERSION="`./madhava --version | grep Version | cut -d " " -f 4`"; docker build -t ghcr.io/gyeeta/madhava:latest -t ghcr.io/gyeeta/madhava:"$${MADHAVA_VERSION}" -f ./Dockerfile.madhava --build-arg MADHAVA_VERSION=v"$${MADHAVA_VERSION}"  $(BASEINSTALLDIR)/madhava )
 
 dockershyama:
-	$(shell export DOCKER_BUILDKIT=1; export SHYAMA_VERSION="v`./shyama --version | grep Version | cut -d " " -f 4`"; docker build -t ghcr.io/gyeeta/shyama:latest -t ghcr.io/gyeeta/shyama:"$${SHYAMA_VERSION}" -f ./Dockerfile.shyama --build-arg SHYAMA_VERSION=v"$${SHYAMA_VERSION}" $(BASEINSTALLDIR)/shyama )
+	$(shell export DOCKER_BUILDKIT=1; export SHYAMA_VERSION="`./shyama --version | grep Version | cut -d " " -f 4`"; docker build -t ghcr.io/gyeeta/shyama:latest -t ghcr.io/gyeeta/shyama:"$${SHYAMA_VERSION}" -f ./Dockerfile.shyama --build-arg SHYAMA_VERSION=v"$${SHYAMA_VERSION}" $(BASEINSTALLDIR)/shyama )
 
 
