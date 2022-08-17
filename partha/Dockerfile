@@ -16,8 +16,7 @@ ENV PARTHA_VERSION=${PARTHA_VERSION}
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-	sudo \
-	libcap2-bin \
+	sudo libcap2-bin curl \
 	&& rm -rf /var/lib/apt/lists/*
 
 # tini handling...
