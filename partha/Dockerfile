@@ -4,7 +4,7 @@ FROM ubuntu:18.04
 
 LABEL org.opencontainers.image.description="This container provides partha which is the Gyeeta Host Monitor Agent to be installed on all hosts which need to be monitored"
 
-LABEL usage="docker run -td --rm --name partha --read-only --privileged --env CFG_JSON_FILE=/tmp/cfg.json -v /var/HOST_PATH_TO_CFG/partha_cfg.json:/tmp/cfg.json:ro  --network=host --pid=host --cgroupns=host -v /proc:/proc -v /sys/:/sys/ -v /usr/src/:/usr/src/:ro -v /lib/modules:/lib/modules:ro -v parthavol:/hostdata <partha Image>"
+LABEL usage="docker run -td --rm --name partha --read-only --privileged --env CFG_JSON_FILE=/tmp/cfg.json -v /var/HOST_PATH_TO_CFG/partha_cfg.json:/tmp/cfg.json:ro  --network=host --pid=host --cgroupns=host -v parthavol:/hostdata -v /proc:/proc -v /sys/:/sys/ -v /usr/src/:/usr/src/:ro -v /lib/modules:/hostdata/modules:ro <partha Image>"
 
 # LABEL for github repository link
 LABEL org.opencontainers.image.source="https://github.com/gyeeta/gyeeta"
@@ -28,6 +28,8 @@ RUN if [ `sha256sum /tini | awk '{print $1}'` != "$TINI_SHA256" ]; then echo -e 
 
 # Volume for partha logs and tmp dir
 VOLUME ["/hostdata"]
+
+ln -s /lib/modules /hostdata/kernelsrc
 
 COPY . /partha/
 

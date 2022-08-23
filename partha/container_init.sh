@@ -6,6 +6,9 @@ export PATH
 if [ ! -f /partha/partha ]; then
 	echo -e "\n\nERROR : Invalid partha container image as /partha/partha binary not found...\n\n"
 	exit 1
+elif [ ! -f /partha/check_kernel_hdr.sh ]; then
+	echo -e "\n\nERROR : Invalid partha container image as /partha/check_kernel_hdr.sh file not found...\n\n"
+	exit 1
 fi
 
 check_processor()
@@ -93,6 +96,13 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	fi
 
 	TLOGTMP='--logdir /hostdata/log --tmpdir /hostdata/tmp'
+
+	./check_kernel_hdr.sh 
+
+	if [ $? -ne 0 ]; then
+		echo -e "\nKernel Header check failed. Exiting...\n"
+		exit 1
+	fi	
 fi	
 
 ./runpartha.sh "$CMD" "$@" $TLOGTMP < /dev/null

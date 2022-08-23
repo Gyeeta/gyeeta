@@ -972,9 +972,9 @@ void PARTHA_C::verify_caps_kernhdr()
 	
 	ret = uname(&uts);
 	if (!ret) {
-		snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/include", uts.release);
+		snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/include/net/tcp.h", uts.release);
 
-		ret = lstat(kernpath, &stat1);
+		ret = stat(kernpath, &stat1);
 		if (ret == -1) {
 			GY_THROW_EXCEPTION("Missing Kernel Headers Package : These are required by partha : Please install your Distribution Kernel Headers package");
 		}	
