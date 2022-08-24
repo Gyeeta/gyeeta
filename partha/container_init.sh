@@ -100,7 +100,7 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	./check_kernel_hdr.sh 
 
 	if [ $? -ne 0 ]; then
-		echo -e "\nKernel Header check failed. Exiting...\n"
+		echo -e "ERROR : Kernel Header check failed. Exiting...\n"
 		exit 1
 	fi	
 fi	

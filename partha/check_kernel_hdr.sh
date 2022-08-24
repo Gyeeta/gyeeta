@@ -31,7 +31,7 @@ get_config()
 	done	
 }
 
-if [ -f "/lib/modules/${kern_ver}/build/include/net/tcp.h" 2> /dev/null ]; then
+if [ -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" 2> /dev/null ]; then
 	get_config
 
 	echo -e "\nLinux kernel headers already mounted. No additional action needed...\n\n"
@@ -39,11 +39,12 @@ if [ -f "/lib/modules/${kern_ver}/build/include/net/tcp.h" 2> /dev/null ]; then
 fi	
 
 # Check if host mount point exists with the kernel headers
-if [ -f "/hostdata/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+if [ -f "/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 
-	ln -sf /hostdata/modules/ /hostdata/kernelsrc	 
+	rm -f /hostdata/kernelsrc 2> /dev/null
+	ln -sf /modules/ /hostdata/kernelsrc	 
 
-	if [ $? -ne 0 ]; then
+	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 		echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for /hostdata/modules/ dir required for Kernel Headers.\n\n"
 		exit 1
 	fi
@@ -57,6 +58,7 @@ fi
 # Check if headers available in /hostdata/lastkernelsrc directly
 if [ -f "/hostdata/lastkernelsrc/${KERN_VER}/build/include/net/tcp.h" ]; then
 
+	rm -f /hostdata/kernelsrc 2> /dev/null
 	ln -sf /hostdata/lastkernelsrc/${KERN_VER} /hostdata/kernelsrc
 
 	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
@@ -73,9 +75,10 @@ fi
 # Check if the host /lib/modules exists with the kernel headers (this could be because of an incorrect Volume mount)
 if [ -f "${HOST_ROOT}/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 
+	rm -f /hostdata/kernelsrc 2> /dev/null
 	ln -sf ${HOST_ROOT}/lib/modules/ /hostdata/kernelsrc	 
 
-	if [ $? -ne 0 ]; then
+	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 		echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for ${HOST_ROOT}/lib/modules/ dir required for Kernel Headers.\n\n"
 		exit 1
 	fi
@@ -87,7 +90,7 @@ if [ -f "${HOST_ROOT}/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 fi	
 
 OSREL=$( cat ${HOST_ROOT}/etc/os-release )
-DISTNAME=$( echo "$OSREL" | egrep "^NAME=|^PRETTY_NAME=" | tail -1 )
+DISTNAME=$( echo "$OSREL" | egrep "^NAME=|^PRETTY_NAME=" | tail -1 | awk -F\" '{print $2}' )
 
 # Check if its Container-Optimized OS (GKE)
 if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
@@ -120,6 +123,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 			exit 1
 		fi	
 
+		rm -f /hostdata/kernelsrc 2> /dev/null
 		ln -sf /hostdata/lastkernelsrc/${KERN_VER} /hostdata/kernelsrc
 
 		if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
@@ -187,6 +191,7 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 
 	if [ -f "${HOST_ROOT}/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 
+		rm -f /hostdata/kernelsrc 2> /dev/null
 		ln -sf ${HOST_ROOT}/lib/modules/ /hostdata/kernelsrc	 
 
 		if [ $? -ne 0 ]; then
