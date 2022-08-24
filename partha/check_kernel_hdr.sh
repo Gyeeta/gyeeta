@@ -59,7 +59,7 @@ fi
 if [ -f "/hostdata/lastkernelsrc/${KERN_VER}/build/include/net/tcp.h" ]; then
 
 	rm -f /hostdata/kernelsrc 2> /dev/null
-	ln -sf /hostdata/lastkernelsrc/${KERN_VER} /hostdata/kernelsrc
+	ln -sf /hostdata/lastkernelsrc /hostdata/kernelsrc
 
 	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 		echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for /hostdata/lastkernelsrc/ dir required for Kernel Headers.\n\n"
@@ -116,7 +116,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 
 		mkdir -p /hostdata/lastkernelsrc/${KERN_VER}/build 
 
-		tar xzf kernel-headers.tgz --strip-components 4 -C /hostdata/lastkernelsrc/${KERN_VER}/build/
+		tar xzf /hostdata/kernel-headers.tgz --strip-components 4 -C /hostdata/lastkernelsrc/${KERN_VER}/build/
 
 		if [ $? -ne 0 ]; then
 			echo -e "ERROR : Failed to extract downloaded Kernel Headers to /hostdata/lastkernelsrc/${KERN_VER}/build/\n\n"
@@ -124,7 +124,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 		fi	
 
 		rm -f /hostdata/kernelsrc 2> /dev/null
-		ln -sf /hostdata/lastkernelsrc/${KERN_VER} /hostdata/kernelsrc
+		ln -sf /hostdata/lastkernelsrc /hostdata/kernelsrc
 
 		if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 			echo -e "ERROR : Could not create soft link /hostdata/kernelsrc for downloaded Kernel headers from /hostdata/lastkernelsrc/${KERN_VER} dir.\n\n"
