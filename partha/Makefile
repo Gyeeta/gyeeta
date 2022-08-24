@@ -31,7 +31,7 @@ partha: $(PARTHAOBJS) $(INC_MAKE_DIR)/common/libgycommon.a
 
 install:
 	[ -f $(INSTALLDIR)/runpartha.sh ] && $(INSTALLDIR)/runpartha.sh stop
-	cp -p $(BINARIES) ./runpartha.sh ./container_init.sh ./setperm.sh ./sample_partha_main.json $(INSTALLDIR)/
+	cp -p $(BINARIES) ./runpartha.sh ./container_init.sh ./check_kernel_hdr.sh ./setperm.sh ./sample_partha_main.json $(INSTALLDIR)/
 	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep $(INSTALLDIR)/partha || echo
 
 
