@@ -39,7 +39,7 @@ if [ -f "/lib/modules/${kern_ver}/build/include/net/tcp.h" 2> /dev/null ]; then
 fi	
 
 # Check if host mount point exists with the kernel headers
-if [ -f "/hostdata/modules/${KERN_VER}/build/include/net/tcp.h" 2> /dev/null ]; then
+if [ -f "/hostdata/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 
 	ln -sf /hostdata/modules/ /hostdata/kernelsrc	 
 
@@ -55,7 +55,7 @@ if [ -f "/hostdata/modules/${KERN_VER}/build/include/net/tcp.h" 2> /dev/null ]; 
 fi	
 
 # Check if headers available in /hostdata/lastkernelsrc directly
-if [ -f "/hostdata/lastkernelsrc/${KERN_VER}/build/include/net/tcp.h" 2> /dev/null ]; then
+if [ -f "/hostdata/lastkernelsrc/${KERN_VER}/build/include/net/tcp.h" ]; then
 
 	ln -sf /hostdata/lastkernelsrc/${KERN_VER} /hostdata/kernelsrc
 
@@ -70,6 +70,22 @@ if [ -f "/hostdata/lastkernelsrc/${KERN_VER}/build/include/net/tcp.h" 2> /dev/nu
 	exit 0
 fi	
 
+# Check if the host /lib/modules exists with the kernel headers (this could be because of an incorrect Volume mount)
+if [ -f "${HOST_ROOT}/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+
+	ln -sf ${HOST_ROOT}/lib/modules/ /hostdata/kernelsrc	 
+
+	if [ $? -ne 0 ]; then
+		echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for ${HOST_ROOT}/lib/modules/ dir required for Kernel Headers.\n\n"
+		exit 1
+	fi
+
+	get_config
+
+	echo -e "\nLinux kernel headers from Host dir is being used for Kernel Headers...\n\n"
+	exit 0
+fi	
+
 OSREL=$( cat ${HOST_ROOT}/etc/os-release )
 DISTNAME=$( echo "$OSREL" | egrep "^NAME=|^PRETTY_NAME=" | tail -1 )
 
@@ -81,7 +97,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 		timeout 30 curl --head -f https://storage.googleapis.com/cos-tools/ &> /dev/null
 
 		if [ $? -ne 0 ]; then
-			echo -e "\nDetected Container-Optimized OS : But failed to connect to from https://storage.googleapis.com/cos-tools/ to download Kernel Headers...\n\n"
+			echo -e "\nDetected Container-Optimized OS but Failed to connect to from https://storage.googleapis.com/cos-tools/ to download Kernel Headers...\n\n"
 			exit 1
 		fi	
 
@@ -89,7 +105,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 		
 		echo -e "\nDetected Container-Optimized OS : Downloading Kernel Headers from https://storage.googleapis.com/cos-tools/...\n\n"
 
-		curl -L -o /hostdata/kernel-headers.tgz --create-dirs  -fsS https://storage.googleapis.com/cos-tools/${BUILD_ID}/kernel-headers.tgz
+		curl -L -o /hostdata/kernel-headers.tgz --create-dirs -fsS https://storage.googleapis.com/cos-tools/${BUILD_ID}/kernel-headers.tgz
 		if [ $? -ne 0 ]; then
 			echo -e "ERROR : Failed to download link https://storage.googleapis.com/cos-tools/${BUILD_ID}/kernel-headers.tgz for downloading Kernel Headers...\n\n"
 			exit 1
@@ -107,7 +123,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 		ln -sf /hostdata/lastkernelsrc/${KERN_VER} /hostdata/kernelsrc
 
 		if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
-			echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for downloaded Kernel headers from /hostdata/lastkernelsrc/${KERN_VER} dir.\n\n"
+			echo -e "ERROR : Could not create soft link /hostdata/kernelsrc for downloaded Kernel headers from /hostdata/lastkernelsrc/${KERN_VER} dir.\n\n"
 			exit 1
 		fi
 
@@ -126,8 +142,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 	fi	
 fi	
 
-# Have exhausted all options. Last check if CFG_HOST_INSTALL_PKG set. 
-
+# Have exhausted all options. Last check if CFG_HOST_INSTALL_PKG env set. If set, we install the Kernel Headers package to Host itself... 
 if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 
 	PKGCMD=0
@@ -147,7 +162,7 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 
 		chroot "$HOST_ROOT" timeout -k 400 300 su -c "yum -y install kernel-devel-$(uname -r)"
 
-	elif [[ $DISTNAME =~ Fedora* ]]; then	
+	elif [[ $DISTNAME =~ Fedora* || $DISTNAME =~ Rocky* ]]; then	
 		PKGCMD=1
 
 		echo -e "\n\nNo Kernel Headers found. Detected Fedora or related distribution and CFG_HOST_INSTALL_PKG env is set. Now trying to install the kernel-devel package to Host itself.\n\nThis may take some time...\n"
@@ -169,6 +184,25 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 	if [ $? -ne 0 ]; then
 		echo -e "\n\nERROR : Failed to install Kernel Headers package for Host...\n"
 	fi	
+
+	if [ -f "${HOST_ROOT}/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+
+		ln -sf ${HOST_ROOT}/lib/modules/ /hostdata/kernelsrc	 
+
+		if [ $? -ne 0 ]; then
+			echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for ${HOST_ROOT}/lib/modules/ dir required for Kernel Headers.\n\n"
+			exit 1
+		fi
+
+		get_config
+
+		echo -e "\nLinux kernel headers from Host dir is being used for Kernel Headers...\n\n"
+		exit 0
+	else
+		echo -e "\n\nERROR : Could not install Kernel Headers package to Host for eBPF monitoring. Exiting...\n\n"
+		exit 1
+	fi	
+	
 fi	
 
 if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then

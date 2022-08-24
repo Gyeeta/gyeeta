@@ -1510,6 +1510,9 @@ int get_host_distribution(OS_DISTRIB_E & distrib, char distrib_string[], size_t 
 				else if (strstr(distrib_string, "Oracle Linux")) {
 					distrib = DIST_ORACLE_LINUX;	
 				}
+				else if (strstr(distrib_string, "Rocky Linux")) {
+					distrib = DIST_ROCKY_LINUX;	
+				}
 				else {
 					distrib = DIST_UNKNOWN;
 				}	

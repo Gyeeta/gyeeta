@@ -46,7 +46,7 @@ check_processor
 check_linux_kernel_version
 
 if [ "x""$PPID" = "x1" ] && [ "x"`cat /proc/1/comm` = "xtini" ]; then
-	echo -e "\n\nERROR : Partha Container not running in Host PID namespace. Please start the container with --pid=host --network=host --cgroupns=host switches. (For Kubernetes use hostPID: true and hostNetwork: true).\n\n"
+	echo -e "\n\nERROR : Partha Container not running in Host PID namespace. If using Docker, please start the container with --pid=host --network=host --cgroupns=host switches. For Kubernetes use hostPID: true and hostNetwork: true.\n\n"
 	exit 1
 fi	
 
