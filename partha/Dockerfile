@@ -4,7 +4,7 @@ FROM ubuntu:18.04
 
 LABEL org.opencontainers.image.description="This container provides partha which is the Gyeeta Host Monitor Agent to be installed on all hosts which need to be monitored"
 
-LABEL usage="docker run -td --rm --name partha --read-only --privileged --env CFG_JSON_FILE=/tmp/cfg.json -v /var/HOST_PATH_TO_CFG/partha_cfg.json:/tmp/cfg.json:ro  --network=host --pid=host --cgroupns=host -v parthavol:/hostdata -v /proc:/proc -v /sys/:/sys/ -v /usr/src/:/usr/src/:ro -v /lib/modules:/modules:ro <partha Image>"
+LABEL usage="docker run -td --rm --name partha --read-only --privileged --env CFG_JSON_FILE=/tmp/cfg.json -v /var/HOST_PATH_TO_CFG/partha_cfg.json:/tmp/cfg.json:ro  --network=host --pid=host --cgroupns=host -v parthavol:/hostdata -v /proc:/proc -v /sys/:/sys/ <partha Image>"
 
 # LABEL for github repository link
 LABEL org.opencontainers.image.source="https://github.com/gyeeta/gyeeta"
@@ -16,8 +16,10 @@ ENV PARTHA_VERSION=${PARTHA_VERSION}
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-	sudo libcap2-bin curl \
+	sudo libcap2-bin curl ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
+
+ENV SSL_CERT_DIR=/etc/ssl/certs
 
 # tini handling...
 ARG TINI_VERSION=v0.19.0
@@ -29,7 +31,7 @@ RUN if [ `sha256sum /tini | awk '{print $1}'` != "$TINI_SHA256" ]; then echo -e 
 # Volume for partha logs and tmp dir
 VOLUME ["/hostdata"]
 
-RUN mkdir /hostdata 2> /dev/null; rmdir /lib/modules 2> /dev/null; ln -sf /hostdata/kernelsrc /lib/modules
+RUN mkdir /hostdata 2> /dev/null; rmdir /lib/modules 2> /dev/null; ln -sf /hostdata/kernelsrc /lib/modules; rmdir /usr/src 2> /dev/null; ln -sf /proc/1/root/usr/src /usr/
 
 COPY . /partha/
 

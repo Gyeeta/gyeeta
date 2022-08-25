@@ -158,20 +158,13 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 
 		chroot "$HOST_ROOT" timeout -k 400 300 su -c "apt update && apt-get -y install linux-headers-$(uname -r)"
 
-	elif [[ $DISTNAME =~ Amazon* || $DISTNAME =~ CentOS* || $DISTNAME =~ "Red Hat Enterprise"* || $DISTNAME =~ "Oracle Linux"* || $DISTNAME =~ "Scientific Linux"* ]]; then
+	elif [[ $DISTNAME =~ Amazon* || $DISTNAME =~ CentOS* || $DISTNAME =~ "Red Hat Enterprise"* || $DISTNAME =~ "Oracle Linux"* || $DISTNAME =~ "Scientific Linux"* || $DISTNAME =~ Fedora* || $DISTNAME =~ Rocky* ]]; then
 
 		PKGCMD=1
 
-		echo -e "\n\nNo Kernel Headers found. Detected RHEL or related distribution and CFG_HOST_INSTALL_PKG env is set. Now trying to install the kernel-devel package to Host itself.\n\nThis may take some time...\n"
+		echo -e "\n\nNo Kernel Headers found. Detected RHEL / Fedora or related distribution and CFG_HOST_INSTALL_PKG env is set. Now trying to install the kernel-devel package to Host itself.\n\nThis may take some time...\n"
 
-		chroot "$HOST_ROOT" timeout -k 400 300 su -c "yum -y install kernel-devel-$(uname -r)"
-
-	elif [[ $DISTNAME =~ Fedora* || $DISTNAME =~ Rocky* ]]; then	
-		PKGCMD=1
-
-		echo -e "\n\nNo Kernel Headers found. Detected Fedora or related distribution and CFG_HOST_INSTALL_PKG env is set. Now trying to install the kernel-devel package to Host itself.\n\nThis may take some time...\n"
-
-		chroot "$HOST_ROOT" timeout -k 400 300 su -c "dnf install -y kernel-devel-$(uname -r)"
+		chroot "$HOST_ROOT" timeout -k 400 300 su -c "command -v yum && ( yum -y install kernel-devel-$(uname -r) ) || ( dnf install -y kernel-devel-$(uname -r) )"
 
 	elif [[ $DISTNAME =~ SUSE* || $DISTNAME =~ openSUSE* ]]; then	
 
