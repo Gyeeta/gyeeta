@@ -100,7 +100,7 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	./check_kernel_hdr.sh 
 
 	if [ $? -ne 0 ]; then
-		echo -e "ERROR : Kernel Header check failed. Exiting...\n"
+		echo -e "ERROR : Kernel Header check failed. Please install Kernel Headers or Kernel Devel package which provides Kernel Headers needed for eBPF Monitoring. Exiting...\n"
 		exit 1
 	fi	
 fi	
