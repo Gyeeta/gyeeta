@@ -31,7 +31,7 @@ get_config()
 	done	
 }
 
-if [ -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" 2> /dev/null ]; then
+if [ -d "/lib/modules/${KERN_VER}/build/" 2> /dev/null ]; then
 	get_config
 
 	echo -e "\nLinux kernel headers already mounted. No additional action needed...\n\n"
@@ -39,12 +39,12 @@ if [ -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" 2> /dev/null ]; then
 fi	
 
 # Check if host mount point exists with the kernel headers
-if [ -f "/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+if [ -d "/modules/${KERN_VER}/build/" ]; then
 
 	rm -f /hostdata/kernelsrc 2> /dev/null
 	ln -sf /modules/ /hostdata/kernelsrc	 
 
-	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+	if [ ! -d "/lib/modules/${KERN_VER}/build/" ]; then
 		echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for /hostdata/modules/ dir required for Kernel Headers.\n\n"
 		exit 1
 	fi
@@ -56,12 +56,12 @@ if [ -f "/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
 fi	
 
 # Check if headers available in /hostdata/lastkernelsrc directly
-if [ -f "/hostdata/lastkernelsrc/${KERN_VER}/build/include/net/tcp.h" ]; then
+if [ -d "/hostdata/lastkernelsrc/${KERN_VER}/build/" ]; then
 
 	rm -f /hostdata/kernelsrc 2> /dev/null
 	ln -sf /hostdata/lastkernelsrc /hostdata/kernelsrc
 
-	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+	if [ ! -d "/lib/modules/${KERN_VER}/build/" ]; then
 		echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for /hostdata/lastkernelsrc/ dir required for Kernel Headers.\n\n"
 		exit 1
 	fi
@@ -73,12 +73,12 @@ if [ -f "/hostdata/lastkernelsrc/${KERN_VER}/build/include/net/tcp.h" ]; then
 fi	
 
 # Check if the host /lib/modules exists with the kernel headers (this could be because of an incorrect Volume mount)
-if [ -f "${HOST_ROOT}/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+if [ -d "${HOST_ROOT}/lib/modules/${KERN_VER}/build/" ]; then
 
 	rm -f /hostdata/kernelsrc 2> /dev/null
 	ln -sf ${HOST_ROOT}/lib/modules/ /hostdata/kernelsrc	 
 
-	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+	if [ ! -d "/lib/modules/${KERN_VER}/build/" ]; then
 		echo -e "\n\nERROR : Could not create soft link /hostdata/kernelsrc for ${HOST_ROOT}/lib/modules/ dir required for Kernel Headers.\n\n"
 		exit 1
 	fi
@@ -126,7 +126,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 		rm -f /hostdata/kernelsrc 2> /dev/null
 		ln -sf /hostdata/lastkernelsrc /hostdata/kernelsrc
 
-		if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+		if [ ! -d "/lib/modules/${KERN_VER}/build/" ]; then
 			echo -e "ERROR : Could not create soft link /hostdata/kernelsrc for downloaded Kernel headers from /hostdata/lastkernelsrc/${KERN_VER} dir.\n\n"
 			exit 1
 		fi
@@ -138,7 +138,7 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 		exit 0
 	fi	
 
-	if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+	if [ ! -d "/lib/modules/${KERN_VER}/build/" ]; then
 		echo -e "\n\nERROR : Could not find Kernel Headers for eBPF monitoring. Exiting...\n\n"
 		exit 1
 	else
@@ -182,7 +182,7 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 		echo -e "\n\nERROR : Failed to install Kernel Headers package for Host...\n"
 	fi	
 
-	if [ -f "${HOST_ROOT}/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+	if [ -d "${HOST_ROOT}/lib/modules/${KERN_VER}/build/" ]; then
 
 		rm -f /hostdata/kernelsrc 2> /dev/null
 		ln -sf ${HOST_ROOT}/lib/modules/ /hostdata/kernelsrc	 
@@ -203,7 +203,7 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 	
 fi	
 
-if [ ! -f "/lib/modules/${KERN_VER}/build/include/net/tcp.h" ]; then
+if [ ! -d "/lib/modules/${KERN_VER}/build/" ]; then
 	echo -e "\n\nERROR : Could not find Kernel Headers for eBPF monitoring. Exiting...\n\n"
 	exit 1
 else

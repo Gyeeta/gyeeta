@@ -972,7 +972,7 @@ void PARTHA_C::verify_caps_kernhdr()
 	
 	ret = uname(&uts);
 	if (!ret) {
-		snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/include/net/tcp.h", uts.release);
+		snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/", uts.release);
 
 		ret = stat(kernpath, &stat1);
 		if (ret == -1) {
