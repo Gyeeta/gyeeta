@@ -12765,7 +12765,7 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 		curr_partha_nodes = partha_tbl_.count_slow();
 
 		// Allow upto 20 hosts over max limit
-		if ((curr_partha_nodes + std::min<uint32_t>(20, max_partha_allowed_ * 0.2) > max_partha_allowed_) || (curr_partha_nodes >= MAX_PARTHA_PER_MADHAVA - 16)) {
+		if ((curr_partha_nodes + 1 > max_partha_allowed_ + std::min<uint32_t>(20, max_partha_allowed_ * 0.2)) || (curr_partha_nodes >= MAX_PARTHA_PER_MADHAVA - 16)) {
 
 			send_l1_register_connect_error<PM_CONNECT_RESP_S, PM_CONNECT_RESP>(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), 
 				dbarr.comm_magic_, statsmap, ERR_MAX_LIMIT,  "Max Partha Nodes Limit Reached", pthrpoolarr);
