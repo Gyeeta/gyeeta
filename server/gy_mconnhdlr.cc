@@ -7362,10 +7362,12 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 		send_shyama_conn_close(msveccleanup.data(), msveccleanup.size(), pthrpoolarr);
 	}	
 
-	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_CYAN, "Partha Host \'%s\' has seen %d new TCP Conns, %d closed, %d closed without notify, "
-		"%d half conns added, %d tasks added, %d half conns deleted, %d remote madhava informs, %d Partha Cli Conn Infos sent, %d Partha Ser Conn Infos sent, "
-		"%lu Shyama conn close sent\n", 
-		prawpartha->hostname_, nnew, nclosed, nclosed_no_not, nconnadded, ntaskadded, nconndel, nremmadhav, nparcliinfo, nparserinfo, msveccleanup.size());
+	DEBUGEXECN(1, 
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_CYAN, "Partha Host \'%s\' has seen %d new TCP Conns, %d closed, %d closed without notify, "
+			"%d half conns added, %d tasks added, %d half conns deleted, %d remote madhava informs, %d Partha Cli Conn Infos sent, %d Partha Ser Conn Infos sent, "
+			"%lu Shyama conn close sent\n", 
+			prawpartha->hostname_, nnew, nclosed, nclosed_no_not, nconnadded, ntaskadded, nconndel, nremmadhav, nparcliinfo, nparserinfo, msveccleanup.size());
+	);
 
 	return true;
 }
