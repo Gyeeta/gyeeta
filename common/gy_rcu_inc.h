@@ -1828,6 +1828,11 @@ public :
 	{
 		destroy_table();	
 	}	
+
+	bool is_init() const noexcept
+	{
+		return !!phtable_;
+	}	
 	
 	/*
 	 * Can be used to copy the Hash table with optional filters. Clears existing entries before copying.

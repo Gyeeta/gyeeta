@@ -800,7 +800,11 @@ public :
 		pregex_(std::exchange(other.pregex_, nullptr)), regex_free_fp_(other.regex_free_fp_),
 		nin_elems_(std::exchange(other.nin_elems_, 0)), pnumarray_(std::exchange(other.pnumarray_, nullptr)),
 		pstrarray_(std::exchange(other.pstrarray_, nullptr)), arr_free_fp_(other.arr_free_fp_)
-	{}	
+	{
+		other.numval_.reset();
+		other.strval_.reset();
+		other.boolval_.reset();
+	}	
 
 	CRITERION_ONE & operator= (CRITERION_ONE && other) noexcept
 	{

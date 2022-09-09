@@ -207,7 +207,7 @@ public :
 
 	bool is_task_table_valid() const noexcept
 	{
-		return update_task_table && bool(tasktable);
+		return update_task_table && bool(tasktable) && tasktable->is_init();
 	}	
 
 	size_t get_approx_task_count() const noexcept
