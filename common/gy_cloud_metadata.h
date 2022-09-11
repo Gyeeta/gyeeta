@@ -115,13 +115,13 @@ static CloudType get_cloud_from_string(const char *cloud_type) noexcept
 		return CloudUnknown;
 	}	
 
-	if ((0 == strcasecmp(cloud_type, "aws")) || (0 == strcasecmp(cloud_type, "ec2")) || (0 == strncasecmp(cloud_type, "amazon", GY_CONST_STRLEN("amazon")))) {
+	if ((0 == strcasecmp(cloud_type, "aws")) || (0 == strcasecmp(cloud_type, "ec2")) || (0 == strncasecmp(cloud_type, "amazon", GY_CONST_STRLEN("amazon"))) || (0 == strcasecmp(cloud_type, "eks"))) {
 		return CloudAWS;
 	}	
-	else if ((0 == strcasecmp(cloud_type, "gcp")) || (0 == strcasecmp(cloud_type, "gce")) || (0 == strncasecmp(cloud_type, "google", GY_CONST_STRLEN("google")))) {
+	else if ((0 == strcasecmp(cloud_type, "gcp")) || (0 == strcasecmp(cloud_type, "gce")) || (0 == strncasecmp(cloud_type, "google", GY_CONST_STRLEN("google"))) || (0 == strcasecmp(cloud_type, "gke"))) {
 		return CloudGCP;
 	}	
-	else if ((0 == strcasecmp(cloud_type, "azure")) || (0 == strncasecmp(cloud_type, "microsoft", GY_CONST_STRLEN("microsoft")))) {
+	else if ((0 == strcasecmp(cloud_type, "azure")) || (0 == strncasecmp(cloud_type, "microsoft", GY_CONST_STRLEN("microsoft"))) || (0 == strcasecmp(cloud_type, "aks"))) {
 		return CloudAzure;
 	}	
 	else if ((0 == strcasecmp(cloud_type, "onprem")) || (0 == strcasecmp(cloud_type, "on-prem")) || (0 == *cloud_type)) {
