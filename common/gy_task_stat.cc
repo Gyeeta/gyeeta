@@ -766,8 +766,8 @@ bool TASK_EXT_STATS::is_important_task(uint64_t curr_usec) const noexcept
 
 	cpu_pct_histogram_.get_total_max(total_val, max_cpu);
 
-	// Set max as at least 3%
-	if (max_cpu < 3) {
+	// Set max as at least 2%
+	if (max_cpu < 2) {
 		return false;
 	}	
 

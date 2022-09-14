@@ -389,48 +389,49 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 
 
 	if (aiter = edoc.FindMember("cluster_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from Environment Variable", false /* firstalphaonly */);
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from Environment Variable", 
+					true /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
 	}
 	else if (aiter = doc.FindMember("cluster_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from config", false /* firstalphaonly */);
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_CLUSTER_NAME_LEN, "Cluster Name from config", true /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(cluster_name, aiter->value.GetString(), sizeof(cluster_name));
 	}
 
 
 	if (aiter = edoc.FindMember("cloud_type"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from Environment Variable");
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from Environment Variable", true /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
 	}
 	else if (aiter = doc.FindMember("cloud_type"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from config");
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from config", true /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
 	}
 
 
 	if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from Environment Variable", false /* firstalphaonly */);
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from Environment Variable", false /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
 	}
 	else if (aiter = doc.FindMember("region_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */);
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from config", false /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(region_name, aiter->value.GetString(), sizeof(region_name));
 	}
 
 
 	if (aiter = edoc.FindMember("zone_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from Environment Variable", false /* firstalphaonly */);
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from Environment Variable", false /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
 	}
 	else if (aiter = doc.FindMember("zone_name"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
-		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */);
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Zone Name from config", false /* firstalphaonly */, true /* emptyok */);
 
 		GY_STRNCPY(zone_name, aiter->value.GetString(), sizeof(zone_name));
 	}

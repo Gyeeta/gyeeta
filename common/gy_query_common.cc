@@ -2700,7 +2700,7 @@ uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, cons
 }
 
 
-void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype, bool firstalphaonly)
+void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype, bool firstalphaonly, bool emptyok)
 {
 	static constexpr const char	invalid_chars[]		{"\'\\\";$"};
 	const char			*ptmp;
@@ -2712,7 +2712,11 @@ void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const 
 	}
 
 	if (namelen == 0) {
-		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid %s as empty string specified", ptype);
+		if (!emptyok) {
+			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid %s as empty string specified", ptype);
+		}
+
+		return;
 	}
 
 	if (firstalphaonly && (!gy_isalpha_ascii(*pname))) {
