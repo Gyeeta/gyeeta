@@ -16,7 +16,6 @@
 		"postgres_user"			:	"madhava1",
 		"postgres_password"		:	"gyeeta",
 		"postgres_storage_days"		:	3,
-		"is_db_remote"			:	false,
 
 		"auto_respawn_on_exit"		:	true
 }
