@@ -1058,12 +1058,17 @@ public :
 	// Called under SHCONN_HANDLER Accept thread context (sock is non-blocking) (Will close sock on errors)
 	void add_node_action_sock(int sock, uint8_t *pregbuf, uint32_t lenbuf) noexcept;
 
-	void read_db_alert_info() noexcept;
+	void read_db_alert_info();
 
 	void read_db_inhibits();
 	void read_db_silences();
 	void read_db_actions();
 	void read_db_alert_defs();
+
+	void set_cfg_inhibits(const char *pfilename, const char *pcfg, size_t lencfg);
+	void set_cfg_silences(const char *pfilename, const char *pcfg, size_t lencfg);
+	void set_cfg_actions(const char *pfilename, const char *pcfg, size_t lencfg);
+	void set_cfg_alertdefs(const char *pfilename, const char *pcfg, size_t lencfg);
 
 	void check_schedules(time_t & tnext) noexcept;
 	

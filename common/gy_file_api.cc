@@ -2930,15 +2930,19 @@ retry1 :
 }	
 
 
-std::string read_file_to_string(const char *pfilename, size_t max_sz, size_t min_sz)
+std::string read_file_to_string(const char *pfilename, size_t max_sz, size_t min_sz, const char *perrprefix)
 {
 	int			fd, ret;
 	struct stat		stat1;
 	ssize_t			sret;
 
+	if (!perrprefix) {
+		perrprefix = "";
+	}	
+
 	fd = open(pfilename, O_RDONLY);
 	if (fd == -1) {
-		GY_THROW_SYS_EXCEPTION("Failed to open file %s : ", pfilename);
+		GY_THROW_SYS_EXCEPTION("%sFailed to open file %s : ", perrprefix, pfilename);
 	}	
 
 	SCOPE_FD		fdscope(fd);
@@ -2970,7 +2974,7 @@ std::string read_file_to_string(const char *pfilename, size_t max_sz, size_t min
 		return str;
 	}	
 	else {
-		GY_THROW_SYS_EXCEPTION("Failed to read file %s : ", pfilename);
+		GY_THROW_SYS_EXCEPTION("%sFailed to read file %s : ", perrprefix, pfilename);
 	}		
 }	
 

@@ -1097,12 +1097,12 @@ SHYAMA_C::SHYAMA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		struct stat		stat1;
 		size_t			readsz = 0;
 
-		// First check if CFG_JSON_FILE env set
-		penv = getenv("CFG_JSON_FILE");
+		// First check if CFG_MAIN_JSON env set
+		penv = getenv("CFG_MAIN_JSON");
 		if (penv) {
 			GY_STRNCPY(cfgfile, penv, sizeof(cfgfile));
 
-			INFOPRINT("Using %s as the shyama Config file as per environment variable CFG_JSON_FILE ...\n", cfgfile);
+			INFOPRINT("Using %s as the shyama Config file as per environment variable CFG_MAIN_JSON ...\n", cfgfile);
 		}
 		else {
 			snprintf(cfgfile, sizeof(cfgfile), "%s/shyama_main.json", pinitproc_->get_cfg_dir());
@@ -1120,7 +1120,7 @@ SHYAMA_C::SHYAMA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		}
 
 		if (!preadbuf) {
-			GY_THROW_SYS_EXCEPTION("Failed to read global shyama config file %s%s", cfgfile, penv ? " as per CFG_JSON_FILE env" : "");
+			GY_THROW_SYS_EXCEPTION("Failed to read global shyama config file %s%s", cfgfile, penv ? " as per CFG_MAIN_JSON env" : "");
 		}	
 
 		GY_SCOPE_EXIT {
@@ -1385,6 +1385,13 @@ static int start_shyama(int argc, char **argv)
 						hash_cfg_region_name		= fnv1_consthash("--cfg_region_name"),
 						hash_cfg_zone_name		= fnv1_consthash("--cfg_zone_name"),
 						hash_cfg_min_madhava		= fnv1_consthash("--cfg_min_madhava"),
+
+						hash_cfg_main_json		= fnv1_consthash("--cfg_main_json"),
+						hash_cfg_actions_json		= fnv1_consthash("--cfg_actions_json"),
+						hash_cfg_alertdefs_json		= fnv1_consthash("--cfg_alertdefs_json"),
+						hash_cfg_inhibits_json		= fnv1_consthash("--cfg_inhibits_json"),
+						hash_cfg_silences_json		= fnv1_consthash("--cfg_silences_json"),
+
 						hash_cfg_postgres_hostname	= fnv1_consthash("--cfg_postgres_hostname"),
 						hash_cfg_postgres_port		= fnv1_consthash("--cfg_postgres_port"),
 						hash_cfg_postgres_user		= fnv1_consthash("--cfg_postgres_user"),
@@ -1538,6 +1545,42 @@ static int start_shyama(int argc, char **argv)
 				}
 				break;
 
+			case hash_cfg_main_json :
+				if (i + 1 < argc) {
+					setenv("CFG_MAIN_JSON", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_actions_json :
+				if (i + 1 < argc) {
+					setenv("CFG_ACTIONS_JSON", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_alertdefs_json :
+				if (i + 1 < argc) {
+					setenv("CFG_ALERTDEFS_JSON", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_inhibits_json :
+				if (i + 1 < argc) {
+					setenv("CFG_INHIBITS_JSON", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_silences_json :
+				if (i + 1 < argc) {
+					setenv("CFG_SILENCES_JSON", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+
 			case hash_cfg_postgres_hostname :
 				if (i + 1 < argc) {
 					setenv("CFG_POSTGRES_HOSTNAME", argv[i + 1], 1);
@@ -1647,7 +1690,7 @@ static int start_shyama(int argc, char **argv)
 	snprintf(tdebugfile, sizeof(tdebugfile), "%s/shyama_runtime.json", pgshyama->pinitproc_->get_tmp_dir());
 		
 	while (true) {
-		gy_nanosleep(2, 0);
+		gy_nanosleep(1, 0);
 
 		ret = stat(tdebugfile, &stat1);
 		if (ret != 0) {

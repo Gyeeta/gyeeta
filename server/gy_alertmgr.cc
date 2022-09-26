@@ -3791,6 +3791,82 @@ int ALERTMGR::alert_db_thread() noexcept
 	return -1;
 }	
 
+void ALERTMGR::set_cfg_inhibits(const char *pfilename, const char *pcfg, size_t lencfg)
+{
+	JSON_DOCUMENT<32 * 1024, 8192>	doc;
+	auto				& jdoc = doc.get_doc();
+	JSON_ALLOCATOR			& allocator = jdoc.GetAllocator();
+
+	jdoc.Parse(pcfg, lencfg);
+
+	if (jdoc.HasParseError()) {
+		char			ebuf[256];
+		const char		*perrorstr = rapidjson::GetParseError_En(jdoc.GetParseError());
+
+		ERRORPRINTCOLOR(GY_COLOR_RED, "Invalid Alert Inhibits Config CFG_INHIBITS_JSON : Error at offset %lu : Error is \'%s\'\n\n", 
+			jdoc.GetErrorOffset(), perrorstr);
+
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid JSON for Alert Inhibits Config CFG_INHIBITS_JSON file %s", pfilename);
+	}	
+
+	if (false == jdoc.IsArray()) {
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid Alert Inhibits Config CFG_INHIBITS_JSON file %s : Needs to be a JSON Array type", pfilename);
+	}	
+
+	time_t				tcurr = time(nullptr);
+	STRING_BUFFER<1024>		strbuf;
+	int				nadded = 0;
+	bool				bret;
+
+	// First truncate existing inhibits...
+	if (true) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Alert Inhibits Config CFG_INHIBITS_JSON file %s seen : Deleting existing DB Inhibits first...\n", pfilename);
+
+		auto				pconn = dbmgrpool_.get_conn(true /* wait_response_if_unavail */, 30'000 /* max_msec_wait */, true /* reset_on_timeout */);
+		
+		if (!pconn) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to Postgres for Alert Inhibits truncation\n");
+
+			gshconnhdlr->db_stats_.nconns_failed_.fetch_add_relaxed(1);
+			gshconnhdlr->db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+		}
+		else {
+			pconn->pqexec_blocking("truncate table public.inhibitstbl;");
+		}
+	}	
+	
+	for (uint32_t i = 0; i < jdoc.Size(); i++) {
+
+		STACK_JSON_WRITER<8096, 4096>	objwriter;
+		const char			*pjson;
+		uint32_t			szjson;
+
+		jdoc[i].Accept(objwriter); 
+
+		pjson 		= objwriter.get_string();
+		szjson		= objwriter.get_size();
+
+		strbuf.reset();
+
+		auto 				[errcode, inhid, pname] = add_inhibit(0, jdoc[i], strbuf, tcurr, tcurr);
+
+		if (inhid != 0) {
+			nadded++;
+
+			DEBUGEXECN(1,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Alertmgr : Added Alert Inhibit from Inhibit Config file : \'%s\'\n", pname);
+			);
+		}	
+		else {
+			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Failed to add new Alert Inhibit from Config file : %s", strbuf.buffer()); 
+		}
+
+		db_insert_inhibit(inhid, pname, tcurr, pjson, szjson);
+	}
+		
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Inhibits from Inhibits Config file %s\n", nadded, pfilename);
+}
+
 void ALERTMGR::read_db_inhibits()
 {
 	auto				pconn = dbmgrpool_.get_conn(true /* wait_response_if_unavail */, 30000 /* max_msec_wait */, true /* reset_on_timeout */);
@@ -3919,6 +3995,82 @@ void ALERTMGR::read_db_inhibits()
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Inhibit rules from DB\n", nadded);
 }
 
+void ALERTMGR::set_cfg_silences(const char *pfilename, const char *pcfg, size_t lencfg)
+{
+	JSON_DOCUMENT<32 * 1024, 8192>	doc;
+	auto				& jdoc = doc.get_doc();
+	JSON_ALLOCATOR			& allocator = jdoc.GetAllocator();
+
+	jdoc.Parse(pcfg, lencfg);
+
+	if (jdoc.HasParseError()) {
+		char			ebuf[256];
+		const char		*perrorstr = rapidjson::GetParseError_En(jdoc.GetParseError());
+
+		ERRORPRINTCOLOR(GY_COLOR_RED, "Invalid Alert Silence Config CFG_SILENCES_JSON : Error at offset %lu : Error is \'%s\'\n\n", 
+			jdoc.GetErrorOffset(), perrorstr);
+
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid JSON for Alert Silence Config CFG_SILENCES_JSON file %s", pfilename);
+	}	
+
+	if (false == jdoc.IsArray()) {
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid Alert Silence Config CFG_SILENCES_JSON file %s : Needs to be a JSON Array type", pfilename);
+	}	
+
+	time_t				tcurr = time(nullptr);
+	STRING_BUFFER<1024>		strbuf;
+	int				nadded = 0;
+	bool				bret;
+
+	// First truncate existing silences...
+	if (true) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Alert Silence Config CFG_SILENCES_JSON file %s seen : Deleting existing DB Silences first...\n", pfilename);
+
+		auto				pconn = dbmgrpool_.get_conn(true /* wait_response_if_unavail */, 30'000 /* max_msec_wait */, true /* reset_on_timeout */);
+		
+		if (!pconn) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to Postgres for Alert Silences truncation\n");
+
+			gshconnhdlr->db_stats_.nconns_failed_.fetch_add_relaxed(1);
+			gshconnhdlr->db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+		}
+		else {
+			pconn->pqexec_blocking("truncate table public.silencestbl;");
+		}
+	}	
+	
+	for (uint32_t i = 0; i < jdoc.Size(); i++) {
+
+		STACK_JSON_WRITER<8096, 4096>	objwriter;
+		const char			*pjson;
+		uint32_t			szjson;
+
+		jdoc[i].Accept(objwriter); 
+
+		pjson 		= objwriter.get_string();
+		szjson		= objwriter.get_size();
+
+		strbuf.reset();
+
+		auto 				[errcode, silid, pname] = add_silence(0, jdoc[i], strbuf, tcurr, tcurr);
+
+		if (silid != 0) {
+			nadded++;
+
+			DEBUGEXECN(1,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Alertmgr : Added Alert Silence from Silence Config file : \'%s\'\n", pname);
+			);
+		}	
+		else {
+			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Failed to add new Alert Silence from Config file : %s", strbuf.buffer()); 
+		}
+
+		db_insert_silence(silid, pname, tcurr, pjson, szjson);
+	}
+		
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Silences from Silences Config file %s\n", nadded, pfilename);
+}
+
 void ALERTMGR::read_db_silences()
 {
 	auto				pconn = dbmgrpool_.get_conn(true /* wait_response_if_unavail */, 30000 /* max_msec_wait */, true /* reset_on_timeout */);
@@ -4045,6 +4197,82 @@ void ALERTMGR::read_db_silences()
 	}	
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Silence rules from DB\n", nadded);
+}
+
+void ALERTMGR::set_cfg_actions(const char *pfilename, const char *pcfg, size_t lencfg)
+{
+	JSON_DOCUMENT<32 * 1024, 8192>	doc;
+	auto				& jdoc = doc.get_doc();
+	JSON_ALLOCATOR			& allocator = jdoc.GetAllocator();
+
+	jdoc.Parse(pcfg, lencfg);
+
+	if (jdoc.HasParseError()) {
+		char			ebuf[256];
+		const char		*perrorstr = rapidjson::GetParseError_En(jdoc.GetParseError());
+
+		ERRORPRINTCOLOR(GY_COLOR_RED, "Invalid Alert Action Config CFG_ACTIONS_JSON : Error at offset %lu : Error is \'%s\'\n\n", 
+			jdoc.GetErrorOffset(), perrorstr);
+
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid JSON for Alert Action Config CFG_ACTIONS_JSON file %s", pfilename);
+	}	
+
+	if (false == jdoc.IsArray()) {
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid Alert Action Config CFG_ACTIONS_JSON file %s : Needs to be a JSON Array type", pfilename);
+	}	
+
+	time_t				tcurr = time(nullptr);
+	STRING_BUFFER<1024>		strbuf;
+	int				nadded = 0;
+	bool				bret;
+
+	// First truncate existing actions...
+	if (true) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Alert Action Config CFG_ACTIONS_JSON file %s seen : Deleting existing DB Actions first...\n", pfilename);
+
+		auto				pconn = dbmgrpool_.get_conn(true /* wait_response_if_unavail */, 30'000 /* max_msec_wait */, true /* reset_on_timeout */);
+		
+		if (!pconn) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to Postgres for Alert Actions truncation\n");
+
+			gshconnhdlr->db_stats_.nconns_failed_.fetch_add_relaxed(1);
+			gshconnhdlr->db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+		}
+		else {
+			pconn->pqexec_blocking("truncate table public.actionstbl;");
+		}
+	}	
+	
+	for (uint32_t i = 0; i < jdoc.Size(); i++) {
+
+		STACK_JSON_WRITER<8096, 4096>	objwriter;
+		const char			*pjson;
+		uint32_t			szjson;
+
+		jdoc[i].Accept(objwriter); 
+
+		pjson 		= objwriter.get_string();
+		szjson		= objwriter.get_size();
+
+		strbuf.reset();
+
+		auto 				[errcode, actionid, actttype, pname] = add_action(0, jdoc[i], strbuf, tcurr, tcurr);
+
+		if (actionid && pname) {
+			nadded++;
+
+			DEBUGEXECN(1,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Alertmgr : Added Alert Action from Action Config file : \'%s\'\n", pname);
+			);
+		}	
+		else {
+			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Failed to add new Alert Action from Config file : %s", strbuf.buffer()); 
+		}
+
+		db_insert_update_action(actionid, pname, actttype, tcurr, pjson, szjson);
+	}
+		
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Action rules from Action Config file %s\n", nadded, pfilename);
 }
 
 void ALERTMGR::read_db_actions()
@@ -4179,6 +4407,83 @@ void ALERTMGR::read_db_actions()
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Action rules from DB\n", nadded);
 }
 
+void ALERTMGR::set_cfg_alertdefs(const char *pfilename, const char *pcfg, size_t lencfg)
+{
+	JSON_DOCUMENT<32 * 1024, 8192>	doc;
+	auto				& jdoc = doc.get_doc();
+	JSON_ALLOCATOR			& allocator = jdoc.GetAllocator();
+
+	jdoc.Parse(pcfg, lencfg);
+
+	if (jdoc.HasParseError()) {
+		char			ebuf[256];
+		const char		*perrorstr = rapidjson::GetParseError_En(jdoc.GetParseError());
+
+		ERRORPRINTCOLOR(GY_COLOR_RED, "Invalid Alert Definitions Config CFG_ALERTDEFS_JSON : Error at offset %lu : Error is \'%s\'\n\n", 
+			jdoc.GetErrorOffset(), perrorstr);
+
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid JSON for Alert Definitions Config CFG_ALERTDEFS_JSON file %s", pfilename);
+	}	
+
+	if (false == jdoc.IsArray()) {
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid Alert Definitions Config CFG_ALERTDEFS_JSON file %s : Needs to be a JSON Array type", pfilename);
+	}	
+
+	time_t				tcurr = time(nullptr);
+	STRING_BUFFER<1024>		strbuf;
+	int				nadded = 0;
+	bool				bret;
+
+	// First truncate existing Alertdefs...
+	if (true) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Alert Definitions Config CFG_ALERTDEFS_JSON file %s seen : Deleting existing DB Alertdefs first...\n", pfilename);
+
+		auto				pconn = dbmgrpool_.get_conn(true /* wait_response_if_unavail */, 30'000 /* max_msec_wait */, true /* reset_on_timeout */);
+		
+		if (!pconn) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to Postgres for Alert Definitions truncation\n");
+
+			gshconnhdlr->db_stats_.nconns_failed_.fetch_add_relaxed(1);
+			gshconnhdlr->db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+		}
+		else {
+			pconn->pqexec_blocking("truncate table public.alertdeftbl;");
+		}
+	}	
+	
+	for (uint32_t i = 0; i < jdoc.Size(); i++) {
+
+		STACK_JSON_WRITER<8096, 4096>	objwriter;
+		const char			*pjson;
+		uint32_t			szjson;
+
+		jdoc[i].Accept(objwriter); 
+
+		pjson 		= objwriter.get_string();
+		szjson		= objwriter.get_size();
+
+		strbuf.reset();
+
+		auto 				[errcode, adefid, pnewdef] = add_alertdef(0, jdoc[i], jdoc.GetAllocator(), pjson, szjson, strbuf, tcurr, tcurr);
+
+		if (adefid) {
+			nadded++;
+
+			DEBUGEXECN(1,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Alertmgr : Added Alert Definition from Alertdef Config file : \'%s\'\n", pnewdef->name());
+			);
+		}	
+		else {
+			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Failed to add new Alert Definition from Config file : %s", strbuf.buffer()); 
+		}
+
+		db_insert_alertdef(adefid, pnewdef->name(), tcurr, pjson, szjson, false);
+	}
+		
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Definitions from Alertdef Config file %s\n", nadded, pfilename);
+}
+
+
 void ALERTMGR::read_db_alert_defs()
 {
 	auto				pconn = dbmgrpool_.get_conn(true /* wait_response_if_unavail */, 30000 /* max_msec_wait */, true /* reset_on_timeout */);
@@ -4306,37 +4611,98 @@ void ALERTMGR::read_db_alert_defs()
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Alert Definitions from DB\n", nadded);
 }
 
-void ALERTMGR::read_db_alert_info() noexcept
+void ALERTMGR::read_db_alert_info()
 {
 	thrid_ = pthread_self();
 
-	try {
-		read_db_inhibits();
-	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Inhibit Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
-	);
+	if (true) {	
+		const char			*penv = getenv("CFG_INHIBITS_JSON");
+		std::string			jsonstr;
 
-	try {
-		read_db_silences();
-	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Silences Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
-	);
+		if (penv) {
+			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Inhibits CFG_INHIBITS_JSON config file ");
+		}	
 
-	try {
-		read_db_actions();
+		if (jsonstr.empty()) {
+			try {
+				read_db_inhibits();
+			}
+			GY_CATCH_EXCEPTION(
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Inhibit Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
+			);
+		}
+		else {
+			// Set all inhibits from config file ignoring existing inhibits in db
+			set_cfg_inhibits(penv, jsonstr.data(), jsonstr.size());
+		}	
 	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Actions Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
-	);
 
-	try {
-		read_db_alert_defs();
+	if (true) {	
+		const char			*penv = getenv("CFG_SILENCES_JSON");
+		std::string			jsonstr;
+
+		if (penv) {
+			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Silences CFG_SILENCES_JSON config file ");
+		}	
+
+		if (jsonstr.empty()) {
+			try {
+				read_db_silences();
+			}
+			GY_CATCH_EXCEPTION(
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Silences Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
+			);
+		}
+		else {
+			// Set all silences from config file ignoring existing silences in db
+			set_cfg_silences(penv, jsonstr.data(), jsonstr.size());
+		}	
 	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Definitions Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
-	);
+
+	if (true) {	
+		const char			*penv = getenv("CFG_ACTIONS_JSON");
+		std::string			jsonstr;
+
+		if (penv) {
+			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Action CFG_ACTIONS_JSON config file ");
+		}	
+
+		if (jsonstr.empty()) {
+			try {
+				read_db_actions();
+			}
+			GY_CATCH_EXCEPTION(
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Actions Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
+			);
+		}
+		else {
+			// Set all actions from config file ignoring existing actions in db
+			set_cfg_actions(penv, jsonstr.data(), jsonstr.size());
+		}	
+	}
+
+	if (true) {	
+		const char			*penv = getenv("CFG_ALERTDEFS_JSON");
+		std::string			jsonstr;
+
+		if (penv) {
+			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Definitions CFG_ALERTDEFS_JSON config file ");
+		}	
+
+		if (jsonstr.empty()) {
+			try {
+				read_db_alert_defs();
+			}
+			GY_CATCH_EXCEPTION(
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Alert Definitions Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
+			);
+		}
+		else {
+			// Set all alertdefs from config file ignoring existing alertdefs in db
+			set_cfg_alertdefs(penv, jsonstr.data(), jsonstr.size());
+		}	
+	}
+
 
 	send_shyama_all_alertdefs();
 }	

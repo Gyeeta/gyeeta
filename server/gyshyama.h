@@ -85,6 +85,11 @@ public :
 		return psettings_;
 	}	
 
+	const char *			get_cfg_dir() const noexcept
+	{
+		return pinitproc_->get_cfg_dir();
+	}	
+
 	int				update_runtime_cfg(char *pcfg, int sz) noexcept;
 
 	void 				send_proc_restart_exit(int max_retries = 2); 

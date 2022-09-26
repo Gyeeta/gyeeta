@@ -3249,7 +3249,7 @@ int SHCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 			}
 		}
 		GY_CATCH_EXCEPTION(
-			ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to create Level 2 memory pool for %s : %s\n", psigdata->descbuf_, GY_GET_EXCEPT_STRING);
+			ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to initialize Shyama for %s : %s\n", psigdata->descbuf_, GY_GET_EXCEPT_STRING);
 			exit(EXIT_FAILURE);
 		);
 

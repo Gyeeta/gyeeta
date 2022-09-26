@@ -115,7 +115,7 @@ int		sock_queued_send_bytes(int sock) noexcept;
 /*
  * min_sz in case fstat() syscall fails
  */ 
-std::string    	read_file_to_string(const char *pfilename, size_t max_sz = ~0u, size_t min_sz = 0);
+std::string    	read_file_to_string(const char *pfilename, size_t max_sz = ~0u, size_t min_sz = 0, const char *perrprefix = nullptr);
 
 std::string & 	string_delete_char(std::string & str, char c);
 

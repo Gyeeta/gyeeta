@@ -4,7 +4,7 @@ FROM ubuntu:18.04
 
 LABEL org.opencontainers.image.description="This container provides madhava which is the Gyeeta Intermediate Server"
 
-LABEL usage="docker run -td --rm --name madhava --read-only --user 1001:1001 -p 10038:10038  --cfg_service_hostname madhava_host.local --env CFG_JSON_FILE=/tmp/cfg.json -v /HOST_PATH_TO_CFG/madhava_cfg.json:/tmp/cfg.json:ro -v madhavavol:/hostdata <madhava Image>"
+LABEL usage="docker run -td --rm --name madhava --read-only --user 1001:1001 -p 10038:10038  --cfg_service_hostname madhava_host.local --env CFG_MAIN_JSON=/tmp/cfg.json -v /HOST_PATH_TO_CFG/madhava_cfg.json:/tmp/cfg.json:ro -v madhavavol:/hostdata <madhava Image>"
 
 # LABEL for github repository link
 LABEL org.opencontainers.image.source="https://github.com/gyeeta/gyeeta"
