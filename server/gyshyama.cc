@@ -394,8 +394,7 @@ SA_SETTINGS_C::SA_SETTINGS_C(char *pjson)
 
 		"webserver_url"			:	"http://gyeetaweb.local:10039",
 
-		"auto_respawn_on_exit"		:	true,
-		"log_use_utc_time"		:	false
+		"auto_respawn_on_exit"		:	true
 	}
 	 */ 
 	
