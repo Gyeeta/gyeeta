@@ -4619,7 +4619,7 @@ void ALERTMGR::read_db_alert_info()
 		const char			*penv = getenv("CFG_INHIBITS_JSON");
 		std::string			jsonstr;
 
-		if (penv) {
+		if (penv && *penv) {
 			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Inhibits CFG_INHIBITS_JSON config file ");
 		}	
 
@@ -4641,7 +4641,7 @@ void ALERTMGR::read_db_alert_info()
 		const char			*penv = getenv("CFG_SILENCES_JSON");
 		std::string			jsonstr;
 
-		if (penv) {
+		if (penv && *penv) {
 			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Silences CFG_SILENCES_JSON config file ");
 		}	
 
@@ -4663,7 +4663,7 @@ void ALERTMGR::read_db_alert_info()
 		const char			*penv = getenv("CFG_ACTIONS_JSON");
 		std::string			jsonstr;
 
-		if (penv) {
+		if (penv && *penv) {
 			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Action CFG_ACTIONS_JSON config file ");
 		}	
 
@@ -4685,7 +4685,7 @@ void ALERTMGR::read_db_alert_info()
 		const char			*penv = getenv("CFG_ALERTDEFS_JSON");
 		std::string			jsonstr;
 
-		if (penv) {
+		if (penv && *penv) {
 			jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Alert Definitions CFG_ALERTDEFS_JSON config file ");
 		}	
 

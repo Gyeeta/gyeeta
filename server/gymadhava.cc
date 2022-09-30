@@ -363,7 +363,7 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 	{
 		"listener_ip"	 		:	"0.0.0.0",
 		"listener_port"			:	10038,
-		"madhava_name"			:	"madhava-us-east-1a-1",
+		"madhava_name"			:	"madhava_useast1a_1",
 		"service_hostname"		:	"madhava.test1.local",
 		"service_port"			:	10038,
 
@@ -382,8 +382,7 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		"postgres_storage_days"		:	15,
 		"db_logging"			:	"always",
 		
-		"auto_respawn_on_exit"		:	true,
-		"log_use_utc_time"		:	false
+		"auto_respawn_on_exit"		:	true
 	}
 	 */ 
  
@@ -1093,7 +1092,7 @@ MADHAVA_C::MADHAVA_C(int argc, char **argv, bool nolog, const char *logdir, cons
 		ret = stat(cfgfile, &stat1);
 		if (ret != 0) {
 			if (!penv) {
-				WARNPRINT("Madhava Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
+				NOTEPRINT("Madhava Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
 				preadbuf = strdup("{}");
 			}
 		}

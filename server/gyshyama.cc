@@ -376,7 +376,7 @@ SA_SETTINGS_C::SA_SETTINGS_C(char *pjson)
 		"service_hostname"		:	"shyama.test1.local",
 		"service_port"			:	10037,
 
-		"shyama_name"			:	"shyama-us-east-1a",
+		"shyama_name"			:	"shyama_useast1a",
 		"shyama_secret"			:	"This is a secret",
 
 		"cloud_type"			:	"aws",
@@ -1110,7 +1110,7 @@ SHYAMA_C::SHYAMA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 		ret = stat(cfgfile, &stat1);
 		if (ret != 0) {
 			if (!penv) {
-				WARNPRINT("Shyama Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
+				NOTEPRINT("Shyama Config file not found : %s : Will try to get config from environment variables...\n", cfgfile);
 				preadbuf = strdup("{}");
 			}
 		}
