@@ -1276,7 +1276,8 @@ extern uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryop
 
 extern void init_subsys_maps();
 
-extern void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype = "Field Name", bool firstalphaonly = true, bool emptyok = false);
+extern void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype = "Field Name", bool firstalphaonly = true, bool emptyok = false, \
+							const char * extrainvchars = nullptr);
 
 extern void validate_db_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype = "Field Name");
 

@@ -2700,7 +2700,7 @@ uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, cons
 }
 
 
-void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype, bool firstalphaonly, bool emptyok)
+void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype, bool firstalphaonly, bool emptyok, const char * extrainvchars)
 {
 	static constexpr const char	invalid_chars[]		{"\'\\\";$"};
 	const char			*ptmp;
@@ -2726,6 +2726,12 @@ void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const 
 	if ((ptmp = strpbrk(pname, invalid_chars))) {
 		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid %s as name \'%s\' contains char \'%c\' which is not valid", ptype, pname, *ptmp);
 	}	
+
+	if (extrainvchars && *extrainvchars) {
+		if ((ptmp = strpbrk(pname, extrainvchars))) {
+			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid %s as name \'%s\' contains char \'%c\' which is not valid", ptype, pname, *ptmp);
+		}	
+	}	
 		
 	auto 				escname = gy_escape_json<6 * 1024>(pname, namelen, false /* throw_on_error */); 
 
@@ -2737,7 +2743,7 @@ void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const 
 
 void validate_db_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype)
 {
-	static constexpr const char	invalid_chars[]		{"\'\\\";$"};
+	static constexpr const char	invalid_chars[]		{"\'\\\";-$"};
 	const char			*ptmp;
 
 	if (namelen >= maxlen) {
