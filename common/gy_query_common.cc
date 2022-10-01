@@ -2743,7 +2743,6 @@ void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const 
 
 void validate_db_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype)
 {
-	static constexpr const char	invalid_chars[]		{"\'\\\";-$"};
 	const char			*ptmp;
 
 	if (namelen >= maxlen) {
