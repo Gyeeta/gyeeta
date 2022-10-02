@@ -58,6 +58,11 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 		exit 1
 	fi
 
+	# Handle Kubernetes Statefulset Replica Madhava Name as Replica Index not available directly
+	if [ -n "$GY_SET_MADHAVA_NAME" ] && [ -n "$GY_POD_NAME" ] && [ -z "CFG_MADHAVA_NAME" ]; then
+		export CFG_MADHAVA_NAME="${GY_SET_MADHAVA_NAME}"_$( echo -n ${GY_POD_NAME##*-} )
+	fi
+
 	TLOGTMP='--logdir /hostdata/log --tmpdir /hostdata/tmp --reportsdir /hostdata/reports'
 fi	
 
