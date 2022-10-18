@@ -117,7 +117,7 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 
 	NRESTART=0
 
-	while `true`; do
+	while true; do
 		sleep 30
 
 		./runpartha.sh ps
@@ -143,10 +143,6 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 		fi	
 
 	done	
-
-	# Wait indefinitely
-	read /dev/null
-
 fi
 
 exit $?
