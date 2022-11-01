@@ -4017,6 +4017,11 @@ try_again :
 
 			path = taskstr.get_next_word(lenpath);
 			if (path) {
+				if (string_ends_with(path, " (deleted)", lenpath, GY_CONST_STRLEN(" (deleted)"))) {
+					// Process is a zombie
+					return 0;
+				}	
+				
 				GY_SAFE_MEMCPY(pdircg2, maxcg2sz - 1, path, lenpath, lencopy);
 
 				pdircg2[lencopy] = '\0';

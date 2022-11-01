@@ -74,10 +74,11 @@ enum FS_CATEGORY_E
 	FS_UNION	=	1 << 4,	
 };
 	
-// Currently only for cgroupsv1
-enum MOUNT_OPTIONS2_E
+enum MOUNT_CGROUP_E
 {
 	MTYPE_NONE	=	0,	
+
+	// cgroupv1 mounts
 	MTYPE_CPU	= 	1 << 0,
 	MTYPE_CPUACCT	=	1 << 1,
 	MTYPE_CPUSET	=	1 << 2,
@@ -92,6 +93,8 @@ enum MOUNT_OPTIONS2_E
 	MTYPE_FREEZER	=	1 << 11,
 	MTYPE_DEVICES	=	1 << 12,
 	MTYPE_SYSTEMD	=	1 << 13,
+
+	MTYPE_CGROUP2	=	1 << 14,
 };
 	
 struct MOUNT_STRING_FLAGS
@@ -235,7 +238,7 @@ private :
 	MOUNT_ONE_MAP		mountmap;
 
 	int			mntid_sysfs, mntid_cg_cpu, mntid_cg_cpuacct, mntid_cg_cpuset, mntid_tracefs; 
-	int			mntid_cg_net_cls, mntid_cg_net_prio, mntid_cg_blkio, mntid_cg_memory;
+	int			mntid_cg_net_cls, mntid_cg_net_prio, mntid_cg_blkio, mntid_cg_memory, mntid_cgroup2;
 
 	int			proc_dir_fd;
 	int			sysfs_dir_fd;
@@ -310,7 +313,7 @@ public :
 	MOUNT_HDLR & operator= (const MOUNT_HDLR & other) 		= delete;
 	MOUNT_HDLR & operator= (MOUNT_HDLR && other) 		= delete;
 	
-	int get_cgroup_mount(MOUNT_OPTIONS2_E cgtype, char *pmountpoint, size_t bufsz) noexcept
+	int get_cgroup_mount(MOUNT_CGROUP_E cgtype, char *pmountpoint, size_t bufsz) noexcept
 	{
 		int				mnt_id = 0, ret;	
 		ONE_MOUNT			one;
@@ -326,6 +329,7 @@ public :
 		case MTYPE_NET_PRIO :	mnt_id = mntid_cg_net_prio; break;
 		case MTYPE_BLKIO :	mnt_id = mntid_cg_blkio; break;
 		case MTYPE_MEMORY :	mnt_id = mntid_cg_memory; break;
+		case MTYPE_CGROUP2 :	mnt_id = mntid_cgroup2; break;
 
 		default :		
 
@@ -357,6 +361,7 @@ done :
 		if ((found == false) || (*pmountpoint == '\0')) {
 			return -1;
 		}
+
 		return 0;	
 	}	
 

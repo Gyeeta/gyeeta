@@ -15,21 +15,23 @@ namespace gyeeta {
 
 /*
  * We handle only a subset of cgroups.
- * XXX TODO Handle cgroup2, Also handle Threaded cgroups with different threads in a process in separate cgroups 
  */
-enum CGROUP1_TYPES_E 
+enum CGROUP_TYPES_E 
 {
-	CG_TYPE_CPUACCT 		= 1,
-	CG_TYPE_CPU,
-	CG_TYPE_CPUSET,
-	CG_TYPE_MEMORY,
-	CG_TYPE_BLKIO,
+	// Cgroupv1 Types
+	CG1_TYPE_CPUACCT 		= 1,
+	CG1_TYPE_CPU,
+	CG1_TYPE_CPUSET,
+	CG1_TYPE_MEMORY,
+	CG1_TYPE_BLKIO,
+
+	CG2_TYPE,			// Cgroupv2 all controllers
 
 	// Add New types if needed
 };	
 
-template <typename T, typename RTABLE>
-class CGROUP1_INT;
+template <typename T, typename RTABLE, bool is_v1>
+class CGROUP_INT;
 
 static constexpr int				CG_STATS_UPDATE_SEC = 15;
 static constexpr int				CG_HIST_LAST_STATS = 5;
@@ -38,12 +40,12 @@ static constexpr int				CG_HIST_LAST_STATS = 5;
  * Currently we do not maintain task weak pointers within the cgroup tasktable for reverse mapping from cg to tasks. 
  * The code to add weak task pointers is present but not invoked. Change update_task_table to true if needed...
  */
-template <typename T>	
-class CGROUP1_BASE 
+template <typename T, bool is_v1>	
+class CGROUP_BASE 
 {
 public :	
 	std::string				pathname;
-	CGROUP1_TYPES_E				type;
+	CGROUP_TYPES_E				type;
 	const char				*ptypestr;
 	
 	bool					is_root_cgroup;
@@ -57,9 +59,9 @@ public :
 	gy_atomic<time_t>			last_task_time			{0};
 	gy_atomic<size_t>			approx_task_count		{0};		
 
-	CGROUP1_BASE()				= delete;
+	CGROUP_BASE()				= delete;
 
-	CGROUP1_BASE(CGROUP1_TYPES_E type, const char *ptypestr) 
+	CGROUP_BASE(CGROUP_TYPES_E type, const char *ptypestr) 
 		: type(type), ptypestr(ptypestr), is_root_cgroup(false), is_top_parent(false), last_task_time(0)
 	{
 		if (update_task_table) {
@@ -67,7 +69,7 @@ public :
 		}	
 	}
 	
-	CGROUP1_BASE(CGROUP1_TYPES_E type, const char *ptypestr, const char *pdir, bool is_top_parent) 
+	CGROUP_BASE(CGROUP_TYPES_E type, const char *ptypestr, const char *pdir, bool is_top_parent) 
 		: pathname(pdir), type(type), ptypestr(ptypestr), is_root_cgroup(0 == strcmp(pdir, "/")), is_top_parent(is_top_parent), last_task_time(0)
 	{ 
 		if (update_task_table) {
@@ -75,19 +77,19 @@ public :
 		}	
 	}  
 
-	CGROUP1_BASE(const CGROUP1_BASE &other)				= default;
+	CGROUP_BASE(const CGROUP_BASE &other)				= default;
 
-	CGROUP1_BASE(CGROUP1_BASE && other) noexcept			= default;
+	CGROUP_BASE(CGROUP_BASE && other) noexcept			= default;
 	
-	CGROUP1_BASE & operator= (const CGROUP1_BASE &other)		= default;
+	CGROUP_BASE & operator= (const CGROUP_BASE &other)		= default;
 
-	CGROUP1_BASE & operator= (CGROUP1_BASE && other) noexcept	= default;
+	CGROUP_BASE & operator= (CGROUP_BASE && other) noexcept		= default;
 
-	~CGROUP1_BASE() noexcept 					= default;
+	~CGROUP_BASE() noexcept 					= default;
 
 	const char * get_dir_path() const noexcept
 	{
-		return pathname.c_str();
+		return pathname.data();
 	}
 
 	T * get_derived_ptr() const noexcept
@@ -108,7 +110,7 @@ public :
 
 		last_task_time.store(tcurr, std::memory_order_relaxed);
 
-		CONDEXEC(DEBUGEXECN(15, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Added task PID %d to cgroupv1 %s : dir %s\n", pid, ptypestr, pathname.c_str());););
+		CONDEXEC(DEBUGEXECN(15, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Added task PID %d to cgroup %s : dir %s\n", pid, ptypestr, pathname.data());););
 		return 0;
 	}	
 
@@ -124,7 +126,7 @@ public :
 			approx_task_count.fetch_sub_relaxed_0(1);
 		}	
 
-		CONDEXEC(DEBUGEXECN(15, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Deleted task PID %d from cgroupv1 %s : dir %s\n", pid, ptypestr, pathname.c_str());););
+		CONDEXEC(DEBUGEXECN(15, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Deleted task PID %d from cgroup %s : dir %s\n", pid, ptypestr, pathname.data());););
 
 		return 0;
 	}	
@@ -181,8 +183,8 @@ public :
 					
 		if (ret > 0) {
 			DEBUGEXECN(1, 
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Deleted %d exited tasks out of %lu total tasks from cgroupv1 %s : dir %s\n", 
-					ret, ntasks, ptypestr, pathname.c_str());
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Deleted %d exited tasks out of %lu total tasks from cgroup %s : dir %s\n", 
+					ret, ntasks, ptypestr, pathname.data());
 			);
 		}	
 
@@ -210,6 +212,11 @@ public :
 		return update_task_table && bool(tasktable) && tasktable->is_init();
 	}	
 
+	static constexpr bool is_cgroupv1() noexcept
+	{
+		return is_v1;
+	}
+
 	size_t get_approx_task_count() const noexcept
 	{
 		if (false == is_task_table_valid()) {
@@ -220,22 +227,135 @@ public :
 	}	
 };	
 
+
+class CGROUP2;
+
+using RCU_HASH_CGROUP2_ELEM		= RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<CGROUP2>>;
+using RCU_CGROUP2_HASHTBL		= RCU_HASH_TABLE<RCU_KEY_CHAR_POINTER, RCU_HASH_CGROUP2_ELEM>;
+
+class CGROUP2 : public CGROUP_BASE<CGROUP2, false>
+{
+public :	
+	std::atomic<RCU_CGROUP2_HASHTBL *>	pchildtable;
+		
+	std::weak_ptr<CGROUP2>			weak_parent;			// Immediate parent
+	std::weak_ptr<CGROUP2>			weak_top_parent;		// Top non-root parent 
+
+	const CGROUP_INT<CGROUP2, RCU_CGROUP2_HASHTBL, false> 		*pcghandle;
+	
+	struct ALL_STATS
+	{
+		uint64_t			cpu_tclock			{0};	
+
+		int				nr_periods			{0};
+		int				nr_throttled			{0};
+		double				throttled_pct			{0};
+		uint64_t			throttled_usec			{0};
+
+		int64_t				cfs_period_us			{0};
+		int64_t				cfs_quota_us			{0};
+		int				cfs_bw_pct			{0};
+		bool				is_cfs_bw_limited		{false};
+
+		uint64_t			cpuset_tclock			{0};	
+		CPU_CORES_BITSET		cpus_allowed;
+		MEM_NODE_BITSET			mems_allowed;	
+
+		uint64_t			memory_tclock			{0};	
+		uint64_t			rss_current			{0};
+		uint64_t			rss_limit			{0};
+		uint8_t				pct_rss_curr			{0};
+		bool				is_memory_limited		{false};
+	};	
+
+	ALL_STATS				stats;
+	
+	bool					cpu_cg_enabled		{false};
+	bool					cpuset_cg_enabled	{false};
+	bool					mem_cg_enabled		{false};
+
+	CGROUP2() 
+		: CGROUP_BASE<CGROUP2, false>(CG2_TYPE, "cgroupv2"), pchildtable(nullptr), pcghandle(nullptr)
+	{}
+		
+	CGROUP2(const char *pdir, CGROUP_INT<CGROUP2, RCU_CGROUP2_HASHTBL, false> *pcghandle, \
+			const std::weak_ptr<CGROUP2> &parent, const std::weak_ptr<CGROUP2> &top_parent, bool is_top_parent) 
+		 :
+		 CGROUP_BASE<CGROUP2, false>(CG2_TYPE, "cgroupv2", pdir, is_top_parent), 
+		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle) 
+	{
+		verify_info();
+	}
+
+	CGROUP2(const CGROUP2 &other)			= delete;
+
+	CGROUP2(CGROUP2 && other) 			= delete;
+
+	CGROUP2 & operator= (const CGROUP2 &other)	= delete;
+
+	CGROUP2 & operator= (CGROUP2 && other)		= delete;
+
+	~CGROUP2()
+	{
+		// Relaxed access since all cg accesses through a shared_ptr
+		auto pc = pchildtable.load(std::memory_order_relaxed);
+
+		if (pc) {
+			pchildtable.store(nullptr, std::memory_order_relaxed);
+			delete pc;
+		}	
+	}	
+
+	int update_all_stats() noexcept;
+
+	int verify_info() noexcept;
+
+	bool is_cpu_throttled_cgroup() const noexcept
+	{
+		return stats.is_cfs_bw_limited;
+	}	
+
+	uint64_t get_throttled_nsec(int64_t curr_clock_nsec = get_nsec_clock()) const noexcept
+	{
+		if (curr_clock_nsec - (int64_t)stats.cpu_tclock < CG_STATS_UPDATE_SEC * (int64_t)GY_NSEC_PER_SEC) {
+			return stats.throttled_usec * 1000;
+		}	
+
+		return 0;
+	}	
+
+	bool is_max_memory_limited() const noexcept
+	{
+		return stats.is_memory_limited;
+	}	
+
+	uint8_t get_rss_pct_used() const noexcept
+	{
+		return stats.pct_rss_curr;
+	}	
+
+	friend bool operator== (const std::shared_ptr<CGROUP2> & lhs, RCU_KEY_CHAR_POINTER dir) noexcept
+	{
+		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.data())));
+	}
+};
+
+
+
 class CGROUP1_CPUACCT;
 
 using RCU_HASH_CG_CPUACCT_ELEM			= RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<CGROUP1_CPUACCT>>;
 using RCU_CG_CPUACCT_HASHTBL			= RCU_HASH_TABLE<RCU_KEY_CHAR_POINTER, RCU_HASH_CG_CPUACCT_ELEM>;
 
-class CGROUP1_CPUACCT : public CGROUP1_BASE <CGROUP1_CPUACCT>
+class CGROUP1_CPUACCT : public CGROUP_BASE <CGROUP1_CPUACCT, true>
 {
 public :	
-	using CG_CPUACCT_HISTOGRAM		= GY_HISTOGRAM_DATA<int, HASH_10_5000, CG_HIST_LAST_STATS>;
-
 	gy_atomic<RCU_CG_CPUACCT_HASHTBL *>	pchildtable;
 		
 	std::weak_ptr<CGROUP1_CPUACCT>		weak_parent;
 	std::weak_ptr<CGROUP1_CPUACCT>		weak_top_parent;		// Top non-root parent 
 
-	const CGROUP1_INT<CGROUP1_CPUACCT, 	RCU_CG_CPUACCT_HASHTBL> 	*pcghandle;
+	const CGROUP_INT<CGROUP1_CPUACCT, RCU_CG_CPUACCT_HASHTBL, true> 	*pcghandle;
 	
 	struct CPUACCT_STATS
 	{
@@ -245,17 +365,16 @@ public :
 	};	
 
 	CPUACCT_STATS				stats;
-	CG_CPUACCT_HISTOGRAM			*phistcpu;
 
 	CGROUP1_CPUACCT() 
-		: CGROUP1_BASE<CGROUP1_CPUACCT>(CG_TYPE_CPUACCT, "cpuacct"), pchildtable(nullptr), pcghandle(nullptr), phistcpu(nullptr)
+		: CGROUP_BASE<CGROUP1_CPUACCT, true>(CG1_TYPE_CPUACCT, "cpuacct"), pchildtable(nullptr), pcghandle(nullptr)
 	{}
 		
-	CGROUP1_CPUACCT(const char *pdir, CGROUP1_INT<CGROUP1_CPUACCT, RCU_CG_CPUACCT_HASHTBL> *pcghandle, \
+	CGROUP1_CPUACCT(const char *pdir, CGROUP_INT<CGROUP1_CPUACCT, RCU_CG_CPUACCT_HASHTBL, true> *pcghandle, \
 		const std::weak_ptr<CGROUP1_CPUACCT> &parent, const std::weak_ptr<CGROUP1_CPUACCT> & top_parent, bool is_top_parent) 
 		 :
-		 CGROUP1_BASE<CGROUP1_CPUACCT>(CG_TYPE_CPUACCT, "cpuacct", pdir, is_top_parent), 
-		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle), phistcpu(nullptr) 
+		 CGROUP_BASE<CGROUP1_CPUACCT, true>(CG1_TYPE_CPUACCT, "cpuacct", pdir, is_top_parent), 
+		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle)
 	{
 		verify_info();
 	}
@@ -270,16 +389,12 @@ public :
 
 	~CGROUP1_CPUACCT()
 	{
+		// Relaxed access since all cg accesses through a shared_ptr
 		auto pc = pchildtable.load(std::memory_order_relaxed);
 
 		if (pc) {
-			delete pc;
 			pchildtable.store(nullptr, std::memory_order_relaxed);
-		}	
-
-		if (GY_READ_ONCE(phistcpu)) {
-			delete phistcpu;
-			phistcpu = nullptr;
+			delete pc;
 		}	
 	}	
 
@@ -292,7 +407,7 @@ public :
 
 	friend bool operator== (const std::shared_ptr<CGROUP1_CPUACCT> &lhs, RCU_KEY_CHAR_POINTER dir) noexcept
 	{
-		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.c_str())));
+		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.data())));
 	}
 };	
 
@@ -302,17 +417,15 @@ class CGROUP1_CPU;
 using RCU_HASH_CG_CPU_ELEM		= RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<CGROUP1_CPU>>;
 using RCU_CG_CPU_HASHTBL		= RCU_HASH_TABLE<RCU_KEY_CHAR_POINTER, RCU_HASH_CG_CPU_ELEM>;
 
-class CGROUP1_CPU : public CGROUP1_BASE<CGROUP1_CPU>
+class CGROUP1_CPU : public CGROUP_BASE<CGROUP1_CPU, true>
 {
 public :	
-	using CG_CPU_HISTOGRAM			= GY_HISTOGRAM_DATA<int, PERCENT_HASH, CG_HIST_LAST_STATS>;
-
 	std::atomic<RCU_CG_CPU_HASHTBL *>	pchildtable;
 		
 	std::weak_ptr<CGROUP1_CPU>		weak_parent;			// Immediate parent
 	std::weak_ptr<CGROUP1_CPU>		weak_top_parent;		// Top non-root parent 
 
-	const CGROUP1_INT<CGROUP1_CPU, 		RCU_CG_CPU_HASHTBL> 	*pcghandle;
+	const CGROUP_INT<CGROUP1_CPU, RCU_CG_CPU_HASHTBL, true> 	*pcghandle;
 	
 	struct CPU_STATS
 	{
@@ -343,17 +456,16 @@ public :
 	};	
 
 	CPU_STATS				stats;
-	CG_CPU_HISTOGRAM			*phistcpu;
 
 	CGROUP1_CPU() 
-		: CGROUP1_BASE<CGROUP1_CPU>(CG_TYPE_CPU, "cpu"), pchildtable(nullptr), pcghandle(nullptr), phistcpu(nullptr)
-	{ }
+		: CGROUP_BASE<CGROUP1_CPU, true>(CG1_TYPE_CPU, "cpu"), pchildtable(nullptr), pcghandle(nullptr)
+	{}
 		
-	CGROUP1_CPU(const char *pdir, CGROUP1_INT<CGROUP1_CPU, RCU_CG_CPU_HASHTBL> *pcghandle, \
+	CGROUP1_CPU(const char *pdir, CGROUP_INT<CGROUP1_CPU, RCU_CG_CPU_HASHTBL, true> *pcghandle, \
 			const std::weak_ptr<CGROUP1_CPU> &parent, const std::weak_ptr<CGROUP1_CPU> &top_parent, bool is_top_parent) 
 		 :
-		 CGROUP1_BASE<CGROUP1_CPU>(CG_TYPE_CPU, "cpu", pdir, is_top_parent), 
-		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle), phistcpu(nullptr) 
+		 CGROUP_BASE<CGROUP1_CPU, true>(CG1_TYPE_CPU, "cpu", pdir, is_top_parent), 
+		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle)
 	{
 		verify_info();
 	}
@@ -368,16 +480,12 @@ public :
 
 	~CGROUP1_CPU()
 	{
+		// Relaxed access since all cg accesses through a shared_ptr
 		auto pc = pchildtable.load(std::memory_order_relaxed);
 
 		if (pc) {
-			delete pc;
 			pchildtable.store(nullptr, std::memory_order_relaxed);
-		}	
-
-		if (GY_READ_ONCE(phistcpu)) {
-			delete phistcpu;
-			phistcpu = nullptr;
+			delete pc;
 		}	
 	}	
 
@@ -401,7 +509,7 @@ public :
 
 	friend bool operator== (const std::shared_ptr<CGROUP1_CPU> & lhs, RCU_KEY_CHAR_POINTER dir) noexcept
 	{
-		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.c_str())));
+		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.data())));
 	}
 };
 
@@ -410,7 +518,7 @@ class CGROUP1_CPUSET;
 using RCU_HASH_CG_CPUSET_ELEM			= RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<CGROUP1_CPUSET>>;
 using RCU_CG_CPUSET_HASHTBL			= RCU_HASH_TABLE<RCU_KEY_CHAR_POINTER, RCU_HASH_CG_CPUSET_ELEM>;
 
-class CGROUP1_CPUSET : public CGROUP1_BASE<CGROUP1_CPUSET>
+class CGROUP1_CPUSET : public CGROUP_BASE<CGROUP1_CPUSET, true>
 {
 public :	
 	std::atomic<RCU_CG_CPUSET_HASHTBL *>	pchildtable;
@@ -418,7 +526,7 @@ public :
 	std::weak_ptr<CGROUP1_CPUSET>		weak_parent;			// Immediate parent
 	std::weak_ptr<CGROUP1_CPUSET>		weak_top_parent;		// Top non-root parent 
 
-	CGROUP1_INT<CGROUP1_CPUSET, 		RCU_CG_CPUSET_HASHTBL> 	*pcghandle;
+	CGROUP_INT<CGROUP1_CPUSET, RCU_CG_CPUSET_HASHTBL, true> 	*pcghandle;
 	
 	struct CPUSET_STATS
 	{
@@ -426,8 +534,6 @@ public :
 		MEM_NODE_BITSET			mems_allowed;	
 
 		uint64_t			tupdateclock			{0};	
-
-		int				sched_relax_domain_level	{0};
 
 		bool				cpu_exclusive			{false};
 		bool				mem_exclusive			{false};
@@ -463,13 +569,13 @@ public :
 	CPUSET_STATS				stats;
 
 	CGROUP1_CPUSET() 
-		: CGROUP1_BASE<CGROUP1_CPUSET>(CG_TYPE_CPU, "cpuset"), pchildtable(nullptr), pcghandle(nullptr)
+		: CGROUP_BASE<CGROUP1_CPUSET, true>(CG1_TYPE_CPU, "cpuset"), pchildtable(nullptr), pcghandle(nullptr)
 	{}
 		
-	CGROUP1_CPUSET(const char *pdir, CGROUP1_INT<CGROUP1_CPUSET, RCU_CG_CPUSET_HASHTBL> *pcghandle, \
+	CGROUP1_CPUSET(const char *pdir, CGROUP_INT<CGROUP1_CPUSET, RCU_CG_CPUSET_HASHTBL, true> *pcghandle, \
 		const std::weak_ptr<CGROUP1_CPUSET> &parent, const std::weak_ptr<CGROUP1_CPUSET> &top_parent, bool is_top_parent) 
 		 :
-		 CGROUP1_BASE<CGROUP1_CPUSET>(CG_TYPE_CPUSET, "cpuset", pdir, is_top_parent), 
+		 CGROUP_BASE<CGROUP1_CPUSET, true>(CG1_TYPE_CPUSET, "cpuset", pdir, is_top_parent), 
 		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle) 
 	{
 		verify_info();
@@ -485,11 +591,12 @@ public :
 
 	~CGROUP1_CPUSET()
 	{
+		// Relaxed access since all cg accesses through a shared_ptr
 		auto pc = pchildtable.load(std::memory_order_relaxed);
 
 		if (pc) {
-			delete pc;
 			pchildtable.store(nullptr, std::memory_order_relaxed);
+			delete pc;
 		}	
 	}	
 
@@ -497,7 +604,7 @@ public :
 
 	friend bool operator== (const std::shared_ptr<CGROUP1_CPUSET> & lhs, RCU_KEY_CHAR_POINTER dir) noexcept
 	{
-		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.c_str())));
+		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.data())));
 	}
 };
 
@@ -506,17 +613,15 @@ class CGROUP1_MEMORY;
 using RCU_HASH_CG_MEMORY_ELEM			= RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<CGROUP1_MEMORY>>;
 using RCU_CG_MEMORY_HASHTBL			= RCU_HASH_TABLE<RCU_KEY_CHAR_POINTER, RCU_HASH_CG_MEMORY_ELEM>;
 
-class CGROUP1_MEMORY : public CGROUP1_BASE<CGROUP1_MEMORY>
+class CGROUP1_MEMORY : public CGROUP_BASE<CGROUP1_MEMORY, true>
 {
 public :	
-	using CG_MEMORY_HISTOGRAM		= GY_HISTOGRAM_DATA<int, SEMI_LOG_HASH, CG_HIST_LAST_STATS>;
-
 	std::atomic<RCU_CG_MEMORY_HASHTBL *>	pchildtable;
 		
 	std::weak_ptr<CGROUP1_MEMORY>		weak_parent;
 	std::weak_ptr<CGROUP1_MEMORY>		weak_top_parent;		// Top non-root parent 
 
-	const CGROUP1_INT<CGROUP1_MEMORY, 	RCU_CG_MEMORY_HASHTBL> 	*pcghandle;
+	const CGROUP_INT<CGROUP1_MEMORY, RCU_CG_MEMORY_HASHTBL, true> 	*pcghandle;
 	
 	struct MEMORY_STATS
 	{
@@ -544,17 +649,16 @@ public :
 	};	
 
 	MEMORY_STATS				stats;
-	CG_MEMORY_HISTOGRAM			*phistmem;
 
 	CGROUP1_MEMORY() 
-		: CGROUP1_BASE<CGROUP1_MEMORY>(CG_TYPE_MEMORY, "memory"), pchildtable(nullptr), pcghandle(nullptr), phistmem(nullptr)
-	{ }
+		: CGROUP_BASE<CGROUP1_MEMORY, true>(CG1_TYPE_MEMORY, "memory"), pchildtable(nullptr), pcghandle(nullptr)
+	{}
 		
-	CGROUP1_MEMORY(const char *pdir, CGROUP1_INT<CGROUP1_MEMORY, RCU_CG_MEMORY_HASHTBL> *pcghandle, \
+	CGROUP1_MEMORY(const char *pdir, CGROUP_INT<CGROUP1_MEMORY, RCU_CG_MEMORY_HASHTBL, true> *pcghandle, \
 		const std::weak_ptr<CGROUP1_MEMORY> &parent, const std::weak_ptr<CGROUP1_MEMORY> &top_parent, bool is_top_parent) 
 		 :
-		 CGROUP1_BASE<CGROUP1_MEMORY>(CG_TYPE_MEMORY, "memory", pdir, is_top_parent), 
-		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle), phistmem(nullptr) 
+		 CGROUP_BASE<CGROUP1_MEMORY, true>(CG1_TYPE_MEMORY, "memory", pdir, is_top_parent), 
+		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle)
 	{ 
 		verify_info();
 	}
@@ -569,16 +673,12 @@ public :
 
 	~CGROUP1_MEMORY()
 	{
+		// Relaxed access since all cg accesses through a shared_ptr
 		auto pc = pchildtable.load(std::memory_order_relaxed);
 
 		if (pc) {
-			delete pc;
 			pchildtable.store(nullptr, std::memory_order_relaxed);
-		}	
-
-		if (GY_READ_ONCE(phistmem)) {
-			delete phistmem;
-			phistmem = nullptr;
+			delete pc;
 		}	
 	}	
 
@@ -598,7 +698,7 @@ public :
 
 	friend bool operator== (const std::shared_ptr<CGROUP1_MEMORY> &lhs, RCU_KEY_CHAR_POINTER dir) noexcept
 	{
-		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.c_str())));
+		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.data())));
 	}
 };	
 
@@ -607,17 +707,15 @@ class CGROUP1_BLKIO;
 using RCU_HASH_CG_BLKIO_ELEM			= RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<CGROUP1_BLKIO>>;
 using RCU_CG_BLKIO_HASHTBL			= RCU_HASH_TABLE<RCU_KEY_CHAR_POINTER, RCU_HASH_CG_BLKIO_ELEM>;
 
-class CGROUP1_BLKIO : public CGROUP1_BASE<CGROUP1_BLKIO>
+class CGROUP1_BLKIO : public CGROUP_BASE<CGROUP1_BLKIO, true>
 {
 public :	
-	using CG_BLKIO_HISTOGRAM		= GY_HISTOGRAM_DATA<int, SEMI_LOG_HASH, CG_HIST_LAST_STATS>;
-
 	std::atomic<RCU_CG_BLKIO_HASHTBL *>	pchildtable;
 		
 	std::weak_ptr<CGROUP1_BLKIO>		weak_parent;
 	std::weak_ptr<CGROUP1_BLKIO>		weak_top_parent;		// Top non-root parent 
 
-	const CGROUP1_INT<CGROUP1_BLKIO, 	RCU_CG_BLKIO_HASHTBL> 	*pcghandle;
+	const CGROUP_INT<CGROUP1_BLKIO, RCU_CG_BLKIO_HASHTBL, true> 	*pcghandle;
 	
 	struct BLKIO_STATS
 	{
@@ -627,17 +725,16 @@ public :
 	};	
 
 	BLKIO_STATS				stats;
-	CG_BLKIO_HISTOGRAM			*phistblkio;
 
 	CGROUP1_BLKIO() 
-		: CGROUP1_BASE<CGROUP1_BLKIO>(CG_TYPE_BLKIO, "blkio"), pchildtable(nullptr), pcghandle(nullptr), phistblkio(nullptr)
-	{ }
+		: CGROUP_BASE<CGROUP1_BLKIO, true>(CG1_TYPE_BLKIO, "blkio"), pchildtable(nullptr), pcghandle(nullptr)
+	{}
 		
-	CGROUP1_BLKIO(const char *pdir, CGROUP1_INT<CGROUP1_BLKIO, RCU_CG_BLKIO_HASHTBL> *pcghandle, \
+	CGROUP1_BLKIO(const char *pdir, CGROUP_INT<CGROUP1_BLKIO, RCU_CG_BLKIO_HASHTBL, true> *pcghandle, \
 		const std::weak_ptr<CGROUP1_BLKIO> &parent, const std::weak_ptr<CGROUP1_BLKIO> &top_parent, bool is_top_parent) 
 		 :
-		 CGROUP1_BASE<CGROUP1_BLKIO>(CG_TYPE_BLKIO, "blkio", pdir, is_top_parent), 
-		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle), phistblkio(nullptr) 
+		 CGROUP_BASE<CGROUP1_BLKIO, true>(CG1_TYPE_BLKIO, "blkio", pdir, is_top_parent), 
+		 pchildtable(nullptr), weak_parent(parent), weak_top_parent(top_parent), pcghandle(pcghandle)
 	{ 
 		verify_info();
 	}
@@ -652,16 +749,12 @@ public :
 
 	~CGROUP1_BLKIO()
 	{
+		// Relaxed access since all cg accesses through a shared_ptr
 		auto pc = pchildtable.load(std::memory_order_relaxed);
 
 		if (pc) {
-			delete pc;
 			pchildtable.store(nullptr, std::memory_order_relaxed);
-		}	
-
-		if (GY_READ_ONCE(phistblkio)) {
-			delete phistblkio;
-			phistblkio = nullptr;
+			delete pc;
 		}	
 	}	
 
@@ -674,55 +767,8 @@ public :
 
 	friend bool operator== (const std::shared_ptr<CGROUP1_BLKIO> &lhs, RCU_KEY_CHAR_POINTER dir) noexcept
 	{
-		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.c_str())));
+		return (lhs && (0 == strcmp(dir.pdata, (*lhs).pathname.data())));
 	}
-};	
-
-class CG_CPU_ACCT
-{
-public :	
-	std::weak_ptr<CGROUP1_CPUACCT>		cgweak;
-	double					stat;		// Total CPU %
-	double					stat_user;
-	double					stat_sys;
-
-	CG_CPU_ACCT(std::weak_ptr<CGROUP1_CPUACCT> && weakp, double cpu_util_in, double cpu_user, double cpu_sys) noexcept : 
-		cgweak(std::move(weakp)), stat(cpu_util_in), stat_user(cpu_user), stat_sys(cpu_sys)
-	{}
-	
-	CG_CPU_ACCT(const CG_CPU_ACCT & other) noexcept 			= default;
-	CG_CPU_ACCT(CG_CPU_ACCT && other) noexcept 				= default;
-	CG_CPU_ACCT & operator= (const CG_CPU_ACCT & other) noexcept		= default; 
-	CG_CPU_ACCT & operator= (CG_CPU_ACCT && other) noexcept 		= default;
-};	
-
-class CG_CPU_THROTTLE
-{
-public :	
-	std::weak_ptr<CGROUP1_CPU>		cgweak;
-	int					stat;		// nr_throttled
-	int					stat_periods;
-	uint64_t				stat_throttled_time;
-
-	CG_CPU_THROTTLE(std::weak_ptr<CGROUP1_CPU> && weakp, int nr_throttled, int nr_periods, uint64_t throttled_time) noexcept : 
-		cgweak(std::move(weakp)), stat(nr_throttled), stat_periods(nr_periods), stat_throttled_time(throttled_time)
-	{}
-	
-	CG_CPU_THROTTLE(const CG_CPU_THROTTLE & other) noexcept				= default;
-	CG_CPU_THROTTLE(CG_CPU_THROTTLE && other) noexcept 				= default;
-	CG_CPU_THROTTLE & operator= (const CG_CPU_THROTTLE & other) noexcept		= default;
-	CG_CPU_THROTTLE & operator= (CG_CPU_THROTTLE && other) noexcept 		= default;
-};	
-
-
-template <typename T>
-class CG_STAT_COMP
-{
-public :	
-	bool operator() (const T & lhs, const T & rhs) const noexcept
-	{
-		return lhs.stat > rhs.stat;
-	}	
 };	
 
 class CGROUP1_GLOB_STATS
@@ -734,10 +780,11 @@ public :
 	bool					memory_use_hierarchy	{false};
 };	
 
+
 class CGROUP_HANDLE;
 
-template <typename T, typename RTABLE>
-class CGROUP1_INT
+template <typename T, typename RTABLE, bool is_v1>
+class CGROUP_INT
 {
 public :	
 	using WRAP_T				= RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<T>>;
@@ -751,7 +798,7 @@ public :
 	CGROUP1_GLOB_STATS			stats;
 	std::atomic<bool>			is_init_completed;
 	
-	CGROUP1_INT(const char *pdir_cg, const char *pcgtype, CGROUP_HANDLE *phandle, bool is_hierarchical)
+	CGROUP_INT(const char *pdir_cg, const char *pcgtype, CGROUP_HANDLE *phandle, bool is_hierarchical)
 		: fd_cg_root(-1), pglobhandle(phandle), pcgtype(pcgtype), is_hierarchical(is_hierarchical), is_init_completed(false)
 	{
 		if (pdir_cg && *pdir_cg) {
@@ -782,7 +829,7 @@ public :
 		}	
 	}		
 
-	~CGROUP1_INT()
+	~CGROUP_INT()
 	{
 		if (fd_cg_root > 0) {
 			close(fd_cg_root);
@@ -862,7 +909,7 @@ public :
 				return CB_DELETE_ELEM;
 			}
 
-			snprintf(buf, sizeof(buf), "./%s", praw->pathname.c_str());
+			snprintf(buf, sizeof(buf), "./%s", praw->pathname.data());
 			ret = fstatat(fd, buf, &stat1, AT_NO_AUTOMOUNT);
 
 			if ((ret == 0) || (errno == ENOMEM)) {
@@ -882,14 +929,14 @@ public :
 				return CB_OK;
 			}
 					
-			DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_YELLOW, "Deleting cgroup1 dir %s for %s as it no longer exists...\n", buf, praw->ptypestr););
+			DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_YELLOW, "Deleting cgroup dir %s for %s as it no longer exists...\n", buf, praw->ptypestr););
 
 			return CB_DELETE_ELEM;
 		};	
 
 		auto sret = ptbl->walk_hash_table(dir_lambda); 	
 
-		DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA_UNDERLINE, "Total number of subdirs in cgroup1 %s is %lu\n", pcgtype, sret);); 
+		DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA_UNDERLINE, "Total number of subdirs in cgroup %s is %lu\n", pcgtype, sret);); 
 		return sret;
 	}
 
@@ -993,7 +1040,7 @@ public :
 			}	
 		}
 
-		DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Creating new cgroup1 %s dir %s\n", pcgtype, pcgdir););
+		DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Creating new cgroup %s dir %s\n", pcgtype, pcgdir););
 
 		if (is_hierarchical == false) {
 			// Just add this directory directly without adding any preceding parent dirs
@@ -1066,7 +1113,7 @@ public :
 				continue;
 			}
 
-			CONDEXEC(DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Creating new subdir for cgroup1 %s dir %s\n", pcgtype, dirfull);););
+			CONDEXEC(DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Creating new subdir for cgroup %s dir %s\n", pcgtype, dirfull);););
 
 			prawparent		= shrp.get();
 
@@ -1156,19 +1203,28 @@ public :
 	{
 		return pcgtype;
 	}	
+
+	static constexpr bool is_cgroupv1() noexcept
+	{
+		return is_v1;
+	}
+
 };
 
 class CGROUP_HANDLE
 {
 public :	
-	const CPU_MEM_INFO 				* const	pgcpumem;
-	CGROUP1_INT<CGROUP1_CPUACCT, RCU_CG_CPUACCT_HASHTBL>	cpuacct_cg;
-	CGROUP1_INT<CGROUP1_CPU, RCU_CG_CPU_HASHTBL>		cpu_cg;
-	CGROUP1_INT<CGROUP1_CPUSET, RCU_CG_CPUSET_HASHTBL>	cpuset_cg;
-	CGROUP1_INT<CGROUP1_MEMORY, RCU_CG_MEMORY_HASHTBL>	memory_cg;
-	CGROUP1_INT<CGROUP1_BLKIO, RCU_CG_BLKIO_HASHTBL>	blkio_cg;
+	const CPU_MEM_INFO 					* const	pgcpumem;
+
+	CGROUP_INT<CGROUP1_CPUACCT, RCU_CG_CPUACCT_HASHTBL, true>	cpuacct_cg;
+	CGROUP_INT<CGROUP1_CPU, RCU_CG_CPU_HASHTBL, true>		cpu_cg;
+	CGROUP_INT<CGROUP1_CPUSET, RCU_CG_CPUSET_HASHTBL, true>		cpuset_cg;
+	CGROUP_INT<CGROUP1_MEMORY, RCU_CG_MEMORY_HASHTBL, true>		memory_cg;
+	CGROUP_INT<CGROUP1_BLKIO, RCU_CG_BLKIO_HASHTBL, true>		blkio_cg;
+
+	CGROUP_INT<CGROUP2, RCU_CGROUP2_HASHTBL, false>			cgroup2_cg;
 	
-	CGROUP_HANDLE(const char *pdir_cpuacct, const char *pdir_cpu, const char *pdir_cpuset, const char *pdir_memory, const char *pdir_blkio)
+	CGROUP_HANDLE(const char *pdir_cpuacct, const char *pdir_cpu, const char *pdir_cpuset, const char *pdir_memory, const char *pdir_blkio, const char *pdir_cgroup2)
 		: 
 		pgcpumem(
 		({
@@ -1183,13 +1239,12 @@ public :
 		cpu_cg(pdir_cpu, "cpu", this, true /* is_hierarchical */),
 		cpuset_cg(pdir_cpuset, "cpuset", this, false /* is_hierarchical */),
 		memory_cg(pdir_memory, "memory", this, true /* is_hierarchical */),
-		blkio_cg(pdir_blkio, "blkio", this, false /* is_hierarchical */)
+		blkio_cg(pdir_blkio, "blkio", this, false /* is_hierarchical */),
+		cgroup2_cg(pdir_cgroup2, "cgroupv2", this, true /* is_hierarchical */)
 	{}	
 
 	std::shared_ptr <CGROUP1_CPUACCT> 	add_task_to_cpuacct(const char *pcgdir, const std::weak_ptr<TASK_STAT> & weaktask, pid_t pid, time_t tcurr = time(nullptr))
 	{
-		/*GY_MT_COLLECT_PROFILE(10000, "add task to cgroup cpuacct");	*/
-
 		return cpuacct_cg.add_task_to_cg(pcgdir, weaktask, pid, tcurr);
 	}	
 
@@ -1211,6 +1266,11 @@ public :
 	std::shared_ptr <CGROUP1_BLKIO> 	add_task_to_blkio(const char *pcgdir, const std::weak_ptr<TASK_STAT> & weaktask, pid_t pid, time_t tcurr = time(nullptr))
 	{
 		return blkio_cg.add_task_to_cg(pcgdir, weaktask, pid, tcurr);
+	}	
+
+	std::shared_ptr <CGROUP2> 		add_task_to_cgroup2(const char *pcgdir, const std::weak_ptr<TASK_STAT> & weaktask, pid_t pid, time_t tcurr = time(nullptr))
+	{
+		return cgroup2_cg.add_task_to_cg(pcgdir, weaktask, pid, tcurr);
 	}	
 
 
@@ -1239,6 +1299,10 @@ public :
 		return blkio_cg.set_new_mount_root(pdir_cg);
 	}	
 
+	int set_new_mount_root_cgroup2(const char *pdir_cg) noexcept
+	{
+		return cgroup2_cg.set_new_mount_root(pdir_cg);
+	}	
 
 	int mkdir_cpuacct(const char *pcgdir) noexcept
 	{
@@ -1305,6 +1369,19 @@ public :
 		return -1;	
 	}	
 
+	int mkdir_cgroup2(const char *pcgdir) noexcept
+	{
+		try {
+			auto 	shrp = cgroup2_cg.get_cg_from_dir(pcgdir, true /* mkdir_if_none */);
+			if (shrp) {
+				return 0;
+			}
+		}
+		GY_CATCH_EXCEPTION(ERRORPRINT_OFFLOAD("Exception caught while creating new cgroup2 subdir at path %s : %s\n", pcgdir, GY_GET_EXCEPT_STRING););
+					
+		return -1;	
+	}	
+
 	int get_cpu_usage() noexcept;
 
 	int get_cpu_throttle_stats() noexcept;
@@ -1312,6 +1389,8 @@ public :
 	int get_mem_usage() noexcept;
 
 	int get_blkio_usage() noexcept;
+
+	int get_cgroup2_stats() noexcept;
 
 	void verify_dirs() noexcept
 	{
@@ -1326,7 +1405,7 @@ public :
 			memory_cg.cg_verify_dirs();
 			blkio_cg.cg_verify_dirs();
 
-			// TODO Add cgroup2
+			cgroup2_cg.cg_verify_dirs();
 		}
 		GY_CATCH_EXCEPTION(ERRORPRINT_OFFLOAD("Exception caught while verifying cgroup directories : %s\n", GY_GET_EXCEPT_STRING););
 	}
@@ -1343,6 +1422,8 @@ public :
 			cpuset_cg.cg_verify_procs();
 			memory_cg.cg_verify_procs();
 			blkio_cg.cg_verify_procs();
+
+			cgroup2_cg.cg_verify_procs();
 		}
 		GY_CATCH_EXCEPTION(ERRORPRINT_OFFLOAD("Exception caught while verifying cgroup processes : %s\n", GY_GET_EXCEPT_STRING););
 	}

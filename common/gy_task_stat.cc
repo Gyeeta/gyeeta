@@ -1172,7 +1172,7 @@ int TASK_STAT::set_task_cgroups(int proc_dir_fd) noexcept
 {
 	try {
 		int			ret;
-		const char 		*pcglist[] = {"cpuacct", "cpu", "cpuset", "memory", "blkio"};
+		const char 		*pcglist[] = {"cpu", "cpuset", "memory"};
 		char			pdirbuf[GY_ARRAY_SIZE(pcglist) * GY_PATH_MAX + 512];
 
 		auto pcgroup = CGROUP_HANDLE::get_singleton();
@@ -1192,7 +1192,9 @@ int TASK_STAT::set_task_cgroups(int proc_dir_fd) noexcept
 
 		ret = get_proc_cgroups(task_pid, pcglist, pdircg1, maxcg1sz, GY_ARRAY_SIZE(pcglist), pdircg2, sizeof(pdircg2) - 1, proc_dir_fd);
 		if (ret <= 0) {
-			DEBUGEXECN(20, PERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get cgroup paths for PID %d", this->task_pid););
+			CONDEXEC(
+				DEBUGEXECN(20, PERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get cgroup paths for PID %d", this->task_pid););
+			);	
 			return -1;
 		}	
 		
@@ -1200,41 +1202,32 @@ int TASK_STAT::set_task_cgroups(int proc_dir_fd) noexcept
 		time_t			tcur = time(nullptr);	
 
 		if (pdircg1[0][0]) {
-			cg_cpuacct_shr = std::move(pcgroup->add_task_to_cpuacct(pdircg1[0], weakptr, task_pid, tcur));
-		}	
-		else {
-			cg_cpuacct_shr.reset();
-		}	
-		
-		if (pdircg1[1][0]) {
-			cg_cpu_shr = std::move(pcgroup->add_task_to_cpu(pdircg1[1], weakptr, task_pid, tcur));
+			cg_cpu_shr = std::move(pcgroup->add_task_to_cpu(pdircg1[0], weakptr, task_pid, tcur));
 		}	
 		else {
 			cg_cpu_shr.reset();
 		}	
 		
-		if (pdircg1[2][0]) {
-			cg_cpuset_shr = std::move(pcgroup->add_task_to_cpuset(pdircg1[2], weakptr, task_pid, tcur));
+		if (pdircg1[1][0]) {
+			cg_cpuset_shr = std::move(pcgroup->add_task_to_cpuset(pdircg1[1], weakptr, task_pid, tcur));
 		}	
 		else {
 			cg_cpuset_shr.reset();
 		}	
 
-		if (pdircg1[3][0]) {
-			cg_memory_shr = std::move(pcgroup->add_task_to_memory(pdircg1[3], weakptr, task_pid, tcur));
+		if (pdircg1[2][0]) {
+			cg_memory_shr = std::move(pcgroup->add_task_to_memory(pdircg1[2], weakptr, task_pid, tcur));
 		}	
 		else {
 			cg_memory_shr.reset();
 		}	
 
-		if (pdircg1[4][0]) {
-			cg_blkio_shr = std::move(pcgroup->add_task_to_blkio(pdircg1[4], weakptr, task_pid, tcur));
+		if (pdircg2) {
+			cg_2_shr = std::move(pcgroup->add_task_to_cgroup2(pdircg2, weakptr, task_pid, tcur));
 		}	
 		else {
-			cg_blkio_shr.reset();
+			cg_2_shr.reset();
 		}	
-
-		// XXX TODO Add cgroupv2 
 
 		cgroups_updated.store(true, std::memory_order_seq_cst);
 
@@ -1250,7 +1243,7 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 {
 	try {
 		int			ret;
-		const char 		*pcglist[] = {"cpuacct", "cpu", "cpuset", "memory", "blkio"};
+		const char 		*pcglist[] = {"cpu", "cpuset", "memory"};
 		char			pdirbuf[GY_ARRAY_SIZE(pcglist) * GY_PATH_MAX + 512];
 
 		if (cgroups_updated.load(std::memory_order_acquire) == false) {
@@ -1280,7 +1273,9 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 
 		ret = get_proc_cgroups(task_pid, pcglist, pdircg1, maxcg1sz, GY_ARRAY_SIZE(pcglist), pdircg2, sizeof(pdircg2) - 1, proc_dir_fd);
 		if (ret <= 0) {
-			DEBUGEXECN(20, PERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get cgroup paths for PID %d", this->task_pid););
+			CONDEXEC(
+				DEBUGEXECN(20, PERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get cgroup paths for PID %d", this->task_pid););
+			);	
 			return -1;
 		}	
 		
@@ -1290,31 +1285,9 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 		if (pdircg1[0][0]) {
 			bool		to_chg = true;
 
-			if (cg_cpuacct_shr) {
-				if (strcmp(cg_cpuacct_shr->get_dir_path(), pdircg1[0])) {
-					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d cpuacct cgroup path changed to %s\n", task_pid, pdircg1[0]););
-
-					cg_cpuacct_shr->delete_task(task_pid, tcur);
-				}
-				else {
-					to_chg = false;
-				}		
-			}	
-
-			if (to_chg) {
-				cg_cpuacct_shr = std::move(pcgroup->add_task_to_cpuacct(pdircg1[0], weakptr, task_pid, tcur));
-			}	
-		}	
-		else {
-			cg_cpuacct_shr.reset();
-		}	
-		
-		if (pdircg1[1][0]) {
-			bool		to_chg = true;
-
 			if (cg_cpu_shr) {
-				if (strcmp(cg_cpu_shr->get_dir_path(), pdircg1[1])) {
-					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d cpu cgroup path changed to %s\n", task_pid, pdircg1[1]););
+				if (strcmp(cg_cpu_shr->get_dir_path(), pdircg1[0])) {
+					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d cpu cgroup path changed to %s\n", task_pid, pdircg1[0]););
 
 					cg_cpu_shr->delete_task(task_pid, tcur);
 				}	
@@ -1324,19 +1297,19 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 			}	
 
 			if (to_chg) {
-				cg_cpu_shr = std::move(pcgroup->add_task_to_cpu(pdircg1[1], weakptr, task_pid, tcur));
+				cg_cpu_shr = std::move(pcgroup->add_task_to_cpu(pdircg1[0], weakptr, task_pid, tcur));
 			}	
 		}	
 		else {
 			cg_cpu_shr.reset();
 		}	
 		
-		if (pdircg1[2][0]) {
+		if (pdircg1[1][0]) {
 			bool		to_chg = true;
 
 			if (cg_cpuset_shr) {
-				if (strcmp(cg_cpuset_shr->get_dir_path(), pdircg1[2])) {
-					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d cpuset cgroup path changed to %s\n", task_pid, pdircg1[2]););
+				if (strcmp(cg_cpuset_shr->get_dir_path(), pdircg1[1])) {
+					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d cpuset cgroup path changed to %s\n", task_pid, pdircg1[1]););
 
 					cg_cpuset_shr->delete_task(task_pid, tcur);
 				}	
@@ -1346,7 +1319,7 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 			}	
 
 			if (to_chg) {
-				cg_cpuset_shr = std::move(pcgroup->add_task_to_cpuset(pdircg1[2], weakptr, task_pid, tcur));
+				cg_cpuset_shr = std::move(pcgroup->add_task_to_cpuset(pdircg1[1], weakptr, task_pid, tcur));
 
 				if (cg_cpuset_shr) {
 					ncpus_allowed		= cg_cpuset_shr->stats.cpus_allowed.count();
@@ -1358,12 +1331,12 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 			cg_cpuset_shr.reset();
 		}	
 
-		if (pdircg1[3][0]) {
+		if (pdircg1[2][0]) {
 			bool		to_chg = true;
 
 			if (cg_memory_shr) {
-				if (strcmp(cg_memory_shr->get_dir_path(), pdircg1[3])) {
-					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d memory cgroup path changed to %s\n", task_pid, pdircg1[3]););
+				if (strcmp(cg_memory_shr->get_dir_path(), pdircg1[2])) {
+					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d memory cgroup path changed to %s\n", task_pid, pdircg1[2]););
 
 					cg_memory_shr->delete_task(task_pid, tcur);
 				}	
@@ -1373,21 +1346,21 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 			}	
 
 			if (to_chg) {
-				cg_memory_shr = std::move(pcgroup->add_task_to_memory(pdircg1[3], weakptr, task_pid, tcur));
+				cg_memory_shr = std::move(pcgroup->add_task_to_memory(pdircg1[2], weakptr, task_pid, tcur));
 			}	
 		}	
 		else {
 			cg_memory_shr.reset();
 		}	
 
-		if (pdircg1[4][0]) {
+		if (pdircg2) {
 			bool		to_chg = true;
 
-			if (cg_blkio_shr) {
-				if (strcmp(cg_blkio_shr->get_dir_path(), pdircg1[4])) {
-					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d blkio cgroup path changed to %s\n", task_pid, pdircg1[4]););
+			if (cg_2_shr) {
+				if (strcmp(cg_2_shr->get_dir_path(), pdircg2)) {
+					DEBUGEXECN(1, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "PID %d cgroup2 path changed to %s\n", task_pid, pdircg2););
 
-					cg_blkio_shr->delete_task(task_pid, tcur);
+					cg_2_shr->delete_task(task_pid, tcur);
 				}	
 				else {
 					to_chg = false;
@@ -1395,15 +1368,18 @@ int TASK_STAT::upd_task_cgroup_on_change(int proc_dir_fd) noexcept
 			}	
 
 			if (to_chg) {
-				cg_blkio_shr = std::move(pcgroup->add_task_to_blkio(pdircg1[4], weakptr, task_pid, tcur));
+				cg_2_shr = std::move(pcgroup->add_task_to_cgroup2(pdircg2, weakptr, task_pid, tcur));
+
+				if (cg_2_shr) {
+					ncpus_allowed		= cg_2_shr->stats.cpus_allowed.count();
+					nmems_allowed		= cg_2_shr->stats.mems_allowed.count();
+				}	
 			}	
 		}	
 		else {
-			cg_blkio_shr.reset();
+			cg_2_shr.reset();
 		}	
-
-		// XXX TODO Add other cgroups and cgroupv2 
-
+		
 		return 0;
 	}
 	GY_CATCH_EXCEPTION(
@@ -1562,9 +1538,6 @@ int TASK_STAT::set_task_exited(int exit_code, TASK_KILL_INFO & kone) noexcept
 	if (cgroups_updated.load(std::memory_order_acquire) == true) {
 		tcursec = time(nullptr);
 
-		if (cg_cpuacct_shr) {
-			cg_cpuacct_shr->delete_task(task_pid, tcursec);
-		}	
 		if (cg_cpu_shr) {
 			cg_cpu_shr->delete_task(task_pid, tcursec);
 		}	
@@ -1574,8 +1547,8 @@ int TASK_STAT::set_task_exited(int exit_code, TASK_KILL_INFO & kone) noexcept
 		if (cg_memory_shr) {
 			cg_memory_shr->delete_task(task_pid, tcursec);
 		}	
-		if (cg_blkio_shr) {
-			cg_blkio_shr->delete_task(task_pid, tcursec);
+		if (cg_2_shr) {
+			cg_2_shr->delete_task(task_pid, tcursec);
 		}	
 	}
 
@@ -2102,12 +2075,10 @@ TASK_STAT::TASK_STAT(TASK_STAT *parent, pid_t pid, int proc_dir_fd, bool from_ma
 
 	if (from_main_thread && (true == parent->cgroups_updated.load(std::memory_order_acquire))) {
 #if 0
-		cg_cpuacct_shr		= parent->cg_cpuacct_shr;
 		cg_cpu_shr		= parent->cg_cpu_shr;
 		cg_cpuset_shr		= parent->cg_cpuset_shr;
 		cg_memory_shr		= parent->cg_memory_shr;
-		cg_blkio_shr		= parent->cg_blkio_shr;
-
+		cg_2_shr		= parent->cg_2_shr;
 #endif	
 		time_t			tcur = starttimeusec/GY_USEC_PER_SEC;
 
@@ -2115,9 +2086,6 @@ TASK_STAT::TASK_STAT(TASK_STAT *parent, pid_t pid, int proc_dir_fd, bool from_ma
 		 * Set cgroup changed flag
 		 * cgroup task table will be updated lazily later
 		 */
-		if (parent->cg_cpuacct_shr) {
-			parent->cg_cpuacct_shr->set_cgroup_updated(tcur);
-		}	
 		if (parent->cg_cpu_shr) {
 			parent->cg_cpu_shr->set_cgroup_updated(tcur);
 		}	
@@ -2127,8 +2095,8 @@ TASK_STAT::TASK_STAT(TASK_STAT *parent, pid_t pid, int proc_dir_fd, bool from_ma
 		if (parent->cg_memory_shr) {
 			parent->cg_memory_shr->set_cgroup_updated(tcur);
 		}	
-		if (parent->cg_blkio_shr) {
-			parent->cg_blkio_shr->set_cgroup_updated(tcur);
+		if (parent->cg_2_shr) {
+			parent->cg_2_shr->set_cgroup_updated(tcur);
 		}	
 	}
 

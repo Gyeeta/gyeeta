@@ -44,7 +44,7 @@ static const MOUNT_STRING_FLAGS 	gmount_fs_flags[] = {
 };
 
 /*
- * We currently use options2 only for cgroups...
+ * We currently use options2 only for cgroups (v1) ...
  */
 static const MOUNT_STRING_FLAGS 	gmount_option2_flags[] = {
 		{ "cpu",		MTYPE_CPU },
@@ -249,7 +249,7 @@ int gy_mount_virtual_fs(const char *fstype, const char *dest_dir, mode_t mode, b
 MOUNT_HDLR::MOUNT_HDLR(bool mount_proc_if_not, bool mount_sys_if_not, bool mount_tracefs_if_not)
 	:
 	mntid_sysfs(0), mntid_cg_cpu(0), mntid_cg_cpuacct(0), mntid_cg_cpuset(0), mntid_tracefs(0), 
-	mntid_cg_net_cls(0), mntid_cg_net_prio(0), mntid_cg_blkio(0), mntid_cg_memory(0),
+	mntid_cg_net_cls(0), mntid_cg_net_prio(0), mntid_cg_blkio(0), mntid_cg_memory(0), mntid_cgroup2(0),
 	proc_dir_fd(-1), sysfs_dir_fd(-1),
 	mount_proc_if_not(mount_proc_if_not), mount_sys_if_not(mount_sys_if_not), 
 	mount_tracefs_if_not(mount_tracefs_if_not), is_init(false), mount_info_errors(0)
@@ -685,6 +685,9 @@ uint32_t MOUNT_HDLR::populate_mount_map_locked(FILE *pfp, bool is_update)
 			if (mount_options2 & MTYPE_MEMORY) {
 				mntid_cg_memory = mnt_id;
 			}	
+		}	
+		else if (fstype & FS_CGROUP2) {
+			mntid_cgroup2 = mnt_id;
 		}	
 		else if (fstype & FS_TRACEFS) {
 			mntid_tracefs = mnt_id;

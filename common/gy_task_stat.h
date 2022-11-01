@@ -35,6 +35,7 @@ class CGROUP1_CPU;
 class CGROUP1_MEMORY;
 class CGROUP1_BLKIO;
 class CGROUP1_CPUSET;
+class CGROUP2;
 	
 class TASKSTATS_HDLR;
 class TASK_STAT;
@@ -345,11 +346,10 @@ public :
 
 	std::weak_ptr <TASK_STAT>		weak_parent_task;
 
-	std::shared_ptr <CGROUP1_CPUACCT>	cg_cpuacct_shr;
 	std::shared_ptr <CGROUP1_CPU>		cg_cpu_shr;
 	std::shared_ptr <CGROUP1_CPUSET>	cg_cpuset_shr;
 	std::shared_ptr <CGROUP1_MEMORY>	cg_memory_shr;
-	std::shared_ptr <CGROUP1_BLKIO>		cg_blkio_shr;
+	std::shared_ptr <CGROUP2>		cg_2_shr;
 
 	gy_atomic <bool>			cgroups_updated 	{false};
 	gy_atomic <bool>			cgroups_changed 	{false};

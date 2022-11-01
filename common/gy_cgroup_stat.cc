@@ -100,12 +100,6 @@ int CGROUP1_CPUACCT::update_cpu_usage() noexcept
 
 		cpupct = stats.cpuusage_pct;
 
-		if (nullptr == GY_READ_ONCE(phistcpu)) {
-			phistcpu = new CG_CPUACCT_HISTOGRAM(tcur);
-		}	
-
-		phistcpu->add_data((int)stats.cpuusage_pct, tcur);
-
 		CONDEXEC(
 			DEBUGEXECN(10, 
 				if (cpupct > 10) {
@@ -164,7 +158,7 @@ int CGROUP_HANDLE::get_cpu_usage(void) noexcept
 	GY_CATCH_EXCEPTION(ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while checking for cgroup cpu utilization : %s\n", GY_GET_EXCEPT_STRING); return -1;);
 }
 
-static int get_cgroup_cpu_throttle_stats(const char *pdir, int cg_root_fd, int &nr_periods, int &nr_throttled, uint64_t &throttled_time) noexcept
+static int get_cg_cpu_throttle(bool is_cgroupv1, const char *pdir, int cg_root_fd, int &nr_periods, int &nr_throttled, uint64_t &throttled_time) noexcept
 {
 	char			buf[1024];
 	int			ret, fd;
@@ -219,7 +213,7 @@ static int get_cgroup_cpu_throttle_stats(const char *pdir, int cg_root_fd, int &
 		return -1;	
 	}
 
-	ptmp = strbuf.skip_till_substring_const("throttled_time");
+	ptmp = strbuf.skip_till_substring_const(is_cgroupv1 ? "throttled_time" : "throttled_usec");
 	if (!ptmp) {
 		return -1;
 	}	
@@ -264,7 +258,7 @@ int CGROUP1_CPU::update_throttle_stats() noexcept
 			return 0;
 		}	
 
-		ret = get_cgroup_cpu_throttle_stats(get_dir_path(), pcghandle->get_fd_mount_root(), stats.nr_periods, stats.nr_throttled, stats.throttled_time);
+		ret = get_cg_cpu_throttle(true /* is_cgroupv1 */, get_dir_path(), pcghandle->get_fd_mount_root(), stats.nr_periods, stats.nr_throttled, stats.throttled_time);
 		if (ret != 0) {
 			return ret;
 		}	
@@ -282,16 +276,6 @@ int CGROUP1_CPU::update_throttle_stats() noexcept
 		stats.throttled_pct = (time_throttled * 100.0)/(stats.tupdateclock > last_tupdateclock ? stats.tupdateclock - last_tupdateclock : 1);
 
 		pct_throttled = stats.throttled_pct;
-
-		if (nullptr == GY_READ_ONCE(phistcpu)) {
-			if (stats.nr_throttled == 0) {
-				return 0;
-			}
-				
-			phistcpu = new CG_CPU_HISTOGRAM(tcur);
-		}	
-
-		ret = phistcpu->add_data((int)stats.throttled_pct, tcur);
 
 		CONDEXEC(
 			DEBUGEXECN(10, 
@@ -382,6 +366,8 @@ int CGROUP1_CPU::verify_info() noexcept
 		stats.is_share_limited 	= false;
 		stats.shares_pct	= 100;
 
+#if 0
+		// Currently we do not calculate CPU Shares : Uncomment if needed
 		auto topparentshr = weak_top_parent.lock();
 
 		if (topparentshr) {
@@ -395,6 +381,7 @@ int CGROUP1_CPU::verify_info() noexcept
 				}	
 			}	
 		}	
+#endif
 
 		if (stats.cfs_quota_us != -1L) {
 			auto 		pcpumem = CPU_MEM_INFO::get_singleton();
@@ -405,6 +392,8 @@ int CGROUP1_CPU::verify_info() noexcept
 			if (pcpumem) {
 				numcore = pcpumem->get_number_of_cores();
 				assert(numcore);
+
+				if (numcore == 0) numcore = 1;
 			}
 				
 			if ((stats.cfs_quota_us < stats.cfs_period_us) || (stats.cfs_quota_us/stats.cfs_period_us < numcore)) {
@@ -506,7 +495,7 @@ int CGROUP1_CPUSET::verify_info() noexcept
 					auto ptaskhdlr = TASK_HANDLER::get_singleton();
 					
 					if (ptaskhdlr) {
-						ptaskhdlr->handle_cpuset_change(this, cpus_changed, stats.cpus_allowed, mems_changed, stats.mems_allowed);
+						ptaskhdlr->handle_cpuset_change(this, nullptr, cpus_changed, stats.cpus_allowed, mems_changed, stats.mems_allowed);
 					}
 				}
 			}	
@@ -532,7 +521,7 @@ int CGROUP1_CPUSET::verify_info() noexcept
 		return 0;
 	}
 	GY_CATCH_EXCEPTION(
-		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while verifying cpu cgroup dir %s : %s\n", get_dir_path(), GY_GET_EXCEPT_STRING););
+		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while verifying cpuset cgroup dir %s : %s\n", get_dir_path(), GY_GET_EXCEPT_STRING););
 		return -1;	
 	);	
 }	
@@ -761,12 +750,6 @@ int CGROUP1_MEMORY::update_mem_usage() noexcept
 			return 1;
 		}
 			
-		if (nullptr == GY_READ_ONCE(phistmem)) {
-			phistmem = new CG_MEMORY_HISTOGRAM(tcur);
-		}	
-
-		phistmem->add_data(GY_DOWN_MB(stats.rss), tcur);
-
 		CONDEXEC(
 			DEBUGEXECN(10, 
 				if (stats.pct_rss_limit > 10) {
@@ -835,7 +818,7 @@ static int get_blkio_stat(const char *pdir, int cg_root_fd, CGROUP1_BLKIO::BLKIO
 {
 	char			buf[2048], tbuf[128];
 	int			ret, fd;
-	uint64_t		old_total_io = blkiostat.last_total_io;
+	uint64_t		old_total_io = blkiostat.last_total_io, old_tstatstime = blkiostat.tstatstime;
 
 	blkiostat.int_total_io	= 0;
 
@@ -882,7 +865,10 @@ static int get_blkio_stat(const char *pdir, int cg_root_fd, CGROUP1_BLKIO::BLKIO
 		ptmp = strbuf.get_next_word(nbytes);
 		if (ptmp) {
 			if (string_to_number(ptmp, blkiostat.last_total_io)) {
-				blkiostat.int_total_io = gy_diff_counter_safe(blkiostat.last_total_io, old_total_io);
+
+				if (old_tstatstime) {
+					blkiostat.int_total_io = gy_diff_counter_safe(blkiostat.last_total_io, old_total_io);
+				}
 				return 0;
 			}	
 		}
@@ -907,24 +893,10 @@ int CGROUP1_BLKIO::update_blkio_usage() noexcept
 			return 1;
 		}
 			
-		if (nullptr == GY_READ_ONCE(phistblkio)) {
-			if (stats.int_total_io == 0) {
-				return 1;
-			}
-				
-			phistblkio = new CG_BLKIO_HISTOGRAM(tcur);
-
-			// Ignore 1st record
-			stats.int_total_io = 0;
-		}	
-		else {
-			phistblkio->add_data(stats.int_total_io, tcur);
-		}	
-
 		CONDEXEC(
 			DEBUGEXECN(10, 
 				/*
-				 * XXX Note : As of Kernel 4.17, IO statistics for Memory Writeback are attributed to the correct cgroup only for ext4 and btrfs.
+				 * XXX Note : As of Kernel 5.14, IO statistics for Memory Writeback are attributed to the correct cgroup only for ext4, xfs, btrfs.
 				 * For other FS, the / root blkio cgroup will be updated instead.
 				 */ 
 				if (stats.int_total_io > 100) {
@@ -984,6 +956,321 @@ int CGROUP_HANDLE::get_blkio_usage(void) noexcept
 	GY_CATCH_EXCEPTION(ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while checking for cgroup blkio utilization : %s\n", GY_GET_EXCEPT_STRING); return -1;);
 }
 
+int CGROUP2::verify_info() noexcept
+{
+	try {
+		char			cbuf[512], f1[64];
+		int			cret, ret;
+		bool			bret;
+		
+		if (!cpu_cg_enabled || !cpuset_cg_enabled || !mem_cg_enabled) {
+			cret = get_cgroup_stats_string(get_dir_path(), "cgroup.controllers", pcghandle->get_fd_mount_root(), cbuf, sizeof(cbuf));
+
+			if (cret <= 0) {
+				return -1;
+			}	
+
+			if (!cpu_cg_enabled) {
+				if ((strstr(cbuf, "cpu ")) || (strstr(cbuf, " cpu")) || !strcmp(cbuf, "cpu")) {
+					cpu_cg_enabled = true;
+				}	
+			}
+
+			if (!cpuset_cg_enabled) {
+				if (strstr(cbuf, "cpuset")) {
+					cpuset_cg_enabled = true;
+				}	
+			}
+
+			if (!mem_cg_enabled) {
+				if (strstr(cbuf, "memory")) {
+					mem_cg_enabled = true;
+				}	
+			}
+		}
+
+		ALL_STATS			localstats(stats);
+
+		if (cpu_cg_enabled) {
+			auto 			pcpumem = CPU_MEM_INFO::get_singleton();
+			int			numcore = 0;
+
+			if (pcpumem) {
+				numcore = pcpumem->get_number_of_cores();
+			}
+
+			if (numcore == 0) numcore = 1;
+
+			cret = get_cgroup_stats_string(get_dir_path(), "cpu.max", pcghandle->get_fd_mount_root(), cbuf, sizeof(cbuf));
+
+			if (cret <= 0) {
+				return -1;
+			}	
+			
+			ret = sscanf(cbuf, "%s %ld", f1, &stats.cfs_period_us);
+
+			if (ret != 2 || stats.cfs_period_us <= 0) {
+				stats.is_cfs_bw_limited = false;
+				stats.cfs_bw_pct 	= 100;
+
+				return -1;
+			}	
+
+			if (0 == strncmp(f1, "max", 3)) {
+				stats.cfs_quota_us = LONG_MAX;
+				stats.is_cfs_bw_limited = false;
+			}	
+			else {
+				bret = string_to_number(f1, stats.cfs_quota_us);
+				if (bret) {
+					if ((stats.cfs_quota_us < stats.cfs_period_us) || (stats.cfs_quota_us/stats.cfs_period_us < numcore)) {
+						stats.is_cfs_bw_limited = true;
+						stats.cfs_bw_pct = (stats.cfs_quota_us * 100)/(stats.cfs_period_us * numcore);
+					}	
+					else {
+						stats.is_cfs_bw_limited = false;
+						stats.cfs_bw_pct 	= 100;
+					}
+				}
+				else {
+					stats.is_cfs_bw_limited = false;
+					stats.cfs_bw_pct 	= 100;
+				}	
+			}	
+
+			if (stats.cpu_tclock && ((localstats.cfs_bw_pct != stats.cfs_bw_pct) || (localstats.is_cfs_bw_limited != stats.is_cfs_bw_limited)
+					|| (localstats.cfs_period_us != stats.cfs_period_us))) {
+
+				DEBUGEXECN(1,
+					INFOPRINT_OFFLOAD("cgroup2 dir %s has changed CPU Quota Stats : CPU Limited %s : Limit on CPU util %d%% CPU Quota Period %ld usec\n", 
+						get_dir_path(), stats.is_cfs_bw_limited ? "true" : "false", stats.cfs_bw_pct, stats.cfs_period_us);
+				);	
+			}	
+			else if (0 == stats.cpu_tclock && stats.is_cfs_bw_limited) {
+				DEBUGEXECN(1, 
+					INFOPRINT_OFFLOAD("cgroup2 dir %s has CPU Limit Quota set : Limit on CPU util %d%% CPU Quota Period %ld usec\n", 
+						get_dir_path(), stats.cfs_bw_pct, stats.cfs_period_us);
+				);	
+			}	
+
+			stats.cpu_tclock = get_nsec_clock();
+		}	
+
+		if (cpuset_cg_enabled) {
+
+			cret = get_cgroup_stats_string(get_dir_path(), "cpuset.cpus.effective", pcghandle->get_fd_mount_root(), cbuf, sizeof(cbuf));
+
+			if (cret <= 0) {
+				return -1;
+			}	
+			
+			set_bitset_from_buffer(stats.cpus_allowed, cbuf, cret);
+
+			cret = get_cgroup_stats_string(get_dir_path(), "cpuset.mems.effective", pcghandle->get_fd_mount_root(), cbuf, sizeof(cbuf));
+
+			if (cret <= 0) {
+				return -1;
+			}	
+			
+			set_bitset_from_buffer(stats.mems_allowed, cbuf, cret);
+
+			if (localstats.cpuset_tclock) {
+				bool			cpus_changed = localstats.cpus_allowed != stats.cpus_allowed;
+				bool			mems_changed = localstats.cpus_allowed != stats.cpus_allowed;	
+
+				if (cpus_changed || mems_changed) {
+
+					INFOPRINT_OFFLOAD("cgroup2 dir %s : cpuset CPUs allowed or Mem allowed Change seen\n", get_dir_path());
+
+					auto ptaskhdlr = TASK_HANDLER::get_singleton();
+						
+					if (ptaskhdlr) {
+						ptaskhdlr->handle_cpuset_change(nullptr, this, cpus_changed, stats.cpus_allowed, mems_changed, stats.mems_allowed);
+					}
+				}	
+			}	
+
+			stats.cpuset_tclock = get_nsec_clock();
+		}	
+
+		return 0;
+	}
+	GY_CATCH_EXCEPTION(
+		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while verifying cgroup2 dir %s : %s\n", get_dir_path(), GY_GET_EXCEPT_STRING););
+		return -1;	
+	);	
+}
+
+int CGROUP2::update_all_stats() noexcept
+{
+	try {
+		time_t			tcur = time(nullptr);
+		int			ret;
+
+		if (false == is_recently_updated(tcur)) {
+			// No tasks 
+			return 1;
+		}	
+
+		if (cpu_cg_enabled) {
+			if (gy_unlikely(stats.cpu_tclock == 0)) {
+				verify_info();
+			}
+
+			int 			num_throttled = 0, num_period = 0;
+			double 			pct_throttled = 0;
+			int			last_nr_periods = stats.nr_periods, last_nr_throttled = stats.nr_throttled;
+			uint64_t		last_throttled_time = stats.throttled_usec, last_tupdateclock = stats.cpu_tclock, time_throttled;
+			int			ret;
+			bool			is_flushed = false;
+			
+
+			if (stats.is_cfs_bw_limited == false) {
+				// No CFS BW limit
+				goto chk_mem;
+			}	
+
+			ret = get_cg_cpu_throttle(false /* is_cgroupv1 */, get_dir_path(), pcghandle->get_fd_mount_root(), stats.nr_periods, stats.nr_throttled, stats.throttled_usec);
+			if (ret != 0) {
+				goto chk_mem;
+			}
+
+			stats.cpu_tclock = get_nsec_clock();
+
+			if (last_nr_periods == 0) {
+				goto chk_mem;
+			}
+				
+			num_throttled = gy_diff_counter_safe(stats.nr_throttled, last_nr_throttled);
+			num_period = gy_diff_counter_safe(stats.nr_periods, last_nr_periods);
+			time_throttled = gy_diff_counter_safe(stats.throttled_usec, last_throttled_time) * 1000 /* since in usec */; 
+
+			stats.throttled_pct = (time_throttled * 100.0)/(stats.cpu_tclock > last_tupdateclock ? stats.cpu_tclock - last_tupdateclock : 1);
+
+			pct_throttled = stats.throttled_pct;
+
+			CONDEXEC(
+				DEBUGEXECN(10, 
+					if ((pct_throttled > 10) || (pct_throttled >= 0.1 && gdebugexecn >= 15)) {
+						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN_ITALIC, 
+						"cgroup Throttled : #times %d : %% Throttled %.03f %% : CPU Limit %3d%% : cgroup %s\n", 
+						num_throttled, pct_throttled, stats.cfs_bw_pct, get_dir_path()); 
+					}
+				);
+			);
+		}
+
+chk_mem :
+
+		if (mem_cg_enabled) {
+			uint64_t		currbytes = 0, maxbytes = 0, totalbytes = CPU_MEM_INFO::get_singleton()->get_total_memory();
+			int			cret;
+			char			cbuf[256], mbuf[256];
+			bool			bret;
+
+			if (totalbytes == 0) {
+				goto done;
+			}	
+
+			cret = get_cgroup_stats_string(get_dir_path(), "memory.current", pcghandle->get_fd_mount_root(), cbuf, sizeof(cbuf));
+			
+			if (cret <= 0) {
+				goto done;
+			}	
+
+			bret = string_to_number(cbuf, currbytes);
+			if (!bret) {
+				goto done;
+			}	
+
+			cret = get_cgroup_stats_string(get_dir_path(), "memory.max", pcghandle->get_fd_mount_root(), cbuf, sizeof(cbuf));
+			
+			if (cret <= 0) {
+				goto done;
+			}	
+
+			if (0 == strncmp(cbuf, "max", 3)) {
+				maxbytes = totalbytes;
+			}
+			else {
+				bret = string_to_number(cbuf, maxbytes);
+				if (!bret) {
+					goto done;
+				}
+
+				if (maxbytes == 0 || maxbytes > totalbytes) {
+					maxbytes = totalbytes;
+				}	
+			}
+
+			stats.memory_tclock 	= get_nsec_clock();
+			stats.rss_current	= currbytes;
+			stats.rss_limit		= maxbytes;
+			stats.pct_rss_curr	= (currbytes * 100.0)/maxbytes;
+
+			CONDEXEC(
+				DEBUGEXECN(10, 
+					if (stats.pct_rss_curr > 10) {
+						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN_ITALIC, "Memory cgroup %s has used up %hhu %% of total memory allowed (%lu MB out of allowed %lu MB)\n",
+							get_dir_path(), stats.pct_rss_curr, GY_DOWN_MB(stats.rss_current), GY_DOWN_MB(stats.rss_limit));
+					}
+				);
+			);
+		}	
+			
+done :
+
+		return 0;
+	}
+	GY_CATCH_EXCEPTION(
+		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while getting cgroup2 stats for %s : %s\n", get_dir_path(), GY_GET_EXCEPT_STRING););
+		return -1;	
+	);	
+}	
+	
+
+int CGROUP_HANDLE::get_cgroup2_stats(void) noexcept
+{
+	try  {
+		auto			root_shr = cgroup2_cg.get_cg_from_dir("/", false);
+		auto			praw_cgroot = root_shr.get();	
+		int			ret;
+
+		if (!praw_cgroot) {
+			return -1;
+		}	
+			
+		ret = praw_cgroot->update_all_stats();
+
+		auto ptbl = praw_cgroot->pchildtable.load(std::memory_order_relaxed);
+		if (gy_unlikely(ptbl == nullptr)) {
+			// no child cgroups
+			return 0;
+		}	
+
+		using WRAP_T_ = RCU_HASH_WRAPPER<RCU_KEY_CHAR_POINTER, std::shared_ptr<CGROUP2>>;
+
+		auto dlambda = [](WRAP_T_ *pdatanode, void *arg) noexcept -> CB_RET_E
+		{
+			CGROUP2				*praw = pdatanode->get_data()->get();
+			int				ret;
+
+			if (praw == nullptr) {
+				return CB_OK;
+			}
+
+			ret = praw->update_all_stats();
+			
+			return CB_OK;
+		};	
+
+		ptbl->walk_hash_table(dlambda, nullptr); 	
+
+		return 0;
+	}
+	GY_CATCH_EXCEPTION(ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while checking for cgroup2 stats : %s\n", GY_GET_EXCEPT_STRING); return -1;);
+}
+
 
 void CGROUP_HANDLE::check_mount_changes(bool cancel_schedule_if_done) noexcept
 {
@@ -992,7 +1279,7 @@ void CGROUP_HANDLE::check_mount_changes(bool cancel_schedule_if_done) noexcept
 		 * If a previously unmounted cgroup is seen we need to activate the new mount point.
 		 */
 		int			no_mounts = 0;
-		bool			chk_cpuacct = false, chk_cpu = false, chk_cpuset = false, chk_memory = false, chk_blkio = false; 
+		bool			chk_cpuacct = false, chk_cpu = false, chk_cpuset = false, chk_memory = false, chk_blkio = false, chk_cgroup2 = false; 
 		
 		{
 			auto			pdir = cpuacct_cg.get_root_mount_point();
@@ -1046,7 +1333,7 @@ void CGROUP_HANDLE::check_mount_changes(bool cancel_schedule_if_done) noexcept
 			auto			pdir = blkio_cg.get_root_mount_point();
 
 			if (pdir && *pdir) {
-				// memory exists
+				// blkio exists
 			}	
 			else {
 				chk_blkio = true;
@@ -1054,13 +1341,27 @@ void CGROUP_HANDLE::check_mount_changes(bool cancel_schedule_if_done) noexcept
 			}
 		}
 
+
+		if (no_mounts >= 3) {
+			auto			pdir = cgroup2_cg.get_root_mount_point();
+
+			if (pdir && *pdir) {
+				// cgroup2 exists
+			}	
+			else {
+				chk_cgroup2 = true;
+				no_mounts++;
+			}
+		}
+
+
 		auto pmountshr = MOUNT_HDLR::get_singleton();
 		if (!pmountshr) {
 			return;
 		}
 
 		char			dir_cpuacct[GY_PATH_MAX], dir_cpu[GY_PATH_MAX], dir_cpuset[GY_PATH_MAX], 
-					dir_memory[GY_PATH_MAX], dir_blkio[GY_PATH_MAX];
+					dir_memory[GY_PATH_MAX], dir_blkio[GY_PATH_MAX], dir_cgroup2[GY_PATH_MAX];
 
 		int			ret;
 		
@@ -1110,6 +1411,16 @@ void CGROUP_HANDLE::check_mount_changes(bool cancel_schedule_if_done) noexcept
 				ret = set_new_mount_root_blkio(dir_blkio);
 				if (ret == 0) {
 					no_mounts--;
+				}	
+			}
+		}
+
+		if (chk_cgroup2) {
+			ret = pmountshr->get_cgroup_mount(MTYPE_CGROUP2, dir_cgroup2, sizeof(dir_cgroup2));		
+			if (ret == 0) {
+				ret = set_new_mount_root_cgroup2(dir_cgroup2);
+				if (ret == 0) {
+					no_mounts = 0;
 				}	
 			}
 		}
@@ -1167,10 +1478,12 @@ int CGROUP_HANDLE::init_singleton()
 	
 	try {
 		char			dir_cpuacct[GY_PATH_MAX], dir_cpu[GY_PATH_MAX], dir_cpuset[GY_PATH_MAX], 
-					dir_mem[GY_PATH_MAX], dir_blkio[GY_PATH_MAX];
+					dir_mem[GY_PATH_MAX], dir_blkio[GY_PATH_MAX], dir_cgroup2[GY_PATH_MAX];
 
 		int			ret, no_mounts = 0;
 		
+		*dir_cgroup2 = 0;
+
 		ret = pmountshr->get_cgroup_mount(MTYPE_CPUACCT, dir_cpuacct, sizeof(dir_cpuacct));		
 		if (ret != 0) {
 			*dir_cpuacct = '\0';
@@ -1201,13 +1514,22 @@ int CGROUP_HANDLE::init_singleton()
 			no_mounts++;
 		}	
 
-		pgcgroup_ = new CGROUP_HANDLE(dir_cpuacct, dir_cpu, dir_cpuset, dir_mem, dir_blkio);
+		if (no_mounts >= 3) {
+			// try cgroupv2
+			ret = pmountshr->get_cgroup_mount(MTYPE_CGROUP2, dir_cgroup2, sizeof(dir_cgroup2));		
+
+			if (ret == 0 && *dir_cgroup2) {
+				no_mounts = 0;
+			}	
+		}	
+
+		pgcgroup_ = new CGROUP_HANDLE(dir_cpuacct, dir_cpu, dir_cpuset, dir_mem, dir_blkio, dir_cgroup2);
 
 		if (no_mounts) {
 			/*
 			 * Schedule a periodic 30 sec cgroup mount change check
 			 */
-			INFOPRINT("Required cgroupv1 mount points %d not yet mounted. Scheduling periodic mount point check...\n", no_mounts);
+			INFOPRINT("Required cgroup mount points %d not yet mounted. Scheduling periodic mount point check...\n", no_mounts);
 
 			schedshrlong->add_schedule(30123, 30'000, 0, "check for new cgroup mounts", 
 			[pcg = pgcgroup_] { 
@@ -1219,7 +1541,6 @@ int CGROUP_HANDLE::init_singleton()
 		[pcg = pgcgroup_] { 
 			pcg->verify_procs();
 		});
-
 
 		schedshrlong->add_schedule(7500, 17'000, 0, "verify all cgroup directories", 
 		[pcg = pgcgroup_] { 
@@ -1236,6 +1557,8 @@ int CGROUP_HANDLE::init_singleton()
 			pcg->get_cpu_throttle_stats();
 			pcg->get_mem_usage();
 			pcg->get_blkio_usage();
+
+			pcg->get_cgroup2_stats();
 		});
 		
 		return 0;

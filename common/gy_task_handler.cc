@@ -416,7 +416,8 @@ void TASK_HANDLER::handle_cgroup_change_event(cgroup_migrate_event_t *pevent, bo
 	task_cgroup_change(pevent->pid, pevent->tid); 
 }	
 
-int TASK_HANDLER::handle_cpuset_change(CGROUP1_CPUSET *prawcpuset, bool cpus_changed, const CPU_CORES_BITSET & cpus_allowed, bool mems_changed, const MEM_NODE_BITSET & mems_allowed) noexcept
+int TASK_HANDLER::handle_cpuset_change(CGROUP1_CPUSET *prawcpuset, CGROUP2 *prawcpuset2, bool cpus_changed, const CPU_CORES_BITSET & cpus_allowed, 
+							bool mems_changed, const MEM_NODE_BITSET & mems_allowed) noexcept
 {
 	try {
 		TASK_ELEM_TYPE		elem;
@@ -432,7 +433,7 @@ int TASK_HANDLER::handle_cpuset_change(CGROUP1_CPUSET *prawcpuset, bool cpus_cha
 			}
 
 			if (ptask->cgroups_updated.load(std::memory_order_acquire) == true) {
-				if (ptask->cg_cpuset_shr.get() == prawcpuset) {
+				if ((prawcpuset && ptask->cg_cpuset_shr.get() == prawcpuset) || (prawcpuset2 && ptask->cg_2_shr.get() == prawcpuset2)) {
 					if (cpus_changed) {
 						ptask->ncpus_allowed = cpus_allowed.count();
 					}
@@ -451,7 +452,7 @@ int TASK_HANDLER::handle_cpuset_change(CGROUP1_CPUSET *prawcpuset, bool cpus_cha
 		tasktable.walk_hash_table_const(lambda_cgroup_task);
 
 		if (nupd) {
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Updated %d tasks cpus_allowed / mems_allowed for cgroupv1 cpuset dir %s\n", nupd, prawcpuset->get_dir_path());
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Updated %d tasks cpus_allowed / mems_allowed for cpuset cgroup dir %s\n", nupd, prawcpuset->get_dir_path());
 		}	
 
 		return nupd;
@@ -1637,24 +1638,29 @@ int TASK_HANDLER::tasks_verify_from_proc(size_t & total_cmdlen, AggrTaskStackMap
 
 			if (true == ptask->cgroups_updated.load(std::memory_order_acquire)) {
 				// Update cgroup timestamps
-				if (ptask->cg_cpuacct_shr) {
-					ptask->cg_cpuacct_shr->set_cgroup_updated(tcursec);
-				}	
 				if (ptask->cg_cpu_shr) {
 					ptask->cg_cpu_shr->set_cgroup_updated(tcursec);
 					ptask->is_throttled_cgroup = ptask->cg_cpu_shr->is_cpu_throttled_cgroup();
 					ptask->is_cpu_cgroup_mini_procs = (ptask->cg_cpu_shr->get_approx_task_count() <= 5);
-				}	
+				}
+				else if (ptask->cg_2_shr) {
+					ptask->cg_2_shr->set_cgroup_updated(tcursec);
+					ptask->is_throttled_cgroup = ptask->cg_2_shr->is_cpu_throttled_cgroup();
+					ptask->is_cpu_cgroup_mini_procs = (ptask->cg_2_shr->get_approx_task_count() <= 5);
+				}
+
 				if (ptask->cg_cpuset_shr) {
 					ptask->cg_cpuset_shr->set_cgroup_updated(tcursec);
 				}	
+
 				if (ptask->cg_memory_shr) {
 					ptask->cg_memory_shr->set_cgroup_updated(tcursec);
 					ptask->is_mem_cgroup_limited = ptask->cg_memory_shr->is_max_memory_limited();
 				}	
-				if (ptask->cg_blkio_shr) {
-					ptask->cg_blkio_shr->set_cgroup_updated(tcursec);
-				}	
+				else if (ptask->cg_2_shr) {
+					ptask->cg_2_shr->set_cgroup_updated(tcursec);
+					ptask->is_mem_cgroup_limited = ptask->cg_2_shr->is_max_memory_limited();
+				}
 			}	
 
 			uint64_t		agid = ptask->aggr_task_id_.load(std::memory_order_relaxed);
@@ -2056,12 +2062,24 @@ int TASK_HANDLER::send_hist_stats() noexcept
 				stats.max_cores_allowed_ = ptask->ncpus_allowed;
 			}	
 			
-			if (ptask->is_throttled_cgroup && ptask->cg_cpu_shr) {
-				stats.cpu_cg_pct_limit_ = ptask->cg_cpu_shr->stats.cfs_bw_pct;
+			if (ptask->is_throttled_cgroup) {
+				if (ptask->cg_cpu_shr) {
+					stats.cpu_cg_pct_limit_ = ptask->cg_cpu_shr->stats.cfs_bw_pct;
+				}
+				else if (ptask->cg_2_shr) {
+					stats.cpu_cg_pct_limit_ = ptask->cg_2_shr->stats.cfs_bw_pct;
+				}	
 			}	
 
 			if (ptask->cg_memory_shr) {
 				uint8_t 		pct = ptask->cg_memory_shr->get_rss_pct_used();
+
+				if (stats.max_mem_cg_pct_rss_ < pct) {
+					stats.max_mem_cg_pct_rss_ = pct;
+				}	
+			}	
+			else if (ptask->cg_2_shr) {
+				uint8_t 		pct = ptask->cg_2_shr->get_rss_pct_used();
 
 				if (stats.max_mem_cg_pct_rss_ < pct) {
 					stats.max_mem_cg_pct_rss_ = pct;

@@ -311,7 +311,7 @@ public :
 
 	int				task_cgroup_change(pid_t pid, pid_t tid) noexcept;
 	void				handle_cgroup_change_event(cgroup_migrate_event_t *pevent, bool more_data) noexcept;
-	int				handle_cpuset_change(CGROUP1_CPUSET *prawcpuset, bool cpus_changed, const CPU_CORES_BITSET & cpus_allowed, \
+	int				handle_cpuset_change(CGROUP1_CPUSET *prawcpuset, CGROUP2 *prawcpuset2, bool cpus_changed, const CPU_CORES_BITSET & cpus_allowed, \
 						bool mems_changed, const MEM_NODE_BITSET & mems_allowed) noexcept;
 
 	void				get_task_pgtree(TASK_PGTREE_MAP & treemap) const;
