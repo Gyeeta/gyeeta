@@ -49,5 +49,5 @@ ciprof:
 	$(MAKE) ci profile=yes
 
 dockerpartha:
-	$(shell export DOCKER_BUILDKIT=1; export PARTHA_VERSION="`./partha --version | grep Version | cut -d " " -f 4`"; docker build -t ghcr.io/gyeeta/partha:latest -t ghcr.io/gyeeta/partha:"$${PARTHA_VERSION}" -f ./Dockerfile --build-arg PARTHA_VERSION=v"$${PARTHA_VERSION}" $(INSTALLDIR) )
+	$(shell export DOCKER_BUILDKIT=1; export PARTHA_VERSION="`./partha --version | grep Version | cut -d " " -f 4`"; docker build -t ghcr.io/gyeeta/partha:latest -t ghcr.io/gyeeta/partha:"$${PARTHA_VERSION}" -f ./Dockerfile --no-cache --build-arg PARTHA_VERSION=v"$${PARTHA_VERSION}" $(INSTALLDIR) )
 
