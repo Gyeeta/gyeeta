@@ -452,7 +452,8 @@ int TASK_HANDLER::handle_cpuset_change(CGROUP1_CPUSET *prawcpuset, CGROUP2 *praw
 		tasktable.walk_hash_table_const(lambda_cgroup_task);
 
 		if (nupd) {
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Updated %d tasks cpus_allowed / mems_allowed for cpuset cgroup dir %s\n", nupd, prawcpuset->get_dir_path());
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Updated %d tasks cpus_allowed / mems_allowed for cpuset cgroup dir %s\n", nupd, 
+				prawcpuset ? prawcpuset->get_dir_path() : prawcpuset2->get_dir_path());
 		}	
 
 		return nupd;
