@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
  * Provides a Bounded Priority Queue, a fast Histogram implementation and a Windowed Time Histogram based on a modified folly::TimeseriesSlabHistogram

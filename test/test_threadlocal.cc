@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 #undef 			DO_PROFILE
 #define			DO_PROFILE

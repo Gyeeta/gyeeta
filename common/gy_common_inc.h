@@ -1,8 +1,6 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
-/*
- * Requires gcc 7x or higher compiler
- * Linux specific
- */ 
 #pragma 		once
 
 #ifndef 		_GNU_SOURCE

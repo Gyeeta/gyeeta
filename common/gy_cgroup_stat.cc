@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 #include		"gy_cgroup_stat.h"
 #include		"gy_task_handler.h"
@@ -319,36 +321,46 @@ int CGROUP1_CPU::verify_info() noexcept
 		get_cgroup_stats<int64_t>(get_dir_path(), "cpu.rt_runtime_us", pcghandle->get_fd_mount_root(), localstats.rt_runtime_us);
 
 		if (localstats.cfs_period_us != this->stats.cfs_period_us) {
-			if (stats.tupdateclock) INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed cfs_period_us from %ld usec to %ld usec\n",
-				get_dir_path(), this->stats.cfs_period_us, localstats.cfs_period_us);
+			if (stats.tupdateclock) {
+				DEBUGEXECN(1, INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed cfs_period_us from %ld usec to %ld usec\n",
+					get_dir_path(), this->stats.cfs_period_us, localstats.cfs_period_us););
+			}	
 
 			this->stats.cfs_period_us = localstats.cfs_period_us;
 			is_upd = true;
 		}	
 		if (localstats.cfs_quota_us != this->stats.cfs_quota_us) {
-			if (stats.tupdateclock) INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed cfs_quota_us from %ld usec to %ld usec\n",
-				get_dir_path(), this->stats.cfs_quota_us, localstats.cfs_quota_us);
+			if (stats.tupdateclock) {
+				DEBUGEXECN(1, INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed cfs_quota_us from %ld usec to %ld usec\n",
+					get_dir_path(), this->stats.cfs_quota_us, localstats.cfs_quota_us););
+			}	
 
 			this->stats.cfs_quota_us = localstats.cfs_quota_us;
 			is_upd = true;
 		}	
 		if (localstats.rt_period_us != this->stats.rt_period_us) {
-			if (stats.tupdateclock) INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed rt_period_us from %ld usec to %ld usec\n",
-				get_dir_path(), this->stats.rt_period_us, localstats.rt_period_us);
+			if (stats.tupdateclock) {
+				DEBUGEXECN(1, INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed rt_period_us from %ld usec to %ld usec\n",
+					get_dir_path(), this->stats.rt_period_us, localstats.rt_period_us););
+			}	
 
 			this->stats.rt_period_us = localstats.rt_period_us;
 			is_upd = true;
 		}	
 		if (localstats.rt_runtime_us != this->stats.rt_runtime_us) {
-			if (stats.tupdateclock) INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed rt_runtime_us from %ld usec to %ld usec\n",
-				get_dir_path(), this->stats.rt_runtime_us, localstats.rt_runtime_us);
+			if (stats.tupdateclock) {
+				DEBUGEXECN(1, INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed rt_runtime_us from %ld usec to %ld usec\n",
+					get_dir_path(), this->stats.rt_runtime_us, localstats.rt_runtime_us););
+			}	
 
 			this->stats.rt_runtime_us = localstats.rt_runtime_us;
 			is_upd = true;
 		}	
 		if (localstats.shares != this->stats.shares) {
-			if (stats.tupdateclock) INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed cpu shares from %d to %d\n",
-				get_dir_path(), this->stats.shares, localstats.shares);
+			if (stats.tupdateclock) {
+				DEBUGEXECN(1, INFOPRINT_OFFLOAD("cpu cgroup dir %s has changed cpu shares from %d to %d\n",
+					get_dir_path(), this->stats.shares, localstats.shares););
+			}	
 
 			this->stats.shares = localstats.shares;
 			is_upd = true;
@@ -488,8 +500,8 @@ int CGROUP1_CPUSET::verify_info() noexcept
 			this->stats = localstats;
 
 			if (is_tudated) {
-				INFOPRINT_OFFLOAD("cpuset cgroup dir %s : Change seen : CPUs Changed %s Mems Changed %s cpu_exclusive %d mem_exclusive %d\n", 
-					get_dir_path(), cpus_changed ? "(Yes)" : "(No)",  mems_changed ? "(Yes)" : "(No)", stats.cpu_exclusive, stats.mem_exclusive);
+				DEBUGEXECN(1, INFOPRINT_OFFLOAD("cpuset cgroup dir %s : Change seen : CPUs Changed %s Mems Changed %s cpu_exclusive %d mem_exclusive %d\n", 
+					get_dir_path(), cpus_changed ? "(Yes)" : "(No)",  mems_changed ? "(Yes)" : "(No)", stats.cpu_exclusive, stats.mem_exclusive););
 
 				if (cpus_changed || mems_changed) {
 					auto ptaskhdlr = TASK_HANDLER::get_singleton();
@@ -696,14 +708,18 @@ static int get_memory_stat(const char *pdir, int cg_root_fd, CGROUP1_MEMORY::MEM
 	memstat.pct_rss_limit 		= (uint8_t)pct3;
 	memstat.pct_hier_rss_limit 	= (uint8_t)pct4;
 
-	if (memstat.pct_rss_limit > 85) {
-		WARNPRINT_OFFLOAD("Memory cgroup %s has used up over %hhu%% of total memory allowed (%lu MB out of allowed %lu MB). OOM check may be invoked...\n",
-			pdir, memstat.pct_rss_limit, GY_DOWN_MB(memstat.rss), GY_DOWN_MB(memstat.hierarchical_memory_limit));
-	}	
-	else if (memstat.pct_hier_rss_limit > 85) {
-		WARNPRINT_OFFLOAD("Memory cgroup %s descendents have used up over %hhu%% of total memory allowed (%lu MB out of allowed %lu MB). OOM check may be invoked...\n",
-			pdir, memstat.pct_hier_rss_limit, GY_DOWN_MB(total_rss), GY_DOWN_MB(memstat.hierarchical_memory_limit));
-	}	
+	if (memstat.nwarnprints < 5) {
+		if (memstat.pct_rss_limit > 85) {
+			WARNPRINT_OFFLOAD("Memory cgroup %s has used up over %hhu%% of total memory allowed (%lu MB out of allowed %lu MB). OOM check may be invoked...\n",
+				pdir, memstat.pct_rss_limit, GY_DOWN_MB(memstat.rss), GY_DOWN_MB(memstat.hierarchical_memory_limit));
+			memstat.nwarnprints++;
+		}	
+		else if (memstat.pct_hier_rss_limit > 85) {
+			WARNPRINT_OFFLOAD("Memory cgroup %s descendents have used up over %hhu%% of total memory allowed (%lu MB out of allowed %lu MB). OOM check may be invoked...\n",
+				pdir, memstat.pct_hier_rss_limit, GY_DOWN_MB(total_rss), GY_DOWN_MB(memstat.hierarchical_memory_limit));
+			memstat.nwarnprints++;
+		}	
+	}
 
 	return 0;
 }	
@@ -1080,7 +1096,9 @@ int CGROUP2::verify_info() noexcept
 
 				if (cpus_changed || mems_changed) {
 
-					INFOPRINT_OFFLOAD("cgroup2 dir %s : cpuset CPUs allowed or Mem allowed Change seen\n", get_dir_path());
+					DEBUGEXECN(1,
+						INFOPRINT_OFFLOAD("cgroup2 dir %s : cpuset CPUs allowed or Mem allowed Change seen\n", get_dir_path());
+					);	
 
 					auto ptaskhdlr = TASK_HANDLER::get_singleton();
 						

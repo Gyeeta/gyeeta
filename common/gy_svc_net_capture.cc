@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 #include			"gy_svc_net_capture.h"
 #include			"gy_stack_container.h"

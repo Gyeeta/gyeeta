@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
  * Provides C++ wrappers for Userspace RCU liburcu (https://github.com/urcu/userspace-rcu) Hash Table and Circular Linked List 

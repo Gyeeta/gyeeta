@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 // Uncomment the below line to ignore colorprints
 /*#define 		GY_NO_ANSI_COLORS*/

@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
  * On multi socket systems run as : sudo numactl -i 1 ./test_gy_pool

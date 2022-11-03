@@ -1,3 +1,6 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
+
 /*
  * Wrapper for std::atomic<T> with extra methods such as copy constructor and relaxed non RMW methods
  * Also wrappers for non-atomic types invoked using atomic class methods.

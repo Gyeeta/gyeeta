@@ -1,3 +1,5 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma				once
 
@@ -638,6 +640,8 @@ public :
 		uint8_t				pct_rss_limit;
 		uint8_t				pct_hier_memory_limit;
 		uint8_t				pct_hier_rss_limit;
+
+		uint8_t				nwarnprints;
 
 		bool				is_hierarchical;
 		bool				is_memory_limited;

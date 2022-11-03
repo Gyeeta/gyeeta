@@ -3,6 +3,8 @@
 
 
 static const char gbpf_kernel_buf2[] = R"(
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 /*
  * XXX This file is also included from the ebpf Kernel program. So all C++ and userspace stuff needs 
