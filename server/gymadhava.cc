@@ -568,6 +568,18 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		GY_THROW_EXCEPTION("Invalid Madhava Config : Mandatory Config option \'shyama_secret\' not found or is not a String Type in config json");
 	}	
 
+	if (aiter = edoc.FindMember("cloud_type"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from Environment Variable", true /* firstalphaonly */, true /* emptyok */);
+
+		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
+	}
+	else if (aiter = doc.FindMember("cloud_type"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Cloud Type from config", true /* firstalphaonly */, true /* emptyok */);
+
+		GY_STRNCPY(cloud_type, aiter->value.GetString(), sizeof(cloud_type));
+	}
+
+
 	if (aiter = edoc.FindMember("region_name"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), comm::MAX_ZONE_LEN, "Region Name from Environment Variable", false /* firstalphaonly */, true /* emptyok */);
 
