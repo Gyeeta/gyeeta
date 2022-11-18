@@ -12,7 +12,7 @@ clean:
 	$(MAKE) -C $(PWD)/common clean && $(MAKE) -C $(PWD)/partha clean && $(MAKE) -C $(PWD)/server clean
 
 install:
-	$(MAKE) -C $(PWD)/common install && $(MAKE) -C $(PWD)/partha install && $(MAKE) -C $(PWD)/server install
+	$(MAKE) -C $(PWD)/common install && $(MAKE) -C $(PWD)/partha install && $(MAKE) -C $(PWD)/server install && ./checkinstall.sh --check 
 
 cleaninstall:
 	$(MAKE) -C $(PWD)/common cleaninstall && $(MAKE) -C $(PWD)/partha cleaninstall && $(MAKE) -C $(PWD)/server cleaninstall 
