@@ -30,17 +30,17 @@ Gyeeta is licensed under the [GNU General Public License v3.0 (GPLv3)](./LICENSE
 
 *Gyeeta* consists of the following components :
 
-- Host Monitor Agent (named [`partha`](#host-monitor-agent-partha)) to be installed on each of the hosts which needs to be monitored
+- Host Monitor Agent (named `partha`) to be installed on each of the hosts which needs to be monitored
 
-- A Central Server (named [`shyama`](#central-server-shyama)) which serves as both an Aggregating Server and an Alert Manager
+- A Central Server (named `shyama`) which serves as both an Aggregating Server and an Alert Manager
 
-- One or more Intermediate Servers (named [`madhava`](#intermediate-server-madhava)) analyzing metrics from multiple monitored hosts (`partha`)
+- One or more Intermediate Servers (named `madhava`) analyzing metrics from multiple monitored hosts (`partha`)
 
-- A [NodeJS Webserver](#webserver) which handles Web UI and REST API queries
+- A NodeJS Webserver which handles Web UI and REST API queries
 
-- An [Alert Agent](#alert-action-agent) which interacts with `shyama` AlertManager and executes the Alert Trigger Actions (Notifications)
+- An Alert Agent which interacts with `shyama` AlertManager and executes the Alert Trigger Actions (Notifications)
 
-- One or more [Postgres DBs](#postgres-database) to be used as the datastore for `shyama` and `madhava` servers
+- One or more Postgres DBs to be used as the datastore for `shyama` and `madhava` servers
 
 The image below shows the high level overview of how the different components interact with each other :
 
