@@ -83,10 +83,10 @@ Container Platforms such as Kubernetes or Docker Swarm are also supported using 
 
 ## Main Github Repositories for different Gyeeta Components
 
-- [For Partha Host Agent, Shyama Central Server and Madhava Intermediate Servers](https://github.com/gyeeta/gyeeta)
-- [For Node Webserver](https://github.com/gyeeta/nodewebserver)
-- [For Frontend React WebUI](https://github.com/gyeeta/frontend)
-- [For Alert Agent](https://github.com/gyeeta/alertaction)
+- [Partha Host Agent, Shyama Central Server and Madhava Intermediate Servers](https://github.com/gyeeta/gyeeta)
+- [Node Webserver](https://github.com/gyeeta/nodewebserver)
+- [Frontend React WebUI](https://github.com/gyeeta/frontend)
+- [Alert Agent](https://github.com/gyeeta/alertaction)
 
 ## Info on this Repository
 
