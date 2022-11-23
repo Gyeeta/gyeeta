@@ -11,14 +11,12 @@
 - Monitor Hosts, Services, Processes at *Global* scale (scales to *tens of thousands* of hosts).
 - Completely non-intrusive and uses a combination of eBPF and Kernel Statistics. No Application changes are needed. Gyeeta can monitor 
   both HTTP and non-HTTP based services and can provide statistics such as Queries/sec, Response Times, Network Throughputs, Service Network 
-  Flows for any service (even proprietary or TLS encrypted).
-- Monitor Kubernetes or any other Cluster orchestrators.
-- Service Level Statistics such as Queries/sec, Response Times (Latency) and HTTP Errors (if HTTP based) with no manual inputs or integrations.
-  Monitors binary / proprietary network protocol or non HTTP Service statistics as well.
+  Flows for any service (even proprietary or TLS encrypted) with no manual inputs or integrations.
 - Query Global Aggregated Statistics from multiple servers using a single query either from Web UI or REST APIs.
 - Self Learning Algorithms that can detect Anomalies, Contention or Degradation without any manual inputs. 
 - Advanced Cluster, Service or Process Level Alerts using a powerful Web UI or REST APIs.
 - Detect Process Level *CPU starvation, Virtual Memory or IO Bottlenecks*. 
+- Monitor Kubernetes or any other Cluster orchestrators.
 
 [***Website***](https://gyeeta.io) | [***Documentation***](https://gyeeta.io/docs) | [***Youtube***](https://youtube.com/@gyeeta)
 
