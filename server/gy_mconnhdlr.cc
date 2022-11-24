@@ -1263,8 +1263,21 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 {
 	size_t 				maxcore		= gy_get_proc_cpus_allowed(getpid());
 	size_t 				maxmem		= CPU_MEM_INFO::get_singleton()->get_total_memory();	// No need to check mems_allowed as this is advisory
+	auto 				psettings 	= pmadhava_->psettings_;
 
 	static_assert(comm::MAX_PARTHA_PER_MADHAVA > 1000);
+
+	if (psettings->set_max_hosts > 5 && psettings->set_max_hosts <= comm::MAX_PARTHA_PER_MADHAVA) {
+		if (psettings->set_max_hosts > 80 && (maxcore < 2 || maxmem <= GY_UP_GB(4 - 1))) {
+			WARNPRINT_OFFLOAD("Maximum Partha Hosts Config option ignored due to low CPU count or Memory availability\n");
+		}
+		else {
+			max_partha_allowed_ = psettings->set_max_hosts;
+
+			INFOPRINT_OFFLOAD("Setting Maximum Partha Hosts Handled count to %u as per Config option\n", max_partha_allowed_);
+			return;
+		}
+	}
 
 	/*
 	 * NOTE : We limit the max Partha Hosts Count to a low value as otherwise multi host querying will
@@ -1276,16 +1289,19 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 		max_partha_allowed_	= 500;
 	}	
 	else if (maxcore >= 12 && maxmem >= GY_UP_GB(32 - 1)) {
-		max_partha_allowed_	= 350;
+		max_partha_allowed_	= 400;
 	}	
 	else if (maxcore >= 8 && maxmem >= GY_UP_GB(32 - 1)) {
-		max_partha_allowed_	= 200;
+		max_partha_allowed_	= 300;
 	}	
 	else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
+		max_partha_allowed_	= 200;
+	}	
+	else if (maxcore >= 4 && maxmem >= GY_UP_GB(16 - 1)) {
 		max_partha_allowed_	= 150;
 	}	
 	else if (maxcore >= 4 && maxmem >= GY_UP_GB(8 - 1)) {
-		max_partha_allowed_	= 75;
+		max_partha_allowed_	= 100;
 	}	
 	else {
 		WARNPRINT_OFFLOAD("Max Processor cores allowed (%lu) and Memory (%lu GB) is too low : Postgres/Madhava Response times may be affected...\n",

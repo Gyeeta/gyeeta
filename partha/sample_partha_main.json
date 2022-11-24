@@ -6,7 +6,6 @@
 		"shyama_hosts" 			:	[ "shyama1.local", "shyama2.local" ],
 		"shyama_ports"			:	[ 10037, 10037 ],
 		
-		"auto_respawn_on_exit"		:	true,
 		"is_kubernetes"			:	true
 }
 

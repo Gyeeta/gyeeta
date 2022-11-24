@@ -13,11 +13,10 @@
 		
 		"postgres_hostname"		:	"dbshyama1.local",
 		"postgres_port"			:	10040,
-		"postgres_user"			:	"shyama1",
+		"postgres_user"			:	"postgres",
 		"postgres_password"		:	"gyeeta",
 		"postgres_storage_days"		:	3,
 
-		"webserver_url"			:	"http://gyeetaweb.local:10039",
-		"auto_respawn_on_exit"		:	true
+		"webserver_url"			:	"http://gyeetaweb.local:10039"
 }	
 

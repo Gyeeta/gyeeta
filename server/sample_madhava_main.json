@@ -13,9 +13,7 @@
 		
 		"postgres_hostname"		:	"db1.local",
 		"postgres_port"			:	10040,
-		"postgres_user"			:	"madhava1",
+		"postgres_user"			:	"postgres",
 		"postgres_password"		:	"gyeeta",
-		"postgres_storage_days"		:	3,
-
-		"auto_respawn_on_exit"		:	true
+		"postgres_storage_days"		:	3
 }

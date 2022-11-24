@@ -314,6 +314,12 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
 	}	
 
+	penv = getenv("CFG_SET_MAX_HOSTS");
+	if (penv) {
+		ewriter.KeyConst("set_max_hosts");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
+	}	
+
 	penv = getenv("CFG_DB_LOGGING");
 	if (penv) {
 		ewriter.KeyConst("db_logging");
@@ -384,6 +390,7 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 		"postgres_storage_days"		:	15,
 		"db_logging"			:	"always",
 		
+		"set_max_hosts"			:	200,
 		"auto_respawn_on_exit"		:	true
 	}
 	 */ 
@@ -702,6 +709,13 @@ MA_SETTINGS_C::MA_SETTINGS_C(char *pjson)
 
 	if (postgres_storage_days < 3) postgres_storage_days = 3;
 	if (postgres_storage_days > 60) postgres_storage_days = 60;
+
+	if (aiter = edoc.FindMember("set_max_hosts"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsUint()))) {
+		set_max_hosts = (uint16_t)aiter->value.GetUint();
+	}	
+	else if (aiter = doc.FindMember("set_max_hosts"); ((aiter != doc.MemberEnd()) && (aiter->value.IsUint()))) {
+		set_max_hosts = (uint16_t)aiter->value.GetUint();
+	}	
 
 	if (aiter = edoc.FindMember("db_logging"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
 		db_logging = get_db_logging_level(aiter->value.GetString());
@@ -1383,6 +1397,7 @@ static int start_madhava(int argc, char **argv)
 						hash_cfg_postgres_user		= fnv1_consthash("--cfg_postgres_user"),
 						hash_cfg_postgres_password	= fnv1_consthash("--cfg_postgres_password"),
 						hash_cfg_postgres_storage_days	= fnv1_consthash("--cfg_postgres_storage_days"),
+						hash_cfg_set_max_hosts		= fnv1_consthash("--cfg_set_max_hosts"),
 						hash_cfg_db_logging		= fnv1_consthash("--cfg_db_logging"),
 						hash_cfg_auto_respawn_on_exit	= fnv1_consthash("--cfg_auto_respawn_on_exit"),
 						hash_cfg_log_use_utc_time	= fnv1_consthash("--cfg_log_use_utc_time");
@@ -1575,6 +1590,13 @@ static int start_madhava(int argc, char **argv)
 			case hash_cfg_postgres_storage_days :
 				if (i + 1 < argc) {
 					setenv("CFG_POSTGRES_STORAGE_DAYS", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_set_max_hosts :
+				if (i + 1 < argc) {
+					setenv("CFG_SET_MAX_HOSTS", argv[i + 1], 1);
 					i++;
 				}
 				break;

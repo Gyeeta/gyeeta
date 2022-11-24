@@ -42,6 +42,7 @@ public :
 	char				postgres_data_dir[GY_PATH_MAX]			{};
 	uint32_t			postgres_storage_days				{0};
 
+	uint16_t			set_max_hosts					{0};
 	DB_LOGGING_E			db_logging					{DB_LOGGING_ALWAYS};
 	bool				auto_respawn_on_exit				{true};
 	bool				log_use_utc_time				{false};
