@@ -1,6 +1,6 @@
 # Gyeeta Observability
 
-<p align="center"><a href="https://gyeeta.io"><img src="https://pkg.gyeeta.workers.dev/gyeeta-96.png" alt="Gyeeta" width="96" /></a></p>
+<p align="center"><a href="https://gyeeta.io"><img src="https://gyeeta.io/img/gyeeta.png" alt="Gyeeta" width="96" /></a></p>
 
 
 [***Gyeeta***](https://gyeeta.io) is a non intrusive, *100% Open Source (GPLv3)* and *Free* Infrastructure, Services and Process Level monitor (*Linux* only).  
@@ -18,7 +18,7 @@
 - Detect Process Level *CPU starvation, Virtual Memory or IO Bottlenecks*. 
 - Monitor Kubernetes or any other Cluster orchestrators.
 
-[***Website***](https://gyeeta.io) | [***Documentation***](https://gyeeta.io/docs) | [***Youtube***](https://youtube.com/@gyeeta)
+[***Website***](https://gyeeta.io) | [***Documentation***](https://gyeeta.io/docs) | [***Youtube***](https://youtube.com/@gyeeta) | [***Twitter***](https://twitter.com/GyeetaIO)
 
 ## License
 
