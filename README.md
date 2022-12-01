@@ -59,7 +59,9 @@ components.
 
 **Install instructions** are available at [Gyeeta Install Planning and Options](https://gyeeta.io/docs/installation/install_options)
 
-**A Quick TL;DR Install of Gyeeta Server Components** can be found at [TL;DR Instructions](https://gyeeta.io/docs/installation/install_options)
+**A Quick TL;DR Install of Gyeeta Server Components** can be found at [TL;DR Instructions](https://gyeeta.io/docs/installation/install_options#tldr-quick-single-command-install)
+
+**Kubernetes Installation** using Helm Charts can be found at [K8s Helm Charts](https://gyeeta.io/docs/installation/k8s_helm)
 
 ## Supported Linux Distributions
 
