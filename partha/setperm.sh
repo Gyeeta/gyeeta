@@ -117,7 +117,7 @@ if [ ! -f ./partha ] || [ ! -f ./runpartha.sh ]; then
 	exit 1
 fi	
 
-sudo ps &> /dev/null
+sudo -n ps &> /dev/null
 
 if [ $? -ne 0 ]; then
 	printf "\n\nPlease run this script as root or sudo ...\n\n"
