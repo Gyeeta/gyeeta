@@ -69,7 +69,7 @@ check_lib_deps()
 
 check_kernel_headers()
 {
-	if [ "x"`cat /lib/modules/$(uname -r)/build/include/config/kernel.release 2> /dev/null` = "x"`uname -r` ]; then
+	if [ -d /lib/modules/$(uname -r)/build/ ]; then
 		return;
 	fi	
 
