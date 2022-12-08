@@ -314,6 +314,10 @@ public :
 
 	bool is_cpu_throttled_cgroup() const noexcept
 	{
+		/*
+		 * TODO Currently we do not verify with parent(s) cgroup cpu max to check for throttling. 
+		 * Need to walk the weak_parent chain...
+		 */
 		return stats.is_cfs_bw_limited;
 	}	
 
@@ -497,6 +501,10 @@ public :
 
 	bool is_cpu_throttled_cgroup() const noexcept
 	{
+		/*
+		 * TODO Currently we do not verify with parent(s) cgroup cpu max to check for throttling. 
+		 * Need to walk the weak_parent chain...
+		 */
 		return stats.is_cfs_bw_limited;
 	}	
 
