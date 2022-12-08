@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-We support the last 2 major release versions for fixing any Security vulnerabilities.
+We support the last 2 release versions for fixing any Security vulnerabilities.
 
 ## Reporting a Vulnerability
 
