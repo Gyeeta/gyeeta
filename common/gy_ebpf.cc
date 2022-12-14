@@ -34,9 +34,9 @@ thread_local		bool extra_cb_info;
 			return;											\
 		}												\
 														\
-		_type	*peventorig = static_cast<_type *>(pdata), evt;						\
+		_type				evt;								\
 														\
-		std::memcpy(&evt, peventorig, sizeof(evt));							\
+		std::memcpy(&evt, pdata, sizeof(evt));								\
 														\
 		_class_cb		*_pthis = static_cast<_class_cb *>(pcb_cookie);				\
 		_pthis->_cb(&evt, extra_cb_info);								\

@@ -167,9 +167,9 @@ static void print_ip_resp(void *pcb_cookie, void *pdata, int data_size)
 		return;
 	}
 
-	T	*peventorig = static_cast<T *>(pdata), evt, *pevent = &evt;
+	T				evt, *pevent = &evt;
 
-	evt = *peventorig;
+	std::memcpy(pevent, pdata, sizeof(*pevent));
 
 	process_ip_resp<T>(pevent);
 }

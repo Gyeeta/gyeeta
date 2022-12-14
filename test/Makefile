@@ -19,9 +19,15 @@ $(CXXSRCS:.cc=.d):%.d:%.cc
 
 -include $(CXXSRCS:.cc=.d)
 
+tcpresponse_libbpf.o: tcpresponse_libbpf.cc 
+	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -c tcpresponse_libbpf.bpf.c -o ./tcpresponse_libbpf.bpf.o
+	$(LLVM_STRIP) -g ./tcpresponse_libbpf.bpf.o
+	$(BPFTOOL) gen skeleton ./tcpresponse_libbpf.bpf.o > ./tcpresponse_libbpf.skel.h
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<
+
 EXTRALDLIBS = -rdynamic -static-libgcc -static-libstdc++ -ldl
 
-BINARIES := tcptracer tcpresponse test_caps test_ipaddr test_inet_diag test_timeseries_hist test_threadlocal test_rcu test_rcu_hashtable \
+BINARIES := tcptracer tcpresponse tcpresponse_libbpf test_caps test_ipaddr test_inet_diag test_timeseries_hist test_threadlocal test_rcu test_rcu_hashtable \
 		test_namespaces test_cpubitset test_procsys test_mountinfo test_misc taskmon task_cgroup_monitor hardware_config test_str_wr_buf \
 		test_shared_ptr test_shared_ptr2 test_prio1 test_exceptions test_stack test_stack_map test_tmpl_str test_boost_intrusive \
 		iflink_info test_pcap_capture test_dns_parser tcp_sock_monitor test_mpmcqueue test_logging test_settings test_malloc_sz test_sock_queued \
@@ -42,6 +48,9 @@ tcptracer: tcptracer.o nlhandler.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o 
 
 tcpresponse: tcpresponse.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(BCCLIBS) $(LDLIBS) -o $@
+
+tcpresponse_libbpf: tcpresponse_libbpf.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MAKE_DIR)/common/libgycommon.a
+	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(LIBBPFLIBS) $(LDLIBS) -o $@
 
 test_caps: test_caps.o $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $^ $(LDLIBS) -lcap -o $@

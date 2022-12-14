@@ -8,14 +8,6 @@ INC_MAKE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
 INSTALLDIR := $(INC_MAKE_DIR)/install/partha/
 
-%.o: %.cc
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<	
-
-$(CXXSRCS:.cc=.d):%.d:%.cc
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $< >$@
-
--include $(CXXSRCS:.cc=.d)
-
 EXTRALDLIBS = -rdynamic -static-libgcc -static-libstdc++ -ldl
 
 BINARIES := partha
@@ -24,7 +16,19 @@ BINARIES := partha
 
 all: $(BINARIES)
 
+
 PARTHAOBJS := gypartha.o sversion.o gy_paconnhdlr.o gy_server_int.o sys_hardware_partha.o
+
+CXXSRCS = $(PARTHAOBJS:.o=.cc)
+
+%.o: %.cc
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<	
+
+$(CXXSRCS:.cc=.d):%.d:%.cc
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $< >$@
+
+-include $(CXXSRCS:.cc=.d)
+
 
 partha: $(PARTHAOBJS) $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $^ $(EXTRALDLIBS) $(BCCLIBS) $(LDLIBS) -o $@

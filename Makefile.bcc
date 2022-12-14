@@ -3,33 +3,35 @@ BCC_MAKE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
 include $(BCC_MAKE_DIR)/Makefile.llvm
 
-CPPFLAGS += -I$(CLANGPATH)/include -I$(BCCPATH)/include -I$(CLANGPATH)/include -I$(BCCPATH)/include/compat/linux/ 
+CPPFLAGS += -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi -I$(BCCCLANGPATH)/include -I$(BCCPATH)/include -I$(BCCCLANGPATH)/include -I$(BCCPATH)/include/compat/linux/ 
 
 BCCLIBS := $(BCCPATH)/lib64/libbcc.a $(BCCPATH)/lib64/libbcc_bpf.a $(BCCPATH)/lib64/libb_frontend.a \
 	$(BCCPATH)/lib64/libclang_frontend.a $(BCCPATH)/lib64/libbpf.a -Wl,-Bstatic \
-	$(CLANGPATH)/lib/libclangFrontend.a $(CLANGPATH)/lib/libclangSerialization.a \
-	$(CLANGPATH)/lib/libclangDriver.a $(CLANGPATH)/lib/libclangParse.a $(CLANGPATH)/lib/libclangSema.a $(CLANGPATH)/lib/libclangCodeGen.a \
-	$(CLANGPATH)/lib/libclangAnalysis.a $(CLANGPATH)/lib/libclangRewrite.a $(CLANGPATH)/lib/libclangEdit.a $(CLANGPATH)/lib/libclangAST.a \
-	$(CLANGPATH)/lib/libclangLex.a $(CLANGPATH)/lib/libclangBasic.a $(CLANGPATH)/lib/libclangASTMatchers.a \
-	$(LLVMLIBPATH)/libLLVMCoroutines.a $(LLVMLIBPATH)/libLLVMCoverage.a \
-	$(LLVMLIBPATH)/libLLVMLTO.a $(LLVMLIBPATH)/libLLVMX86CodeGen.a $(LLVMLIBPATH)/libLLVMX86Desc.a \
-	$(LLVMLIBPATH)/libLLVMX86Info.a $(LLVMLIBPATH)/libLLVMMCDisassembler.a $(LLVMLIBPATH)/libLLVMX86AsmPrinter.a \
-	$(LLVMLIBPATH)/libLLVMX86Utils.a $(LLVMLIBPATH)/libLLVMGlobalISel.a $(LLVMLIBPATH)/libLLVMPasses.a \
-	$(LLVMLIBPATH)/libLLVMipo.a $(LLVMLIBPATH)/libLLVMVectorize.a $(LLVMLIBPATH)/libLLVMInstrumentation.a \
-	$(LLVMLIBPATH)/libLLVMOption.a $(LLVMLIBPATH)/libLLVMObjCARCOpts.a $(LLVMLIBPATH)/libLLVMMCJIT.a \
-	$(LLVMLIBPATH)/libLLVMExecutionEngine.a $(LLVMLIBPATH)/libLLVMRuntimeDyld.a $(LLVMLIBPATH)/libLLVMLinker.a \
-	$(LLVMLIBPATH)/libLLVMIRReader.a $(LLVMLIBPATH)/libLLVMAsmParser.a $(LLVMLIBPATH)/libLLVMDebugInfoDWARF.a \
-	$(LLVMLIBPATH)/libLLVMBPFCodeGen.a $(LLVMLIBPATH)/libLLVMSelectionDAG.a $(LLVMLIBPATH)/libLLVMBPFDesc.a \
-	$(LLVMLIBPATH)/libLLVMBPFInfo.a $(LLVMLIBPATH)/libLLVMBPFAsmPrinter.a $(LLVMLIBPATH)/libLLVMAsmPrinter.a \
-	$(LLVMLIBPATH)/libLLVMDebugInfoCodeView.a $(LLVMLIBPATH)/libLLVMDebugInfoMSF.a $(LLVMLIBPATH)/libLLVMCodeGen.a \
-	$(LLVMLIBPATH)/libLLVMTarget.a $(LLVMLIBPATH)/libLLVMScalarOpts.a $(LLVMLIBPATH)/libLLVMInstCombine.a \
-	$(LLVMLIBPATH)/libLLVMTransformUtils.a $(LLVMLIBPATH)/libLLVMBitWriter.a $(LLVMLIBPATH)/libLLVMAnalysis.a \
-	$(LLVMLIBPATH)/libLLVMProfileData.a $(LLVMLIBPATH)/libLLVMObject.a $(LLVMLIBPATH)/libLLVMMCParser.a \
-	$(LLVMLIBPATH)/libLLVMMC.a $(LLVMLIBPATH)/libLLVMBitReader.a $(LLVMLIBPATH)/libLLVMCore.a \
-	$(LLVMLIBPATH)/libLLVMBinaryFormat.a $(LLVMLIBPATH)/libLLVMSupport.a \
+	$(BCCCLANGPATH)/lib/libclangFrontend.a $(BCCCLANGPATH)/lib/libclangSerialization.a \
+	$(BCCCLANGPATH)/lib/libclangDriver.a $(BCCCLANGPATH)/lib/libclangParse.a $(BCCCLANGPATH)/lib/libclangSema.a $(BCCCLANGPATH)/lib/libclangCodeGen.a \
+	$(BCCCLANGPATH)/lib/libclangAnalysis.a $(BCCCLANGPATH)/lib/libclangRewrite.a $(BCCCLANGPATH)/lib/libclangEdit.a $(BCCCLANGPATH)/lib/libclangAST.a \
+	$(BCCCLANGPATH)/lib/libclangLex.a $(BCCCLANGPATH)/lib/libclangBasic.a $(BCCCLANGPATH)/lib/libclangASTMatchers.a \
+	$(BCCLLVMLIBPATH)/libLLVMCoroutines.a $(BCCLLVMLIBPATH)/libLLVMCoverage.a \
+	$(BCCLLVMLIBPATH)/libLLVMLTO.a $(BCCLLVMLIBPATH)/libLLVMX86CodeGen.a $(BCCLLVMLIBPATH)/libLLVMX86Desc.a \
+	$(BCCLLVMLIBPATH)/libLLVMX86Info.a $(BCCLLVMLIBPATH)/libLLVMMCDisassembler.a $(BCCLLVMLIBPATH)/libLLVMX86AsmPrinter.a \
+	$(BCCLLVMLIBPATH)/libLLVMX86Utils.a $(BCCLLVMLIBPATH)/libLLVMGlobalISel.a $(BCCLLVMLIBPATH)/libLLVMPasses.a \
+	$(BCCLLVMLIBPATH)/libLLVMipo.a $(BCCLLVMLIBPATH)/libLLVMVectorize.a $(BCCLLVMLIBPATH)/libLLVMInstrumentation.a \
+	$(BCCLLVMLIBPATH)/libLLVMOption.a $(BCCLLVMLIBPATH)/libLLVMObjCARCOpts.a $(BCCLLVMLIBPATH)/libLLVMMCJIT.a \
+	$(BCCLLVMLIBPATH)/libLLVMExecutionEngine.a $(BCCLLVMLIBPATH)/libLLVMRuntimeDyld.a $(BCCLLVMLIBPATH)/libLLVMLinker.a \
+	$(BCCLLVMLIBPATH)/libLLVMIRReader.a $(BCCLLVMLIBPATH)/libLLVMAsmParser.a $(BCCLLVMLIBPATH)/libLLVMDebugInfoDWARF.a \
+	$(BCCLLVMLIBPATH)/libLLVMBPFCodeGen.a $(BCCLLVMLIBPATH)/libLLVMSelectionDAG.a $(BCCLLVMLIBPATH)/libLLVMBPFDesc.a \
+	$(BCCLLVMLIBPATH)/libLLVMBPFInfo.a $(BCCLLVMLIBPATH)/libLLVMBPFAsmPrinter.a $(BCCLLVMLIBPATH)/libLLVMAsmPrinter.a \
+	$(BCCLLVMLIBPATH)/libLLVMDebugInfoCodeView.a $(BCCLLVMLIBPATH)/libLLVMDebugInfoMSF.a $(BCCLLVMLIBPATH)/libLLVMCodeGen.a \
+	$(BCCLLVMLIBPATH)/libLLVMTarget.a $(BCCLLVMLIBPATH)/libLLVMScalarOpts.a $(BCCLLVMLIBPATH)/libLLVMInstCombine.a \
+	$(BCCLLVMLIBPATH)/libLLVMTransformUtils.a $(BCCLLVMLIBPATH)/libLLVMBitWriter.a $(BCCLLVMLIBPATH)/libLLVMAnalysis.a \
+	$(BCCLLVMLIBPATH)/libLLVMProfileData.a $(BCCLLVMLIBPATH)/libLLVMObject.a $(BCCLLVMLIBPATH)/libLLVMMCParser.a \
+	$(BCCLLVMLIBPATH)/libLLVMMC.a $(BCCLLVMLIBPATH)/libLLVMBitReader.a $(BCCLLVMLIBPATH)/libLLVMCore.a \
+	$(BCCLLVMLIBPATH)/libLLVMBinaryFormat.a $(BCCLLVMLIBPATH)/libLLVMSupport.a \
 	-Wl,-Bdynamic -ltinfo \
-	$(LLVMLIBPATH)/libLLVMDemangle.a \
-	$(BCCPATH)/lib64/libapi-static.a $(BCCPATH)/lib64/libusdt-static.a $(BCCPATH)/lib64/libbcc-loader-static.a -lelf
+	$(BCCLLVMLIBPATH)/libLLVMDemangle.a \
+	$(BCCPATH)/lib64/libapi-static.a $(BCCPATH)/lib64/libusdt-static.a $(BCCPATH)/lib64/libbcc-loader-static.a \
+	-lelf -lz
 
 
+LIBBPFLIBS := $(LIBBPF_DIR)/lib/libbpf.a $(LIBBPF_DIR)/lib/libbpf_helpers.a -lelf -lz
 

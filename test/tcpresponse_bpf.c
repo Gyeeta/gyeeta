@@ -44,7 +44,7 @@ static int read_ipv4_tuple(struct ipv4_tuple_t *tuple, struct sock *skp)
 	tuple->netns = net_ns_inum;
 	
 	// if addresses or ports are 0, ignore
-	if (gy_unlikely(saddr == 0 || daddr == 0 || sport == 0 || dport == 0)) {
+	if (saddr == 0 || daddr == 0 || sport == 0 || dport == 0) {
 		return 0;
 	}
 
@@ -73,7 +73,7 @@ static int read_ipv6_tuple(struct ipv6_tuple_t *tuple, struct sock *skp)
 	tuple->netns = net_ns_inum;
 
 	// if addresses or ports are 0, ignore
-	if (gy_unlikely(saddr == 0 || daddr == 0 || sport == 0 || dport == 0)) {
+	if (saddr == 0 || daddr == 0 || sport == 0 || dport == 0) {
 		return 0;
 	}
 
@@ -86,31 +86,6 @@ static inline bool check_family(struct sock *sk, u16 expected_family)
 	u16 			family = sk->__sk_common.skc_family;
 	return (family == expected_family);
 }
-
-#if 0
-static inline bool check_protocol(struct sock *sk, u8 proto)
-{
-	struct {
-		unsigned int		sk_padding : 1,
-					sk_kern_sock : 1,
-					sk_no_check_tx : 1,
-					sk_no_check_rx : 1,
-					sk_userlocks : 4,
-					sk_protocol  : 8,
-					sk_type      : 16;
-	} protocol = {};
-		
-	// workaround for reading the sk_protocol bitfield
-	
-	bpf_probe_read(&protocol, 4, (void *)(sk->__sk_flags_offset));
-
-	if (protocol.sk_protocol != proto) {
-		return 0;
-	}	
-
-	return 1;
-}	
-#endif
 
 int trace_ip_xmit(struct pt_regs *ctx, struct sock *skp)
 {

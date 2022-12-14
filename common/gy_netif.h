@@ -17,6 +17,7 @@
 #include		<arpa/inet.h>
 #include 		<libmnl/libmnl.h>
 #include 		<linux/if.h>
+#include 		<linux/if_link.h>
 
 #include 		"if_link_gy.h"
 
