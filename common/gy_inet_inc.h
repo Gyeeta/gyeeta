@@ -426,7 +426,7 @@ public :
 
 	int get_sock_info_str(char *pbuf, int buflen, const char * prefix) noexcept
 	{
-		char		buf1[16], bufip1[32];
+		char		buf1[16], bufip1[64];
 
 		if (interface_num > 0 && ipaddr.is_link_local_addr() && ipaddr.is_ipv6_addr()) {
 			snprintf(buf1, sizeof(buf1), "%%%u", interface_num);

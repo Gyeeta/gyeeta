@@ -37,7 +37,7 @@ class GY_LIBBPF_OBJ
 {
 public :	
 	GY_LIBBPF_OBJ(const char *name, const struct bpf_object_open_opts *opts = nullptr)
-		: name_(name)
+		: name_(name ? name : "libbpf object")
 	{
 		LIBBPF_OPTS(bpf_object_open_opts, open_opts);
 		
@@ -61,7 +61,7 @@ public :
 		cleanup_core_btf(&open_opts_);
 	}	
 
-	T * get() noexcept
+	T * get() const noexcept
 	{
 		return pobj_;
 	}	
@@ -119,7 +119,7 @@ public :
 
 	~GY_PERF_BUFPOOL() noexcept;
 
-	int poll(int timeout_ms, bool *pis_more_data = nullptr)
+	int poll(int timeout_ms, bool *pis_more_data = nullptr) const noexcept
 	{
 		return perf_buffer__poll_more(pbufpool_, timeout_ms, pis_more_data);
 	}	
@@ -138,7 +138,7 @@ public :
 	GY_EBPF_CB			cb_			{nullptr};
 	void				*pcb_cookie_		{nullptr};
 	GY_EBPF_LOST_CB			lost_cb_		{nullptr};
-	size_t				nlost_			{0};
+	mutable size_t			nlost_			{0};
 	std::string			name_;
 	GY_SCHEDULER			*plost_cb_scheduler_	{nullptr};
 };	
@@ -153,7 +153,7 @@ public :
 		ring_buffer__free(pbufpool_);
 	}	
 
-	int poll(int timeout_ms, bool *pis_more_data = nullptr)
+	int poll(int timeout_ms, bool *pis_more_data = nullptr) const noexcept
 	{
 		return ring_buffer__poll_more(pbufpool_, timeout_ms, pis_more_data);
 	}	

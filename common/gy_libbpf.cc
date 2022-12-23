@@ -5,7 +5,7 @@
 
 namespace gyeeta {
 
-static int dflt_print_fn(enum libbpf_print_level level, const char *format, va_list args)
+static int dflt_print_fn(enum libbpf_print_level level, const char *format, va_list args) noexcept
 {
 	if (level == LIBBPF_DEBUG && gdebugexecn == 0) {
 		return 0;
@@ -13,24 +13,28 @@ static int dflt_print_fn(enum libbpf_print_level level, const char *format, va_l
 	
 	char				stimebuf[64];
 	const char			*plevel;
+	FILE				*pstd = stdout;
 
 	switch (level) {
 	
-	case LIBBPF_DEBUG 	:	plevel = "DEBUG"; break;
-	case LIBBPF_WARN 	:	plevel = "WARN"; break;
-	case LIBBPF_INFO 	:	plevel = "INFO"; break;
+	case LIBBPF_DEBUG 	:	plevel 	= "DEBUG"; break;
+	case LIBBPF_WARN 	:	plevel 	= "WARN"; break;
+	case LIBBPF_INFO 	:	plevel 	= "INFO"; break;
 
-	default			:	plevel = "ERROR"; break;
+	default			:	
+					plevel 	= "ERROR"; 
+					pstd 	= stderr;
+					break;
 	}	
 
-	fprintf(stderr, "[%s]:[%s]: ", gy_time_print(stimebuf, sizeof(stimebuf)).first, plevel);
+	fprintf(pstd, "[%s]:[%s]: ", gy_time_print(stimebuf, sizeof(stimebuf)).first, plevel);
 
-	return vfprintf(stderr, format, args);
+	return vfprintf(pstd, format, args);
 }
 
 static void perf_cb_fn(void *pctx, int cpu, void *data, uint32_t size) noexcept
 {
-	GY_PERF_BUFPOOL			*pbufpool = (GY_PERF_BUFPOOL *)pctx;
+	const GY_PERF_BUFPOOL		*pbufpool = (GY_PERF_BUFPOOL *)pctx;
 
 	if (!pbufpool) {
 		return;
@@ -41,7 +45,7 @@ static void perf_cb_fn(void *pctx, int cpu, void *data, uint32_t size) noexcept
 
 static void perf_lost_cb_fn(void *pctx, int cpu, long long unsigned int cnt) noexcept
 {
-	GY_PERF_BUFPOOL			*pbufpool = (GY_PERF_BUFPOOL *)pctx;
+	const GY_PERF_BUFPOOL		*pbufpool = (GY_PERF_BUFPOOL *)pctx;
 
 	if (!pbufpool) {
 		return;
@@ -57,7 +61,7 @@ static void perf_lost_cb_fn(void *pctx, int cpu, long long unsigned int cnt) noe
 
 static int ring_cb_fn(void *pctx, void *data, uint64_t size) noexcept
 {
-	GY_RING_BUFPOOL			*pbufpool = (GY_RING_BUFPOOL *)pctx;
+	const GY_RING_BUFPOOL		*pbufpool = (GY_RING_BUFPOOL *)pctx;
 
 	if (!pbufpool) {
 		return -1;
@@ -84,7 +88,7 @@ GY_BTF_INIT::GY_BTF_INIT(libbpf_print_fn_t printfn)
 	
 	err = setrlimit(RLIMIT_MEMLOCK, &rlim);
 	if (err) {
-		GY_THROW_SYS_EXCEPTION("Failed to set ebpf max lock memory");
+		GY_THROW_SYS_EXCEPTION("Failed to set bpf lock memory limit");
 	}	
 
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);

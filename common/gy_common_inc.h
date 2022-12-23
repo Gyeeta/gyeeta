@@ -4172,12 +4172,24 @@ static int get_task_cpu_mem_stats(pid_t pid, pid_t tid, uint64_t *pminflt, uint6
 	buf[sz] = '\0';
 	
 	pend = buf + sz;
-	ptmp = strchr(buf, ')');
+
+	c = 0;
+
+	if (sz > 50) {
+		c = buf[50];
+		buf[50] = 0;
+	}
+
+	ptmp = strrchr(buf, ')');
 
 	if (!ptmp) {
 		return -1;
 	}
 	
+	if (c) {
+		buf[50] = c;
+	}
+
 	while ((c = *ptmp) && (c != ' ')) {
 		ptmp++;
 	}

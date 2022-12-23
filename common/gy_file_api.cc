@@ -3733,12 +3733,23 @@ try_again :
 
 	close(fd);
 
-	ptmp = strchr(databuf, ')');
+	c = 0;
+
+	if (szread > 50) {
+		c = databuf[50];
+		databuf[50] = 0;
+	}
+		
+	ptmp = strrchr(databuf, ')');
 	if (!ptmp) {
 		return -1;
 	}	
 
 	ptmp++;
+
+	if (c) {
+		databuf[50] = c;
+	}
 
 	while ((c = *ptmp) && (c != ' ')) {
 		ptmp++;

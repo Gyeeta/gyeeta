@@ -66,7 +66,6 @@ static int read_ipv4_tuple(struct ipv4_tuple_t *tuple, struct sock *skp)
 	return 1;
 }
 
-#if 1
 static int read_ipv6_tuple(struct ipv6_tuple_t *tuple, struct sock *skp)
 {
 	u32 			net_ns_inum = 0;
@@ -95,7 +94,6 @@ static int read_ipv6_tuple(struct ipv6_tuple_t *tuple, struct sock *skp)
 
 	return 1;
 }
-#endif
 
 static inline bool check_family(struct sock *sk, u16 expected_family) 
 {

@@ -53,14 +53,12 @@ struct GY_RESP_DIST
 
 typedef std::unordered_map<uint16_t, GY_RESP_DIST> 		GY_DIST_MAP;
 
-GY_DIST_MAP			gymap;
-
-
 template <typename T>
 void process_ip_resp(T __restrict__ *pevent)
 {
 	thread_local 	uint32_t		glast_sndtime = 0;
 	thread_local	time_t			glast_time_t = 0, gtlastprint = 0;
+	thread_local 	GY_DIST_MAP		gymap;
 
 	pevent->tup.sport = ntohs(pevent->tup.sport);
 	pevent->tup.dport = ntohs(pevent->tup.dport);

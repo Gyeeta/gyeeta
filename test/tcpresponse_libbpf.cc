@@ -32,20 +32,18 @@ std::atomic<int>		gsig_rcvd(0);
 struct GY_RESP_DIST
 {
 	GY_INET_SOCK				sock;
-	RESP_TIME_HISTOGRAM<SCOPE_GY_MUTEX>	dist;
+	RESP_TIME_HISTOGRAM<NULL_MUTEX>		dist;
 	uint64_t				last_bytes_received;
 };	
 
-typedef std::unordered_map<uint16_t, GY_RESP_DIST> 		GY_DIST_MAP;
-
-GY_DIST_MAP			gymap;
-
+typedef std::unordered_map<uint16_t, GY_RESP_DIST> 	GY_DIST_MAP;
 
 template <typename T>
 void process_ip_resp(T __restrict__ *pevent)
 {
 	thread_local 	uint32_t		glast_sndtime = 0;
 	thread_local	time_t			glast_time_t = 0, gtlastprint = 0;
+	thread_local 	GY_DIST_MAP		gymap;
 
 	pevent->tup.sport = ntohs(pevent->tup.sport);
 	pevent->tup.dport = ntohs(pevent->tup.dport);
@@ -148,7 +146,7 @@ template <typename T>
 static void print_ip_resp(void *pcb_cookie, void *pdata, int data_size)
 {
 	if (data_size < (signed)(sizeof(T) + sizeof(uint32_t))) {
-		DEBUGEXECN(5, ERRORPRINT("Invalid perf buffer callback size seen %d : expected %lu\n", data_size, sizeof(T) + sizeof(uint32_t)););
+		DEBUGEXECN(1, ERRORPRINT("Invalid perf buffer callback size seen %d : expected %lu\n", data_size, sizeof(T) + sizeof(uint32_t)););
 		return;
 	}
 
@@ -369,7 +367,7 @@ int main(int argc, char **argv)
 			glbpf = tcpresponse_libbpf_init(print_ip_resp<tcp_ipv4_resp_event_t>, print_ip_resp<tcp_ipv6_resp_event_t>);
 		}	
 		else {
-			ERRORPRINT("BPF BTF not suuported on this system. Please try BCC version...\n");
+			ERRORPRINT("BPF BTF (CO-RE) not supported on this host. Please try BCC version...\n");
 			_exit(1);
 		}	
 
@@ -377,8 +375,6 @@ int main(int argc, char **argv)
 
 		GY_SIGNAL_HANDLER::get_singleton()->ignore_signal(SIGHUP);
 
-		std::string		bpf_program;
-		
 		gstarttimens = get_nsec_clock();
 
 		RESP_THR_C		respthr;
