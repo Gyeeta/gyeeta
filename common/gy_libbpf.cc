@@ -34,7 +34,7 @@ static int dflt_print_fn(enum libbpf_print_level level, const char *format, va_l
 
 static void perf_cb_fn(void *pctx, int cpu, void *data, uint32_t size) noexcept
 {
-	const GY_PERF_BUFPOOL		*pbufpool = (GY_PERF_BUFPOOL *)pctx;
+	const GY_PERF_BUFPOOL		*pbufpool = (const GY_PERF_BUFPOOL *)pctx;
 
 	if (!pbufpool) {
 		return;
@@ -45,7 +45,7 @@ static void perf_cb_fn(void *pctx, int cpu, void *data, uint32_t size) noexcept
 
 static void perf_lost_cb_fn(void *pctx, int cpu, long long unsigned int cnt) noexcept
 {
-	const GY_PERF_BUFPOOL		*pbufpool = (GY_PERF_BUFPOOL *)pctx;
+	const GY_PERF_BUFPOOL		*pbufpool = (const GY_PERF_BUFPOOL *)pctx;
 
 	if (!pbufpool) {
 		return;
@@ -61,7 +61,7 @@ static void perf_lost_cb_fn(void *pctx, int cpu, long long unsigned int cnt) noe
 
 static int ring_cb_fn(void *pctx, void *data, uint64_t size) noexcept
 {
-	const GY_RING_BUFPOOL		*pbufpool = (GY_RING_BUFPOOL *)pctx;
+	const GY_RING_BUFPOOL		*pbufpool = (const GY_RING_BUFPOOL *)pctx;
 
 	if (!pbufpool) {
 		return -1;
@@ -76,7 +76,7 @@ static int ring_cb_fn(void *pctx, void *data, uint64_t size) noexcept
 GY_BTF_INIT::GY_BTF_INIT(libbpf_print_fn_t printfn)
 {
 	if (!vmlinux_btf_exists()) {
-		GY_THROW_EXCEPTION("BPF BTF Mode not supported");
+		GY_THROW_EXCEPTION("BPF BTF CO-RE not supported on this host");
 	}	
 
 	struct rlimit rlim = {
