@@ -917,7 +917,7 @@ int SYS_MEM_STATS::get_curr_state(OBJ_STATE_E & memstate, MEM_ISSUE_SOURCE & mem
 		return 0;	
 	}
 	
-	if (free_swap < (2ul << 30)) {
+	if (free_swap < GY_UP_GB(2) && total_swap >= GY_UP_GB(8)) {
 		strbuf.appendconst("State OK : Low Free Swap Space");
 
 		mem_issue	= ISSUE_SWAP_FULL;
@@ -976,7 +976,7 @@ void SYS_MEM_STATS::print_stats(bool print_histogram) noexcept
 		strbuf.appendfmt(GY_COLOR_RED "\n\t[WARN]: RSS Memory too high %.03f%% of Total Memory\n", pct_rss_hist[0]);
 	}
 
-	if (free_swap < (2ul << 30) && total_swap >= (8ul << 30)) {
+	if (free_swap < GY_UP_GB(2) && total_swap >= GY_UP_GB(8)) {
 		strbuf.appendfmt(GY_COLOR_RED "\n\t[WARN]: Free swap space too low %lu MB\n", GY_DOWN_MB(free_swap));	
 	}
 				

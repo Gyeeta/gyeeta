@@ -62,10 +62,11 @@ public :
 
 class TCP_SOCK_HANDLER;
 class TASK_HANDLER;
+class GY_EBPF_BASE;
 
 class GY_EBPF
 {
-	std::unique_ptr <ebpf::BPF> 			pbpf_;					
+	std::unique_ptr <GY_EBPF_BASE> 			pbpf_;					
 	pthread_t					perf_reader_thr_[PROBE_MAX_TYPE]	{};
 	
 	TCP_SOCK_HANDLER				*psock_handler_				{nullptr};
@@ -172,9 +173,9 @@ private :
 		set_resp_sampling(to_enable);
 	}
 
-	void 				start_ip_vs_kprobe(ebpf::BPF *gpbpf); 
+	void 				start_ip_vs_kprobe(GY_EBPF_BASE *gpbpf); 
 
-	void 				start_ebpf_probes(ebpf::BPF *gpbpf);
+	void 				start_ebpf_probes(GY_EBPF_BASE *gpbpf);
 
 	void 				start_probe_threads();
 };	

@@ -14,11 +14,6 @@ CPPFLAGS += -I$(POSTGRES_HOME)/include/
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<	
 
-$(CXXSRCS:.cc=.d):%.d:%.cc
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $< >$@
-
--include $(CXXSRCS:.cc=.d)
-
 tcpresponse_libbpf.o: tcpresponse_libbpf.cc 
 	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -c tcpresponse_libbpf.bpf.c -o ./tcpresponse_libbpf.bpf.o
 	$(LLVM_STRIP) -g ./tcpresponse_libbpf.bpf.o

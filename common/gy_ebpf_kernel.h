@@ -11,11 +11,6 @@
 
 #include			"gy_common_inc.h"
 
-namespace ebpf 
-{
-	class 			BPF;
-}
-
 namespace gyeeta {
 
 #endif				// __cplusplus && __GLIBCXX__
