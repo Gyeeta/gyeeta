@@ -513,6 +513,12 @@ void GY_EBPF::get_ipvs_existing_conns() noexcept
 	);
 }	
 
+
+bool GY_EBPF::is_bpf_core() noexcept
+{
+	return false;
+}
+
 int clear_bpf_kprobes(pid_t pid, int sysfs_dir_fd)
 {
 	/*

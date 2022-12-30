@@ -69,7 +69,7 @@ public :
 
 	int				update_server_status(const char *status) noexcept;
 
-	void				verify_caps_kernhdr();
+	void				verify_caps_kernhdr(bool is_bpf_core);
 
 	static PARTHA_C *		get_singleton() noexcept;
 

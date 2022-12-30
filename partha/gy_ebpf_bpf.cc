@@ -231,6 +231,12 @@ int GY_EBPF::set_resp_probe(bool to_enable) noexcept
 	return 0;
 }	
 
+bool GY_EBPF::is_bpf_core() noexcept
+{
+	return true;
+}
+
+
 void GY_EBPF::start_ip_vs_kprobe(GY_EBPF_BASE *gpbpf) 
 {
 	auto			*psched = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_NO_CATCHUP);

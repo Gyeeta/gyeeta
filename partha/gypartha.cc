@@ -950,7 +950,7 @@ static int partha_cmd_proc(CHILD_PROC *pchildproc) noexcept
 	return -1;
 }	
 
-void PARTHA_C::verify_caps_kernhdr()
+void PARTHA_C::verify_caps_kernhdr(bool is_bpf_core)
 {
 	constexpr const char	*capstring[] = 				{"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_IPC_LOCK", "CAP_KILL",
 											"CAP_MAC_ADMIN", "CAP_MKNOD", "CAP_SYS_CHROOT", "CAP_SYS_RESOURCE", "CAP_SETPCAP",
@@ -969,20 +969,27 @@ void PARTHA_C::verify_caps_kernhdr()
 		}	
 	}
 		
-	struct utsname		uts;	
-	char			kernpath[512];
-	struct stat		stat1;
-	int			ret;
-	
-	ret = uname(&uts);
-	if (!ret) {
-		snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/", uts.release);
+	if (is_bpf_core) {	
+		if (access("/sys/kernel/btf/vmlinux", R_OK)) {
+			GY_THROW_EXCEPTION("BPF CO-RE Support not detected on this host. Cannot run this binary.");
+		}
+	}
+	else {
+		struct utsname		uts;	
+		char			kernpath[512];
+		struct stat		stat1;
+		int			ret;
+		
+		ret = uname(&uts);
+		if (!ret) {
+			snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/", uts.release);
 
-		ret = stat(kernpath, &stat1);
-		if (ret == -1) {
-			GY_THROW_EXCEPTION("Missing Kernel Headers Package : These are required by partha : Please install your Distribution Kernel Headers package");
+			ret = stat(kernpath, &stat1);
+			if (ret == -1) {
+				GY_THROW_EXCEPTION("Missing Kernel Headers Package : These are required by partha : Please install your Distribution Kernel Headers package");
+			}	
 		}	
-	}	
+	}
 }	
 
 PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core)
@@ -991,10 +998,11 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 	pid_t			childpid1, childpid2;
 	char			logpath[GY_PATH_MAX], descbuf[128];
 	int			ret;
+	bool			is_bpf_core = GY_EBPF::is_bpf_core();
 
-	verify_caps_kernhdr();
+	verify_caps_kernhdr(is_bpf_core);
 
-	snprintf(descbuf, sizeof(descbuf), "partha - Gyeeta's Host Agent : Version %s", get_version_str());
+	snprintf(descbuf, sizeof(descbuf), "partha - Gyeeta's Host Agent (using %s) : Version %s", is_bpf_core ? "BPF CO-RE" : "BCC", get_version_str());
 		
 	pgpartha = this;
 

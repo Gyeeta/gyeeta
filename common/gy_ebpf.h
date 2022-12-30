@@ -194,6 +194,8 @@ public :
 
 	static GY_EBPF *		get_singleton() noexcept;
 
+	static bool			is_bpf_core() noexcept;
+
 private :
 
 	void				next_resp_sampling_update() noexcept
