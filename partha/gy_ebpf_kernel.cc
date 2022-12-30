@@ -250,11 +250,11 @@ int trace_connect_v6_return(struct pt_regs *ctx)
 
 	bpf_get_current_comm(p.comm, sizeof(p.comm));
 
-	bool is_src_ipv4_mapped = is_ipv4_mapped_ipv6(t.saddr);
-	bool is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(t.daddr);
+	bool 			is_src_ipv4_mapped = is_ipv4_mapped_ipv6(t.saddr);
+	bool 			is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(t.daddr);
 
 	if (is_src_ipv4_mapped || is_dest_ipv4_mapped) {
-		struct ipv4_tuple_t		t4;
+		struct ipv4_tuple_t		t4 = {};
 		u8				*pipbuf = (u8 *)&t.saddr, *pipbuf2 = (u8 *)&t.daddr;
 
 		memcpy(&t4.saddr, pipbuf + 12, 4);
@@ -294,7 +294,7 @@ int trace_tcp_set_state_entry(struct pt_regs *ctx, struct sock *skp, int state)
 	if (family == AF_INET) {
 		ipver = 4;
 		
-		struct ipv4_tuple_t 	t = {0};
+		struct ipv4_tuple_t 	t = {};
 
 		if (!read_ipv4_tuple(&t, skp)) {
 			return 0;
@@ -337,7 +337,7 @@ int trace_tcp_set_state_entry(struct pt_regs *ctx, struct sock *skp, int state)
 	} else if (family == AF_INET6) {
 		ipver = 6;
 
-		struct ipv6_tuple_t 	t = {0};
+		struct ipv6_tuple_t 	t = {};
 
 		if (!read_ipv6_tuple(&t, skp)) {
 			return 0;
@@ -354,11 +354,11 @@ int trace_tcp_set_state_entry(struct pt_regs *ctx, struct sock *skp, int state)
 
 		p = tuplepid_ipv6.lookup(&t);
 		if (p == NULL) {
-			bool is_src_ipv4_mapped = is_ipv4_mapped_ipv6(t.saddr);
-			bool is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(t.daddr);
+			bool 			is_src_ipv4_mapped = is_ipv4_mapped_ipv6(t.saddr);
+			bool 			is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(t.daddr);
 
 			if (is_src_ipv4_mapped || is_dest_ipv4_mapped) {
-				struct ipv4_tuple_t		t4;
+				struct ipv4_tuple_t		t4 = {};
 				u8				*pipbuf = (u8 *)&t.saddr, *pipbuf2 = (u8 *)&t.daddr;
 
 				memcpy(&t4.saddr, pipbuf + 12, 4);
@@ -423,9 +423,7 @@ int trace_close_entry(struct pt_regs *ctx, struct sock *skp)
 
 	// Don't generate close events for connections that were never
 	// established in the first place.
-	if (oldstate == TCP_SYN_SENT ||
-			oldstate == TCP_SYN_RECV ||
-			oldstate == TCP_NEW_SYN_RECV) {
+	if (oldstate == TCP_SYN_SENT || oldstate == TCP_SYN_RECV || oldstate == TCP_NEW_SYN_RECV) {
 		return 0;
 	}	
 
@@ -578,7 +576,7 @@ int trace_accept_return(struct pt_regs *ctx)
 
 	// Get network namespace id, if kernel supports it
 #ifdef CONFIG_NET_NS
-	possible_net_t 		skc_net = { };
+	possible_net_t 		skc_net = {};
 
 	bpf_probe_read(&skc_net, sizeof(skc_net), &newsk->__sk_common.skc_net);
 	bpf_probe_read(&net_ns_inum, sizeof(net_ns_inum), &skc_net.net->ns.inum);

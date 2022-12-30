@@ -22,7 +22,7 @@ extern "C" {
 
 namespace gyeeta {
 
-typedef void (*GY_EBPF_CB)(void *pcb_cookie, void *pdata, uint32_t data_size);
+typedef void (*GY_EBPF_CB)(void *pcb_cookie, void *pdata, int data_size);
 typedef void (*GY_EBPF_LOST_CB)(void *pcb_cookie, uint64_t cnt);
 
 class GY_BTF_INIT
@@ -99,7 +99,7 @@ public :
 		}	
 	}	
 	
-	static std::string_view elf_bytes() noexcept
+	static std::string_view elf_bytes()
 	{
 		size_t			sz;
 		const char		*pbytes = (const char *)T::elf_bytes(&sz);
@@ -123,6 +123,12 @@ public :
 	{
 		return perf_buffer__poll_more(pbufpool_, timeout_ms, pis_more_data);
 	}	
+
+	// For compatability with bcc
+	int poll(int timeout_ms, bool *pis_more_data, pid_t unused) const noexcept
+	{
+		return this->poll(timeout_ms, pis_more_data);
+	}
 
 	perf_buffer * get_perf_buffer() const noexcept
 	{
@@ -157,6 +163,12 @@ public :
 	{
 		return ring_buffer__poll_more(pbufpool_, timeout_ms, pis_more_data);
 	}	
+
+	// For compatability with bcc
+	int poll(int timeout_ms, bool *pis_more_data, pid_t unused) const noexcept
+	{
+		return this->poll(timeout_ms, pis_more_data);
+	}
 
 	ring_buffer * get_ring_buffer() const noexcept
 	{

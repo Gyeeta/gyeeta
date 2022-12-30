@@ -1233,7 +1233,8 @@ public :
 	void handle_ipv6_resp_event(tcp_ipv6_resp_event_t * pevent, bool more_data) noexcept;
 	
 	int inet_diag_thread() noexcept;
-	void handle_create_netns_event(create_ns_data_t * pevent, ino_t inode) noexcept;
+	void handle_create_netns(create_ns_data_t * pevent, ino_t inode) noexcept;
+	void handle_create_ns_event(create_ns_data_t *pevent, bool more_data) noexcept;
 
 	NETNS_ELEM * get_netns_locked(ino_t inode) const noexcept
 	{

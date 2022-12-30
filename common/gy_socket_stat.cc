@@ -1364,7 +1364,7 @@ bool TCP_SOCK_HANDLER::notify_new_listener(TCP_LISTENER *plistener, bool more_da
 	return listen_cache_.set_buffer_sz(sendcb, elemsz, !more_data);
 }
 
-void TCP_SOCK_HANDLER::handle_create_netns_event(create_ns_data_t * pevent, ino_t inode) noexcept
+void TCP_SOCK_HANDLER::handle_create_netns(create_ns_data_t * pevent, ino_t inode) noexcept
 {
 	try {
 		NETNS_ELEM		*pnetns = new NETNS_ELEM(inode, pevent->pid, pevent->tid, true);
@@ -1382,6 +1382,58 @@ void TCP_SOCK_HANDLER::handle_create_netns_event(create_ns_data_t * pevent, ino_
 		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while handling bpf New NetNS event : %s\n", GY_GET_EXCEPT_STRING););
 	);		
 }	
+
+void TCP_SOCK_HANDLER::handle_create_ns_event(create_ns_data_t *pevent, bool more_data) noexcept
+{
+	CONDEXEC(
+		DEBUGEXECN(1, 
+			STRING_BUFFER<512>	ss;
+
+			if (pevent->flags & CLONE_NEWNS) {
+				ss.appendconst(" New Mount Namespace,");
+			}	
+			if (pevent->flags & CLONE_NEWUTS) {
+				ss.appendconst(" New utsname Namespace,");
+			}	
+			if (pevent->flags & CLONE_NEWIPC) {
+				ss.appendconst(" New IPC Namespace,");
+			}	
+			if (pevent->flags & CLONE_NEWPID) {
+				ss.appendconst(" New PID Namespace,");
+			}	
+			if (pevent->flags & CLONE_NEWNET) {
+				ss.appendconst(" New network Namespace,");
+			}	
+			if (pevent->flags & CLONE_NEWCGROUP) {
+				ss.appendconst(" New cgroup Namespace,");
+			}	
+
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_YELLOW, "Namespace Event : Process PID : %u, Process TID : %u, Process name : %s, %.*s\n\n", 
+					pevent->pid, pevent->tid, pevent->comm, ss.sizeint(), ss.buffer());
+		);
+	);
+
+	// Currently we handle only NetNS events
+
+	if (!(pevent->flags & CLONE_NEWNET)) {
+		return;
+	}	
+
+	int			ret;
+	ino_t			ns_net[1];
+	const char *		ns_str_net[] = {"net"};
+
+	ret = get_proc_ns_inodes(pevent->pid, ns_str_net, ns_net, 1, -1, pevent->tid);
+	if (ret < 0) {
+		errno = -ret;
+
+		DEBUGEXECN(1, PERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Failed to get NetNS inode for new netns event for PID %d", pevent->pid););
+		return;
+	}
+
+	handle_create_netns(pevent, ns_net[0]);
+}	
+
 
 void TCP_SOCK_HANDLER::handle_ipv4_resp_event(tcp_ipv4_resp_event_t * pevent, bool more_data) noexcept
 {

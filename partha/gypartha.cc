@@ -149,7 +149,6 @@ int PARTHA_C::init_all_singletons()
 	"debuglevel"			:	10,
 	"response_sampling_percent"	:	50,
 	"log_use_utc_time"		:	false,
-	"enable_response_probe"		:	true,
 	"is_kubernetes"			:	true
 }		 	
  */
@@ -204,6 +203,7 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 			}
 		}	
 
+		/*
 		if (auto aiter = doc.FindMember("enable_response_probe"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 			bool 		enable = aiter->value.GetBool();
 
@@ -214,7 +214,8 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 					ptcp->pebpf_->set_resp_probe(enable);
 				}	
 			}
-		}	
+		}
+		*/
 
 		if (auto aiter = doc.FindMember("is_kubernetes"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 			bool 		enable = aiter->value.GetBool();

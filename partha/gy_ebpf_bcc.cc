@@ -36,89 +36,18 @@ namespace gyeeta {
 class GY_EBPF_BASE : public ebpf::BPF
 {
 public :
-	using ebpf::BPF::BPF;
+	using 				ebpf::BPF::BPF;
+
+	uint32_t			max_possible_cpus_		{(uint32_t)ebpf::BPFTable::get_possible_cpu_count()};
+	std::vector<uint64_t> 		bpf_resp_vec_			{max_possible_cpus_};				
+	const char			*pgip_queue_xmit_		{nullptr};	
+	bool				use_per_cpu_config_		{false};
 };	
 		
 thread_local		bool extra_cb_info;
-
-
-/*
- * Specify _cbafter1sec as true only for callbacks which are likely to be sporadic as it will result in
- * a get_usec_clock() call for every callback event.
- */
-#define EBPF_PERF_THREAD(_name, _perfbuffer, _idle_cb, _cbafter1sec)						\
-int GY_EBPF::_name()												\
-{														\
-	DEBUGEXECN(1, INFOPRINT_OFFLOAD("Starting ebpf perf thread %s\n", __FUNCTION__););			\
-														\
-	auto perf_buffer = pbpf_->get_perf_buffer(#_perfbuffer);						\
-														\
-	if (perf_buffer) {											\
-														\
-		auto lam1 = [this]() -> bool									\
-		{												\
-			int nthr = nthrs_init_.fetch_add(1);							\
-			if (nthr + 1 == gyeeta::PROBE_MAX_TYPE) {						\
-				return true;									\
-			}											\
-			else return false;									\
-		};												\
-		thr_cond_.cond_signal(lam1);									\
-														\
-		constexpr bool		cbafter1sec = (_cbafter1sec);						\
-		const pid_t 		threadid = syscall(__NR_gettid);					\
-		uint64_t		startcusec = get_usec_clock();						\
-														\
-again1 :													\
-		try {												\
-			while (to_stop_.load(std::memory_order_relaxed) == false) {				\
-				int evcnt = perf_buffer->poll(1000 /* msec */, &extra_cb_info, threadid);	\
-				if (evcnt == 0) {								\
-					_idle_cb();								\
-														\
-					if (cbafter1sec) {							\
-						startcusec = get_usec_clock();					\
-					}									\
-				}										\
-				else if (cbafter1sec) {								\
-					uint64_t		cusec = get_usec_clock();			\
-														\
-					if (cusec - startcusec > GY_USEC_PER_SEC) {				\
-						startcusec	= cusec;					\
-														\
-						_idle_cb();							\
-					}									\
-				}										\
-			}											\
-		}												\
-		catch(...) {											\
-		}												\
-														\
-		if (to_stop_.load(std::memory_order_relaxed) == false) {					\
-			goto again1;										\
-		}												\
-		INFOPRINT("ebpf perf thread %s returning as quit received...\n",  __FUNCTION__);		\
-	}													\
-	else {													\
-		ERRORPRINT(#_perfbuffer " perf buffer not found. Signalling object quit\n");			\
-														\
-		snprintf(buf_error_, sizeof(buf_error_), "perf buffer " #_perfbuffer " not found");		\
-														\
-		auto lam2 = [this]() -> bool									\
-		{ 												\
-			to_stop_.store(true);									\
-			return true; 										\
-		};												\
-		thr_cond_.cond_signal(lam2);									\
-														\
-		return -1;											\
-	}													\
-														\
-	return 0;												\
-}
-
-
 static GY_EBPF		*pgebf_;	
+
+#define EBPF_GET_PERF_BUFFER(_perfbuffer)	pbpf_->get_perf_buffer(#_perfbuffer)
 
 GY_EBPF *		GY_EBPF::get_singleton() noexcept
 {
@@ -126,8 +55,7 @@ GY_EBPF *		GY_EBPF::get_singleton() noexcept
 }	
 
 GY_EBPF::GY_EBPF(TCP_SOCK_HANDLER *psock, TASK_HANDLER *ptask, uint8_t resp_sampling_percent)
-	: psock_handler_(psock), ptask_handler_(ptask), max_possible_cpus_(ebpf::BPFTable::get_possible_cpu_count()),
-	bpf_resp_vec_(max_possible_cpus_), resp_sampling_(resp_sampling_percent)
+	: psock_handler_(psock), ptask_handler_(ptask), resp_sampling_(resp_sampling_percent)
 {
 	if (!psock_handler_) {
 		psock_handler_ = TCP_SOCK_HANDLER::get_singleton();
@@ -166,7 +94,7 @@ GY_EBPF::GY_EBPF(TCP_SOCK_HANDLER *psock, TASK_HANDLER *ptask, uint8_t resp_samp
 		kern_version_num_ = pos->get_kernel_version(); 
 
 		if (kern_version_num_ >= 0x040700) {
-			use_per_cpu_config_ = true;
+			pbpf->use_per_cpu_config_ = true;
 			cflags.emplace_back("-DUSE_PERCPU_TABLE=1");
 		}	
 
@@ -235,14 +163,15 @@ int GY_EBPF::set_resp_sampling(bool to_enable) noexcept
 	const char 		*ptype = (to_enable ? "enable" : "disable");
 
 	try {
-		if (use_per_cpu_config_) {
-			auto 		config_resp_tbl = pbpf_->get_percpu_array_table<uint64_t>("config_tcp_response");
+		if (pbpf_->use_per_cpu_config_) {
+			auto 			config_resp_tbl = pbpf_->get_percpu_array_table<uint64_t>("config_tcp_response");
+			const uint32_t		nmax = pbpf_->max_possible_cpus_;
 
-			for (uint32_t i = 0; i < max_possible_cpus_; i++) {
-				bpf_resp_vec_[i] = updval;
+			for (uint32_t i = 0; i < nmax; i++) {
+				pbpf_->bpf_resp_vec_[i] = updval;
 			}	
 
-			auto col_status = config_resp_tbl.update_value(0, bpf_resp_vec_);
+			auto col_status = config_resp_tbl.update_value(0, pbpf_->bpf_resp_vec_);
 			if (col_status.code() != 0) {
 				/*ERRORPRINT("Could not set per cpu TCP response sampling to %s : %s\n", ptype, col_status.msg().c_str());*/
 				return -1;
@@ -282,7 +211,7 @@ int GY_EBPF::set_resp_probe(bool to_enable) noexcept
 
 			GY_NOMT_COLLECT_PROFILE(10, "Starting trace_ip_xmit kprobes");
 
-			auto tres1 = pbpf_->attach_kprobe(pgip_queue_xmit_, "trace_ip_xmit", 0, BPF_PROBE_ENTRY);
+			auto tres1 = pbpf_->attach_kprobe(pbpf_->pgip_queue_xmit_, "trace_ip_xmit", 0, BPF_PROBE_ENTRY);
 			if (tres1.code() != 0) {
 				ERRORPRINT_OFFLOAD("Could not attach to kprobe ip_queue_xmit entry : %s\n", tres1.msg().c_str());
 				return -1;
@@ -298,7 +227,7 @@ int GY_EBPF::set_resp_probe(bool to_enable) noexcept
 
 			GY_NOMT_COLLECT_PROFILE(10, "Stopping trace_ip_xmit kprobes");
 
-			pbpf_->detach_kprobe(pgip_queue_xmit_, BPF_PROBE_ENTRY);
+			pbpf_->detach_kprobe(pbpf_->pgip_queue_xmit_, BPF_PROBE_ENTRY);
 			pbpf_->detach_kprobe("inet6_csk_xmit", BPF_PROBE_ENTRY);
 		}	
 
@@ -314,7 +243,7 @@ int GY_EBPF::set_resp_probe(bool to_enable) noexcept
 
 void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 {
-	INFOPRINT("Starting ebpf probe collection ...\n");
+	INFOPRINT("Starting eBPF BCC probes...\n");
 
 	auto res1 = gpbpf->attach_kprobe("tcp_v4_connect", "trace_connect_v4_entry", 0ul, BPF_PROBE_ENTRY);
 	if (res1.code() != 0) {
@@ -371,9 +300,9 @@ void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 		ERRORPRINT("Could not attach to kprobe create_new_namespaces entry (Skipping) : %s\n", ns_res.msg().c_str());
 	}
 	
-	EBPF_PERF_CALLBACK(create_ns_data_t, GY_EBPF, handle_create_ns_event);
+	EBPF_PERF_CALLBACK(create_ns_data_t, TCP_SOCK_HANDLER, handle_create_ns_event);
 
-	auto open_nsproc = gpbpf->open_perf_buffer("create_ns_event", EBPF_PERF_GET_CB_NAME(create_ns_data_t), nullptr, this, 8);
+	auto open_nsproc = gpbpf->open_perf_buffer("create_ns_event", EBPF_PERF_GET_CB_NAME(create_ns_data_t), nullptr, psock_handler_, 8);
 	if (open_nsproc.code() != 0) {
 		GY_THROW_EXCEPTION("Could not open perf buffer for create ns event : %s", open_nsproc.msg().c_str());
 	}
@@ -394,7 +323,7 @@ void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 	const char *		pip_queue_xmit 		= (kern_version_num_ >= 0x041300 /* 4.19 */ ? "__ip_queue_xmit" : "ip_queue_xmit");
 	const char *		pip_queue_xmit_try2 	= (kern_version_num_ >= 0x041300 /* 4.19 */ ? "ip_queue_xmit" : "__ip_queue_xmit");
 
-	pgip_queue_xmit_		= pip_queue_xmit;
+	gpbpf->pgip_queue_xmit_		= pip_queue_xmit;
 
 	auto tres1 = gpbpf->attach_kprobe(pip_queue_xmit, "trace_ip_xmit", 0, BPF_PROBE_ENTRY);
 	if (tres1.code() != 0) {
@@ -403,7 +332,7 @@ void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 			GY_THROW_EXCEPTION("Could not attach to kprobe ip_queue_xmit entry : %s", tres1.msg().c_str());
 		}	
 
-		pgip_queue_xmit_	= pip_queue_xmit_try2;
+		gpbpf->pgip_queue_xmit_	= pip_queue_xmit_try2;
 	}
 
 	auto tres2 = gpbpf->attach_kprobe("inet6_csk_xmit", "trace_ip_xmit", 0, BPF_PROBE_ENTRY);
@@ -442,104 +371,17 @@ void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 		ipvs_probe_started_ = true;
 	}
 	else {
-		INFOPRINT_OFFLOAD("No IPVS Active currently. Will periodically check for IPVS activation...\n");
-
+		INFOPRINT_OFFLOAD("No IPVS Active currently. Will periodically recheck...\n");
 		ipvs_probe_started_ = false;
 	}	
 }	
 		
-int GY_EBPF::ip_vs_new_conn_thread_checker() noexcept
-{
-	if (ipvs_probe_started_ == true) {
-		return ip_vs_new_conn_thread();
-	}	
-	
-	auto lam1 = [this]() -> bool {					
-		int nthr = nthrs_init_.fetch_add(1);		
-		if (nthr + 1 == gyeeta::PROBE_MAX_TYPE) {
-			return true;			
-		}				
-		else return false;	
-	};			
-	thr_cond_.cond_signal(lam1);					
-
-	while (to_stop_.load(std::memory_order_relaxed) == false) {					
-		if (pbpf_.get() && (0 == access("/proc/net/ip_vs_conn", R_OK))) {
-			try {
-				INFOPRINT_OFFLOAD("Detected IPVS Activation. Attaching kprobe to ip_vs_conn_new...\n");
-
-				start_ip_vs_kprobe(pbpf_.get());
-
-				INFOPRINT_OFFLOAD("IPVS Kprobe is now active...\n");
-				
-				return ip_vs_new_conn_thread();
-			}
-			GY_CATCH_EXCEPTION(
-				ERRORPRINT("Could not start kprobe on ip_vs_conn_new due to %s. Will ignore IPVS conntrack now...\n", GY_GET_EXCEPT_STRING);
-				return -1;
-			);
-		}
-		
-		gy_msecsleep(1000);
-	}
-
-	return 0;
-}	
-		
-void GY_EBPF::handle_create_ns_event(create_ns_data_t *pevent, bool more_data) noexcept
-{
-	CONDEXEC(
-		DEBUGEXECN(1, 
-			STRING_BUFFER<512>	ss;
-
-			if (pevent->flags & CLONE_NEWNS) {
-				ss.appendconst(" New Mount Namespace,");
-			}	
-			if (pevent->flags & CLONE_NEWUTS) {
-				ss.appendconst(" New utsname Namespace,");
-			}	
-			if (pevent->flags & CLONE_NEWIPC) {
-				ss.appendconst(" New IPC Namespace,");
-			}	
-			if (pevent->flags & CLONE_NEWPID) {
-				ss.appendconst(" New PID Namespace,");
-			}	
-			if (pevent->flags & CLONE_NEWNET) {
-				ss.appendconst(" New network Namespace,");
-			}	
-			if (pevent->flags & CLONE_NEWCGROUP) {
-				ss.appendconst(" New cgroup Namespace,");
-			}	
-
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_YELLOW, "Namespace Event : Process PID : %u, Process TID : %u, Process name : %s, %.*s\n\n", 
-					pevent->pid, pevent->tid, pevent->comm, ss.sizeint(), ss.buffer());
-		);
-	);
-
-	// Currently we handle only NetNS events
-
-	if (!(pevent->flags & CLONE_NEWNET)) {
-		return;
-	}	
-
-	int			ret;
-	ino_t			ns_net[1];
-	const char *		ns_str_net[] = {"net"};
-
-	ret = get_proc_ns_inodes(pevent->pid, ns_str_net, ns_net, 1, -1, pevent->tid);
-	if (ret < 0) {
-		errno = -ret;
-
-		DEBUGEXECN(1, PERRORPRINTCOLOR(GY_COLOR_BOLD_RED, "Failed to get NetNS inode for new netns event for PID %d", pevent->pid););
-		return;
-	}
-
-	psock_handler_->handle_create_netns_event(pevent, ns_net[0]);
-}	
-
-
 void GY_EBPF::start_ip_vs_kprobe(GY_EBPF_BASE *gpbpf) 
 {
+	if (ipvs_probe_started_) {
+		return;
+	}
+
 	auto ipvs_cg = gpbpf->attach_kprobe("ip_vs_conn_new", "trace_ip_vs_conn_return", 0ul, BPF_PROBE_RETURN);
 	if (ipvs_cg.code() != 0) {
 		GY_THROW_EXCEPTION("Could not attach to kprobe ip_vs_conn_new entry : %s", ipvs_cg.msg().c_str());
@@ -581,7 +423,7 @@ void GY_EBPF::start_probe_threads()
 				};	
 
 
-	INFOPRINT("Starting ebpf perf thread spawns ...\n");
+	INFOPRINT("Starting ebpf BCC perf thread spawns ...\n");
 
 	auto lamc = [&]() 
 	{ 

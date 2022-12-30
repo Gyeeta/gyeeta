@@ -38,6 +38,8 @@
 install/
 
 partha/partha
+partha/partha-bcc
+partha/partha-bpf
 server/madhava
 server/shyama
 

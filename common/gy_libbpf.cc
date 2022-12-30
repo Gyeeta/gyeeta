@@ -5,21 +5,24 @@
 
 namespace gyeeta {
 
+// Specify gdebugexecn as >= 11 to enable debug messages prints
 static int dflt_print_fn(enum libbpf_print_level level, const char *format, va_list args) noexcept
 {
-	if (level == LIBBPF_DEBUG && gdebugexecn == 0) {
-		return 0;
-	}	
-	
 	char				stimebuf[64];
 	const char			*plevel;
 	FILE				*pstd = stdout;
 
 	switch (level) {
 	
-	case LIBBPF_DEBUG 	:	plevel 	= "DEBUG"; break;
 	case LIBBPF_WARN 	:	plevel 	= "WARN"; break;
 	case LIBBPF_INFO 	:	plevel 	= "INFO"; break;
+
+	case LIBBPF_DEBUG 	:	
+					if (gdebugexecn < 11) {
+						return 0;
+					}	
+					plevel 	= "DEBUG"; 
+					break;
 
 	default			:	
 					plevel 	= "ERROR"; 
@@ -80,15 +83,15 @@ GY_BTF_INIT::GY_BTF_INIT(libbpf_print_fn_t printfn)
 	}	
 
 	struct rlimit rlim = {
-		.rlim_cur = 512UL << 20, /* 512 MB */
-		.rlim_max = 512UL << 20, /* 512 MB */
+		.rlim_cur = GY_UP_MB(512),
+		.rlim_max = GY_UP_MB(512),
 	};
 
 	int			err;
 	
 	err = setrlimit(RLIMIT_MEMLOCK, &rlim);
 	if (err) {
-		GY_THROW_SYS_EXCEPTION("Failed to set bpf lock memory limit");
+		GY_THROW_SYS_EXCEPTION("Failed to set BPF lock memory limit");
 	}	
 
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
@@ -108,18 +111,29 @@ GY_PERF_BUFPOOL::GY_PERF_BUFPOOL(const char *name, int map_fd, size_t page_cnt, 
 	pbufpool_ = perf_buffer__new(map_fd, page_cnt, perf_cb_fn, perf_lost_cb_fn, this, nullptr);
 
 	if (!pbufpool_) {
-		GY_THROW_SYS_EXCEPTION("Failed to create %s perf buffer pool", name ? name : "");
+		GY_THROW_SYS_EXCEPTION("Failed to create %s BPF Perf Buffer Pool", name ? name : "");
 	}
 
 	if (plost_cb_scheduler_ && name) {
 		plost_cb_scheduler_->add_schedule(10'000, 30'000, 0, name, 
-			[this, last_cnt = 0lu]() mutable 
+			[this, last_cnt = 0lu, tlast_drop = time(nullptr), niter = 0]() mutable 
 			{
-				if (nlost_ != last_cnt) {
-					WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "%s Perf Buffer : Missed %lu events in last 30 sec : Total missed count %lu\n",
-						name_.data(), nlost_ - last_cnt, nlost_);
+				niter++;
+
+				if (nlost_ != last_cnt || niter >= 10) {
+					time_t			tcur = time(nullptr);
+
+					WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "%s BPF Perf Buffer : Missed %lu events in last 30 sec : Total missed count %lu : Previous drop reported %ld min ago\n",
+						name_.data(), nlost_ - last_cnt, nlost_, (tcur - tlast_drop)/60);
 					
-					last_cnt = nlost_;
+					if (nlost_ != last_cnt) {
+						last_cnt 	= nlost_;
+						tlast_drop 	= tcur;
+					}
+
+					if (niter >= 10) {
+						niter = 0;
+					}	
 				}	
 			}, false);	
 	}	
@@ -142,7 +156,7 @@ GY_RING_BUFPOOL::GY_RING_BUFPOOL(const char *name, int map_fd, GY_EBPF_CB cb, vo
 	pbufpool_ = ring_buffer__new(map_fd, ring_cb_fn, this, nullptr);
 
 	if (!pbufpool_) {
-		GY_THROW_SYS_EXCEPTION("Failed to create %s ring buffer pool", name ? name : "");
+		GY_THROW_SYS_EXCEPTION("Failed to create %s BPF Ring Buffer Pool", name ? name : "");
 	}
 }
 

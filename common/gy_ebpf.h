@@ -78,16 +78,12 @@ class GY_EBPF
 	char						buf_error_[256]				{};
 
 	uint32_t					kern_version_num_			{0};
-	uint32_t					max_possible_cpus_			{0};
-	std::vector<uint64_t> 				bpf_resp_vec_;				
 	
 	RESP_SAMPLING					resp_sampling_;
 	GY_MUTEX					resp_mutex_;
-	const char					*pgip_queue_xmit_			{nullptr};	
 	bool						resp_probe_enabled_			{true};
 	bool						resp_sample_enabled_			{false};
 
-	bool						use_per_cpu_config_			{false};
 	bool						sched_started_				{false};
 	bool						ipvs_probe_started_			{false};
 
@@ -145,7 +141,45 @@ public :
 	
 	void				handle_create_ns_event(create_ns_data_t *pevent, bool more_data) noexcept;
 
-	int				ip_vs_new_conn_thread_checker() noexcept;
+	int ip_vs_new_conn_thread_checker() noexcept
+	{
+		if (ipvs_probe_started_ == true) {
+			return ip_vs_new_conn_thread();
+		}	
+		
+		auto lam1 = [this]() -> bool {					
+			int nthr = nthrs_init_.fetch_add(1);		
+			if (nthr + 1 == gyeeta::PROBE_MAX_TYPE) {
+				return true;			
+			}				
+			else return false;	
+		};			
+		thr_cond_.cond_signal(lam1);					
+
+		while (to_stop_.load(std::memory_order_relaxed) == false) {					
+			if (pbpf_.get() && (0 == access("/proc/net/ip_vs_conn", R_OK))) {
+				try {
+					INFOPRINT_OFFLOAD("Detected IPVS Activation. Attaching probe now ...\n");
+
+					start_ip_vs_kprobe(pbpf_.get());
+
+					INFOPRINT_OFFLOAD("IPVS Kprobe is now active...\n");
+					
+					return ip_vs_new_conn_thread();
+				}
+				GY_CATCH_EXCEPTION(
+					ERRORPRINT("Could not start kprobe on ip_vs_conn_new due to %s. Will ignore IPVS conntrack now...\n", GY_GET_EXCEPT_STRING);
+					return -1;
+				);
+			}
+			
+			gy_msecsleep(1000);
+		}
+
+		return 0;
+	}	
+		
+
 	int				ip_vs_new_conn_thread();
 	MAKE_CLASS_FUNC_WRAPPER_NO_ARG(GY_EBPF, ip_vs_new_conn_thread_checker);
 

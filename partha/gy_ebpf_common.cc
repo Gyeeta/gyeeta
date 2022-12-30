@@ -1,10 +1,8 @@
+//  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
+//  SPDX-License-Identifier: GPL-3.0-or-later
 
 #include		"gy_ebpf.h"
 #include		"gy_rcu_inc.h"
-#include		"gy_sys_hardware.h"
-#include		"gy_socket_stat.h"
-#include		"gy_task_handler.h"
-#include		"gy_scheduler.h"
 
 #include		"gy_ebpf_common.h"
 
