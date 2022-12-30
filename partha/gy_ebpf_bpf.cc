@@ -137,24 +137,17 @@ GY_EBPF_BASE::GY_EBPF_BASE()
 
 	// Disable autoattach for optional probes
 	bpf_program__set_autoattach(obj_.get()->progs.trace_create_ns, false);
-	bpf_program__set_autoattach(obj_.get()->progs.trace_ip_vs_conn_return, false);
-	bpf_program__set_autoattach(obj_.get()->progs.trace_ip_vs_conn_show, false);
-
+	bpf_program__set_autoattach(mobj_.get()->progs.trace_ip_vs_conn_show, false);
 }	
-
-void GY_EBPF_BASE::start_probes()
-{
-	INFOPRINT("Starting eBPF BPF CO-RE probes...\n");
-
-	obj_.load_bpf();
-	obj_.attach_bpf();
-}
 
 void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 {
 	auto			*psched = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_NO_CATCHUP);
 
-	gpbpf->start_probes();
+	INFOPRINT("Starting eBPF BPF CO-RE probes...\n");
+
+	gpbpf->obj_.load_bpf();
+	gpbpf->obj_.attach_bpf();
 
 	EBPF_PERF_CALLBACK(tcp_ipv4_event_t, TCP_SOCK_HANDLER, handle_ipv4_conn_event);
 	gpbpf->tcp_ipv4_event_pool_.emplace("tcp_ipv4_event perf buffer", bpf_map__fd(gpbpf->obj_.get()->maps.tcp_ipv4_event), 32, 
@@ -246,13 +239,16 @@ void GY_EBPF::start_ip_vs_kprobe(GY_EBPF_BASE *gpbpf)
 		return;
 	}
 
-	gpbpf->obj_.get()->links.trace_ip_vs_conn_return = bpf_program__attach_kprobe(gpbpf->obj_.get()->progs.trace_ip_vs_conn_return, true /* retprobe */, "ip_vs_conn_new");
-	if (!gpbpf->obj_.get()->links.trace_ip_vs_conn_return) {
+	gpbpf->mobj_.load_bpf();
+	gpbpf->mobj_.attach_bpf();
+
+	gpbpf->mobj_.get()->links.trace_ip_vs_conn_return = bpf_program__attach_kprobe(gpbpf->mobj_.get()->progs.trace_ip_vs_conn_return, true /* retprobe */, "ip_vs_conn_new");
+	if (!gpbpf->mobj_.get()->links.trace_ip_vs_conn_return) {
 		GY_THROW_SYS_EXCEPTION("Could not attach to kprobe ip_vs_conn_new entry");
 	}
 	
 	EBPF_PERF_CALLBACK(ip_vs_conn_event_t, TCP_SOCK_HANDLER, handle_ip_vs_conn_event);
-	gpbpf->ip_vs_new_conn_event_pool_.emplace("ip_vs_new_conn_event perf buffer", bpf_map__fd(gpbpf->obj_.get()->maps.ip_vs_new_conn_event), 16, 
+	gpbpf->ip_vs_new_conn_event_pool_.emplace("ip_vs_new_conn_event perf buffer", bpf_map__fd(gpbpf->mobj_.get()->maps.ip_vs_new_conn_event), 16, 
 						EBPF_PERF_GET_CB_NAME(ip_vs_conn_event_t), psock_handler_, nullptr, psched);
 
 	ipvs_probe_started_ = true;
@@ -349,8 +345,8 @@ void GY_EBPF::get_ipvs_existing_conns() noexcept
 			return;
 		}
 
-		pbpf_->obj_.get()->links.trace_ip_vs_conn_show = bpf_program__attach_kprobe(pbpf_->obj_.get()->progs.trace_ip_vs_conn_show, false, "ip_vs_conn_seq_show");
-		if (!pbpf_->obj_.get()->links.trace_ip_vs_conn_show) {
+		pbpf_->mobj_.get()->links.trace_ip_vs_conn_show = bpf_program__attach_kprobe(pbpf_->mobj_.get()->progs.trace_ip_vs_conn_show, false, "ip_vs_conn_seq_show");
+		if (!pbpf_->mobj_.get()->links.trace_ip_vs_conn_show) {
 			GY_THROW_SYS_EXCEPTION("Could not attach to kprobe ip_vs_conn_seq_show entry");
 		}
 	
@@ -367,7 +363,7 @@ void GY_EBPF::get_ipvs_existing_conns() noexcept
 			} while (sret > 0);	
 		}	
 
-		bpf_link__destroy(pbpf_->obj_.get()->links.trace_ip_vs_conn_show);
+		bpf_link__destroy(pbpf_->mobj_.get()->links.trace_ip_vs_conn_show);
 	}
 	GY_CATCH_EXCEPTION(
 		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Failed to get the list of existing IPVS connections : %s\n", GY_GET_EXCEPT_STRING);

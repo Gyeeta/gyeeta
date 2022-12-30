@@ -36,6 +36,9 @@ gy_ebpf_bpf.o: gy_ebpf_bpf.cc
 	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -c gy_ebpf_kernel.bpf.c -o ./gy_ebpf_kernel.bpf.o
 	$(LLVM_STRIP) -g ./gy_ebpf_kernel.bpf.o
 	$(BPFTOOL) gen skeleton ./gy_ebpf_kernel.bpf.o > ./gy_ebpf_kernel.skel.h
+	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -c gy_ebpf_mod.bpf.c -o ./gy_ebpf_mod.bpf.o
+	$(LLVM_STRIP) -g ./gy_ebpf_mod.bpf.o
+	$(BPFTOOL) gen skeleton ./gy_ebpf_mod.bpf.o > ./gy_ebpf_mod.skel.h
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 $(CXXSRCS:.cc=.d):%.d:%.cc
