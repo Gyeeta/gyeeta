@@ -72,7 +72,7 @@ check_lib_deps()
 check_core_headers()
 {
 	if [ -f /sys/kernel/btf/vmlinux ]; then
-		if [ $( ls -l /sys/kernel/btf/ | wc -l ) -gt 1 ]; then
+		if [ $( ls -l /sys/kernel/btf/ | wc -l ) -gt 2 ]; then
 			BPFCORE=1
 			return
 		fi	

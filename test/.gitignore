@@ -29,7 +29,6 @@ test_boost_intrusive
 iflink_info
 test_pcap_capture
 test_dns_parser
-tcp_sock_monitor
 test_mpmcqueue
 test_logging
 test_settings
