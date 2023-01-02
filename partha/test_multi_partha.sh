@@ -5,7 +5,7 @@ if [ $# -lt 4 ]; then
 	exit 1
 fi	
 
-if [ ! -f ./partha ] || [ ! -f ./runpartha.sh ]; then
+if [ ! -f ./partha-bpf ] || [ ! -f ./partha-bcc ] || [ ! -f ./runpartha.sh ]; then
 	printf "\n\nERROR : Please run this script from a valid Partha install dir...\n\n"
 	exit 1
 fi	
@@ -44,7 +44,11 @@ for i in `seq $STARTID $(( $STARTID + $NUMPARTHA ))`;do
 	ln -s /dev/null $PARDIR/log/parmon.log
 	ln -s /dev/null $PARDIR/log/partha_cmd_child.log
 
-	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep $PARDIR/partha || echo
+	cd $PARDIR
+
+	./setperm.sh
+
+	cd -
 
 	cp -f $CFG $PARDIR/cfg/partha_main.json
 	
