@@ -125,7 +125,7 @@ bool host_btf_enabled(bool check_module) noexcept
 
 		pfile = pdent->d_name;	
 		
-		if (!gy_isdigit_ascii(*pfile)) {
+		if (!gy_isalnum_ascii(*pfile)) {
 			continue;
 		}
 
