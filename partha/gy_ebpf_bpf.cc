@@ -203,6 +203,11 @@ int GY_EBPF::set_resp_sampling(bool to_enable) noexcept
 		int				ret;
 
 		const uint32_t			nmax = pbpf_->max_possible_cpus_;
+
+		if (nmax > 32767) {
+			return -1;
+		}
+
 		uint64_t			values[nmax];
 
 		for (uint32_t i = 0; i < nmax; i++) {

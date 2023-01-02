@@ -28,12 +28,16 @@ if [ $? -ne 0 ]; then
 	exit 1
 fi
 
-sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep $ODIR_PARTHA/partha
+cd $ODIR_PARTHA 
+
+./setperm.sh 
 
 if [ $? -ne 0 ]; then
-	echo -e "\n\nERROR : Failed to setcap partha binary\n\n"
+	echo -e "\n\nERROR : Failed to setcap partha binaries\n\n"
 	exit 1
 fi
+
+cd -
 
 echo -e "\nInstalled shyama, madhava and partha to $ODIR successfully...\n"
 

@@ -12,7 +12,7 @@ print_start()
 
  Optional Arguments list :
 '
- ./partha --help 2> /dev/null | egrep -v "Usage :"
+ ./partha-bpf --help 2> /dev/null | egrep -v "Usage :"
 }
 
 print_stop()
@@ -95,7 +95,7 @@ gy_pgrep()
 	
 	PIDLIST=`pgrep -x $PROCNAME`
 
-	IS_FOUND=`./partha --exepath $PIDLIST`
+	IS_FOUND=`./partha-bpf --exepath $PIDLIST`
 
 	if [ -n "$IS_FOUND" ]; then
 		GLOB_PGREP_PID="$IS_FOUND"
@@ -113,7 +113,7 @@ validate_iphost()
 
 	IS_VALID_HOSTIP=0
 
-	ERRORSTRING=`./partha --validdomain $HOSTSTR`
+	ERRORSTRING=`./partha-bpf --validdomain $HOSTSTR`
 	ISRET=$?
 
 	if [ $ISRET -eq 0 ]; then
@@ -183,7 +183,8 @@ partha_start_validate()
 {
 	# TODO : Validate config file
 
-	gy_pgrep partha
+	gy_pgrep partha-b..
+
 	if [ -n "$GLOB_PGREP_PID" ]; then
 		printf "\nNOTE : partha is already running : PID(s) $GLOB_PGREP_PID\n\n"
 		printf "Please run \"$0 restart\" if you need to restart the components...\n\n"
@@ -207,8 +208,8 @@ if [ $? -eq 0 ]; then
 	CURRDIR=`pwd`
 fi
 
-if [ ! -f ./partha ]; then 
-	printf "\n\nERROR : Binary partha not found in dir $PWD. Please run from a proper install...\n\n"
+if [ ! -f ./partha-bpf ]; then 
+	printf "\n\nERROR : Binary partha-bpf not found in dir $PWD. Please run from a proper install...\n\n"
 	exit 1
 fi
 
@@ -261,13 +262,13 @@ case "$1" in
 			fi	
 		done
 
-		( ./partha "$@" &) &
+		( ./partha-bpf --trybcc "$@" &) &
 
 		sleep 2
 
 		./runpartha.sh ps
 
-		gy_pgrep partha
+		gy_pgrep partha-b..
 		if [ -z "$GLOB_PGREP_PID" ]; then
 			if [ -n "$LOGDIR" ] && [ -f "$LOGDIR"/partha.log ]; then
 				printf "\n\tERROR : partha process not running. Please check ./log/partha.log for ERRORs if no errors already printed...\n\n"
@@ -288,7 +289,7 @@ case "$1" in
 
 		printf "\n\tStopping partha components : "
 
-		gy_pgrep partha
+		gy_pgrep partha-b..
 		[ -n "$GLOB_PGREP_PID" ] && kill $GLOB_PGREP_PID 2> /dev/null
 
 		gy_pgrep parmon
@@ -296,7 +297,7 @@ case "$1" in
 
 		printf "\n\n"
 
-		for proc in partha parmon; do
+		for proc in partha-bpf partha-bcc parmon; do
 			for (( i=0; i<30; i++ )); do
 				gy_pgrep $proc
 				if [ -n "$GLOB_PGREP_PID" ]; then
@@ -327,7 +328,7 @@ case "$1" in
 		GLOB_PRINT_PID=1
 
 		printf "\n\n\tpartha PID(s) : "
-		gy_pgrep partha
+		gy_pgrep partha-b..
 		
 		PAPID="$GLOB_PGREP_PID"
 
@@ -345,7 +346,7 @@ case "$1" in
 		if [ -n "$PAPID" ]; then
 
 			ONEPID=$( echo "$PAPID" | awk '{print $1}' )
-			PGREPOUT=$( pgrep -x -a partha | grep "$ONEPID" )
+			PGREPOUT=$( pgrep -x -a partha-b.. | grep "$ONEPID" )
 
 			TMPDIR=$( echo "$PGREPOUT" | awk -F"--tmpdir" '{print $2}' | awk '{print $1}' )
 			if [ -z "$TMPDIR" ]; then
@@ -384,7 +385,7 @@ case "$1" in
 
 		GLOB_PRINT_PID=1
 		
-		gy_pgrep ${1:-"partha"}
+		gy_pgrep ${1:-"partha-b.."}
 
 		exit 0;
 		;;
@@ -400,7 +401,7 @@ case "$1" in
 
 	-v | --version)
 
-		./partha --version
+		./partha-bpf --version
 
 		;;
 

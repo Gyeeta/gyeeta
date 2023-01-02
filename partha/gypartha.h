@@ -57,7 +57,7 @@ public :
 	bool				allow_core_		{false};
 	bool				init_completed_		{false};
 
-	PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core);
+	PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core, bool trybcc);
 
 	~PARTHA_C()			= delete;
 
@@ -69,7 +69,7 @@ public :
 
 	int				update_server_status(const char *status) noexcept;
 
-	void				verify_caps_kernhdr(bool is_bpf_core);
+	int				verify_caps_kernhdr(bool is_bpf_core, bool trybcc);
 
 	static PARTHA_C *		get_singleton() noexcept;
 

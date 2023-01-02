@@ -129,6 +129,8 @@ static void tcpv6_idle_cb() noexcept
 	gyeeta::gy_rcu_offline();
 }			
 
+bool host_btf_enabled(bool check_module) noexcept;
+
 
 } // namespace gyeeta
 

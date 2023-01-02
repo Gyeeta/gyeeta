@@ -3,6 +3,8 @@
 PATH=$PATH:/usr/bin:/sbin:/usr/sbin:.
 export PATH
 
+BPFCORE=0
+
 check_processor()
 {
 	if [ $( uname -a | grep -cw x86_64 ) -eq 0 ]; then 
@@ -40,17 +42,17 @@ check_linux_kernel_version()
 
 check_lib_deps()
 {
-	if [ ! -f ./partha ]; then
-		printf "\nERROR : Please run this script from partha install dir where partha binary is present...Exiting...\n\n"
+	if [ ! -f ./$1 ]; then
+		printf "\nERROR : Please run this script from partha install dir where partha binary $1 is present...Exiting...\n\n"
 		exit 1
 	fi
 
-	PCVER=`./partha --version 2>&1`
+	PCVER=$( ./$1 --version 2>&1 )
 
 	if [ $? -ne 0 ]; then
 		printf "\nERROR : Missing libraries or invalid binary : $PCVER\n\n"
 
-		LDDOUT=`ldd ./partha 2>&1`
+		LDDOUT=`ldd ./$1 2>&1`
 		if [ `echo "$LDOUT" | grep -c "not found"` -gt 0 ]; then
 			printf "\nMissing libraries are : \n"
 			echo "$LDOUT" | grep "not found"
@@ -67,10 +69,17 @@ check_lib_deps()
 
 }
 
-check_kernel_headers()
+check_core_headers()
 {
+	if [ -f /sys/kernel/btf/vmlinux ]; then
+		if [ $( ls -l /sys/kernel/btf/ | wc -l ) -gt 1 ]; then
+			BPFCORE=1
+			return
+		fi	
+	fi	
+	
 	if [ -d /lib/modules/$(uname -r)/build/ ]; then
-		return;
+		return
 	fi	
 
 	printf "\nERROR : Missing Kernel Headers Package : These are required by partha : Please install your Distribution package as per instructions below : \n\n"
@@ -88,7 +97,7 @@ check_kernel_headers()
 
 set_capabilities()
 {
-	getcap ./partha > /dev/null
+	command -v setcap > /dev/null
 	
 	if [ $? -ne 0 ]; then
 		printf "\nERROR : Missing setcap package : Please install your distribution based setcap package as per below : \n\n"
@@ -104,7 +113,8 @@ set_capabilities()
 		exit 1
 	fi	
 
-	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep ./partha
+	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep ./partha-bpf && \
+	sudo -n setcap cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_ipc_lock,cap_kill,cap_mac_admin,cap_mknod,cap_sys_chroot,cap_sys_resource,cap_setpcap,cap_sys_ptrace,cap_sys_admin,cap_net_admin,cap_net_raw,cap_sys_module+ep ./partha-bcc
 	
 	if [ $? -ne 0 ]; then 
 		printf "\n\nERROR : Failed to set capabilities for partha : Please check if being run as sudo or root\n\n"
@@ -112,12 +122,12 @@ set_capabilities()
 	fi	
 }	
 
-if [ ! -f ./partha ] || [ ! -f ./runpartha.sh ]; then
-	printf "\n\nERROR : Please run this script from partha install dir where runpartha.sh and partha binaries are present.\n\n"
+if [ ! -f ./partha-bpf ] ||  [ ! -f ./partha-bcc ] || [ ! -f ./runpartha.sh ]; then
+	printf "\n\nERROR : Please run this script from partha install dir where runpartha.sh and partha binaries partha-bpf and partha-bcc are present.\n\n"
 	exit 1
 fi	
 
-sudo -n ps &> /dev/null
+sudo -n bash -c "echo" &> /dev/null
 
 if [ $? -ne 0 ]; then
 	printf "\n\nPlease run this script as root or sudo ...\n\n"
@@ -126,8 +136,9 @@ fi
 
 check_processor
 check_linux_kernel_version
-check_kernel_headers
-check_lib_deps
+check_core_headers
+check_lib_deps partha-bpf
+check_lib_deps partha-bcc
 set_capabilities
 
 printf "\n\npartha Package permissions set successfully : To start partha, please set the config file partha_main.json file in cfg dir : You can refer to sample_partha_main.json for a sample config...\n\n"

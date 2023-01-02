@@ -123,13 +123,18 @@ GY_PERF_BUFPOOL::GY_PERF_BUFPOOL(const char *name, int map_fd, size_t page_cnt, 
 				if (nlost_ != last_cnt || niter >= 10) {
 					time_t			tcur = time(nullptr);
 
-					WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "%s BPF Perf Buffer : Missed %lu events in last 30 sec : Total missed count %lu : Previous drop reported %ld min ago\n",
-						name_.data(), nlost_ - last_cnt, nlost_, (tcur - tlast_drop)/60);
-					
 					if (nlost_ != last_cnt) {
+						WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "%s BPF Perf Buffer : Missed %lu events in last 30 sec : Total missed count %lu : Previous drop reported %ld min ago\n",
+							name_.data(), nlost_ - last_cnt, nlost_, (tcur - tlast_drop)/60);
+					
 						last_cnt 	= nlost_;
 						tlast_drop 	= tcur;
 					}
+					else if (nlost_ > 0) {
+						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "%s BPF Perf Buffer Missed Events : Total missed count %lu : Previous drop reported %ld min ago\n",
+							name_.data(), nlost_, (tcur - tlast_drop)/60);
+
+					}	
 
 					if (niter >= 10) {
 						niter = 0;
@@ -160,5 +165,5 @@ GY_RING_BUFPOOL::GY_RING_BUFPOOL(const char *name, int map_fd, GY_EBPF_CB cb, vo
 	}
 }
 
-}
+} // namespace gyeeta
 

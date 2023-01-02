@@ -3,8 +3,8 @@
 PATH=$PATH:/usr/bin:/sbin:/usr/sbin:.
 export PATH
 
-if [ ! -f /partha/partha ]; then
-	echo -e "\n\nERROR : Invalid partha container image as /partha/partha binary not found...\n\n"
+if [ ! -f /partha/partha-bpf ] ||  [ ! -f /partha/partha-bcc ] || [ ! -f /partha/runpartha.sh ]; then
+	echo -e "\n\nERROR : Invalid partha container image as partha binaries not found...\n\n"
 	exit 1
 elif [ ! -f /partha/check_kernel_hdr.sh ]; then
 	echo -e "\n\nERROR : Invalid partha container image as /partha/check_kernel_hdr.sh file not found...\n\n"
@@ -61,10 +61,10 @@ done
 
 cd /partha
 
-./partha --version &> /dev/null
+./partha-bpf --version &> /dev/null
 
 if [ $? -ne 0 ]; then
-	echo -e "\n\nERROR : Failed to execute partha binary. Exiting... : Error is `./partha --version`\n\n"
+	echo -e "\n\nERROR : Failed to execute partha binary. Exiting... : Error is `./partha-bpf --version`\n\n"
 	exit 1
 fi	
 
@@ -110,7 +110,7 @@ fi
 if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 	sleep 10
 
-	if [ "x""`./runpartha.sh printpids partha`" = "x" ]; then
+	if [ "x""`./runpartha.sh printpids`" = "x" ]; then
 		echo -e "\n\nERROR : partha not running currently. Exiting...\n\n"
 		exit 1
 	fi	
@@ -126,10 +126,10 @@ if [ "$CMD" = "start" ] || [ "$CMD" = "restart" ]; then
 
 		tail -10 /hostdata/log/partha.log 2> /dev/null
 
-		if [ "x""`./runpartha.sh printpids partha`" = "x" ]; then
+		if [ "x""`./runpartha.sh printpids`" = "x" ]; then
 			sleep 10
 			
-			if [ "x""`./runpartha.sh printpids partha`" = "x" ]; then
+			if [ "x""`./runpartha.sh printpids`" = "x" ]; then
 				NRESTART=$(( $NRESTART + 1 ))
 
 				if [ $NRESTART -lt 100 ]; then

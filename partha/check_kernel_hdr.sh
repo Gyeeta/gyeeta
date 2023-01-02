@@ -31,6 +31,12 @@ get_config()
 	done	
 }
 
+if [ -f /sys/kernel/btf/vmlinux ]; then
+	if [ $( ls -l /sys/kernel/btf/ | wc -l ) -gt 1 ]; then
+		exit 0
+	fi	
+fi	
+
 if [ -d "/lib/modules/${KERN_VER}/build/" 2> /dev/null ]; then
 	get_config
 

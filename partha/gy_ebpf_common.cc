@@ -3,8 +3,9 @@
 
 #include		"gy_ebpf.h"
 #include		"gy_rcu_inc.h"
-
 #include		"gy_ebpf_common.h"
+
+#include		<dirent.h>
 
 namespace gyeeta {
 
@@ -104,6 +105,42 @@ void RESP_SAMPLING::set_resp_sampling_pct(uint8_t resp_sampling_pct) noexcept
 }	
 
 
+bool host_btf_enabled(bool check_module) noexcept
+{
+	DIR				*pdir;
+	struct dirent			*pdent;
+	char				*pfile;
+	bool				is_vmlinux = false, is_mod = false;
+
+	if (!check_module) {
+		return !access("/sys/kernel/btf/vmlinux", R_OK);
+	}
+
+	pdir = opendir("/sys/kernel/btf");
+	if (!pdir) {
+		return false;
+	}
+
+	while ((pdent = readdir(pdir)) != nullptr) {
+
+		pfile = pdent->d_name;	
+		
+		if (!gy_isdigit_ascii(*pfile)) {
+			continue;
+		}
+
+		if (0 == strcmp(pfile, "vmlinux")) {
+			is_vmlinux = true;
+		}	
+		else {
+			is_mod = true;
+		}	
+	}
+
+	closedir(pdir);
+
+	return (is_vmlinux && is_mod);
+}	
 
 	
 } // namespace gyeeta

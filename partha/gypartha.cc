@@ -8,6 +8,7 @@
 #include 		"gy_cgroup_stat.h"
 #include 		"gy_child_proc.h"
 #include 		"gy_ebpf.h"
+#include 		"gy_ebpf_common.h"
 #include		"gy_print_offload.h"
 #include		"gy_mount_disk.h"
 #include		"gy_sys_hardware.h"
@@ -950,7 +951,7 @@ static int partha_cmd_proc(CHILD_PROC *pchildproc) noexcept
 	return -1;
 }	
 
-void PARTHA_C::verify_caps_kernhdr(bool is_bpf_core)
+int PARTHA_C::verify_caps_kernhdr(bool is_bpf_core, bool trybcc)
 {
 	constexpr const char	*capstring[] = 				{"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_IPC_LOCK", "CAP_KILL",
 											"CAP_MAC_ADMIN", "CAP_MKNOD", "CAP_SYS_CHROOT", "CAP_SYS_RESOURCE", "CAP_SETPCAP",
@@ -965,34 +966,43 @@ void PARTHA_C::verify_caps_kernhdr(bool is_bpf_core)
 					"CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER,CAP_FSETID, CAP_IPC_LOCK, CAP_KILL, CAP_MAC_ADMIN, CAP_MKNOD, "
 					"CAP_SYS_CHROOT, CAP_SYS_RESOURCE, CAP_SETPCAP, CAP_SYS_PTRACE, CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_MODULE\n");
 
-			GY_THROW_EXCEPTION("partha required file capability %s not found", capstring[i]);
+			GY_THROW_EXCEPTION("partha required file capability %s not found : Priviliges missing", capstring[i]);
 		}	
 	}
 		
+
+	struct utsname		uts;	
+	char			kernpath[512];
+	struct stat		stat1;
+	int			ret, bret = 0;
+
 	if (is_bpf_core) {	
-		if (access("/sys/kernel/btf/vmlinux", R_OK)) {
+		if (host_btf_enabled(true /* check_module */)) {
+			return 0;
+		}
+
+		if (trybcc) {
+			bret = 1;
+		}
+		else {
 			GY_THROW_EXCEPTION("BPF CO-RE Support not detected on this host. Cannot run this binary.");
 		}
 	}
-	else {
-		struct utsname		uts;	
-		char			kernpath[512];
-		struct stat		stat1;
-		int			ret;
-		
-		ret = uname(&uts);
-		if (!ret) {
-			snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/", uts.release);
 
-			ret = stat(kernpath, &stat1);
-			if (ret == -1) {
-				GY_THROW_EXCEPTION("Missing Kernel Headers Package : These are required by partha : Please install your Distribution Kernel Headers package");
-			}	
-		}	
-	}
+	ret = uname(&uts);
+	if (!ret) {
+		snprintf(kernpath, sizeof(kernpath), "/lib/modules/%s/build/", uts.release);
+
+		ret = stat(kernpath, &stat1);
+		if (ret == -1) {
+			GY_THROW_EXCEPTION("Missing Kernel Headers Package : These are required by partha : Please install your Distribution Kernel Headers package");
+		}
+	}	
+
+	return bret;
 }	
 
-PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core)
+PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core, bool trybcc)
 	: proc_cap_(getpid()), log_debug_level_(gdebugexecn), allow_core_(allow_core)
 {
 	pid_t			childpid1, childpid2;
@@ -1000,7 +1010,32 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 	int			ret;
 	bool			is_bpf_core = GY_EBPF::is_bpf_core();
 
-	verify_caps_kernhdr(is_bpf_core);
+	ret = verify_caps_kernhdr(is_bpf_core, trybcc);
+
+	if (ret && trybcc && is_bpf_core) {
+		/*
+		 * Need to execv the partha-bcc binary
+		 */
+
+		char			*pname;
+		struct stat		stat1;
+
+		if ((pname = string_ends_with(argv[0], "partha-bpf"))) {
+			memcpy(pname, "partha-bcc", GY_CONST_STRLEN("partha-bcc"));
+
+			ret = stat(argv[0], &stat1);
+			if (ret) {
+				GY_THROW_EXCEPTION("BPF CO-RE not supported and partha-bcc binary not found at \'%s\'", argv[0]);
+			}	
+
+			execv(argv[0], argv);
+
+			PERRORPRINT("BPF CO-RE not supported and failed to execv partha-bcc binary %s : Exiting...", argv[0]);
+			_exit(EXIT_FAILURE);
+		}
+
+		GY_THROW_EXCEPTION("BPF CO-RE not supported and partha-bpf binary name not seen in execeuted process name \'%s\'", argv[0]);
+	}	
 
 	snprintf(descbuf, sizeof(descbuf), "partha - Gyeeta's Host Agent (using %s) : Version %s", is_bpf_core ? "BPF CO-RE" : "BCC", get_version_str());
 		
@@ -1237,7 +1272,7 @@ static int start_partha(int argc, char **argv)
 	void			*pbuf;	
 	size_t			szbuf;
 	char			logdir[GY_PATH_MAX], cfgdir[GY_PATH_MAX], tmpdir[GY_PATH_MAX];
-	bool			nolog = false, allow_core = false;
+	bool			nolog = false, allow_core = false, trybcc = false;
 
 	tzset();
 
@@ -1267,13 +1302,21 @@ static int start_partha(int argc, char **argv)
 
 			sret = get_task_exe_path(getpid(), cdir, sizeof(cdir));
 
+			if (sret >= (int)GY_CONST_STRLEN("partha-bpf")) {
+				sret -= 3;	// Ignore bpf or bcc part
+			}	
+
 			for (int i = 2; i < argc; ++i) {
 				bret = string_to_number(argv[i], pid);
 
 				if (bret) {
 					sretp = get_task_exe_path(pid, pdir, sizeof(pdir));
+					
+					if (sretp >= (int)GY_CONST_STRLEN("partha-bpf")) {
+						sretp -= 3;	// Ignore bpf or bcc part
+					}	
 
-					if ((sretp == sret) && (0 == strcmp(cdir, pdir))) {
+					if ((sretp == sret) && (0 == memcmp(cdir, pdir, sret))) {
 						IRPRINT("%d ", pid);
 					}
 				}	
@@ -1306,6 +1349,7 @@ static int start_partha(int argc, char **argv)
 						hash_cfgdir		= fnv1_consthash("--cfgdir"), 		hash_tmpdir		= fnv1_consthash("--tmpdir"),
 						hash_debuglevel		= fnv1_consthash("--debuglevel"), 	hash_core		= fnv1_consthash("--core"),
 						hash_logutc		= fnv1_consthash("--logutc"),
+						hash_trybcc		= fnv1_consthash("--trybcc"),
 
 						// Config Options
 
@@ -1376,6 +1420,11 @@ static int start_partha(int argc, char **argv)
 			case hash_logutc :
 				guse_utc_time = true;
 				break;
+
+			case hash_trybcc :
+				trybcc = true;
+				break;
+
 
 			
 			case hash_cfg_cluster_name :
@@ -1481,7 +1530,7 @@ static int start_partha(int argc, char **argv)
 	int			nlvl;
 
 	try {
-		(void) new PARTHA_C(argc, argv, nolog, logdir, cfgdir, tmpdir, allow_core);
+		(void) new PARTHA_C(argc, argv, nolog, logdir, cfgdir, tmpdir, allow_core, trybcc);
 	}
 	GY_CATCH_EXCEPTION(
 		ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to initialize partha : %s : Exiting...\n\n", GY_GET_EXCEPT_STRING);
