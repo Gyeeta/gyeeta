@@ -44,6 +44,8 @@ TASK_HANDLER::TASK_HANDLER(bool stats_updated_by_sock_in, bool is_kubernetes_in)
 	if (proc_dir_fd == -1 || sysfs_dir_fd == -1) {
 		GY_THROW_EXCEPTION("/proc or /sysfs mount points not seen");
 	}	
+
+	init_psi_fds();
 }
 
 int TASK_HANDLER::init_task_list()
@@ -583,7 +585,9 @@ std::tuple<int, int, int> TASK_HANDLER::tasks_cpu_stats_update(bool from_schedul
 		PGStackmap			pg_cpumap;
 		AggrNotifyMap			aggrnotmap;
 
+		uint64_t			total_cpu_delus = 0, total_vm_delus = 0, total_io_delus = 0;
 		int				ntotal, nupd = 0, ndelays = 0, ntaskpg = 0, nnewdelays = 0, nissues = 0, nsevere = 0, nothertasks = 0, lastnother = 0;
+		bool				bret;
 			
 		pg_cpumap.reserve(128);
 		aggrnotmap.reserve(256);
@@ -730,9 +734,14 @@ std::tuple<int, int, int> TASK_HANDLER::tasks_cpu_stats_update(bool from_schedul
 
 					if (ret == 0) {
 						cpu_delay_nsec 		= pdelay->cpu_delay_nsec_[0];
+						total_cpu_delus		+= cpu_delay_nsec / GY_NSEC_PER_USEC;
+
 						vm_delay_nsec		= pdelay->swapin_delay_nsec_[0] + pdelay->reclaim_delay_nsec_[0] + pdelay->thrashing_delay_nsec_[0]
 										+ pdelay->compact_delay_nsec_[0];
+						total_vm_delus		+= vm_delay_nsec / GY_NSEC_PER_USEC;
+
 						blkio_delay_nsec 	= pdelay->blkio_delay_nsec_[0];
+						total_io_delus		+= blkio_delay_nsec / GY_NSEC_PER_USEC;
 					}
 
 					nissues += int(is_issue);
@@ -914,6 +923,14 @@ std::tuple<int, int, int> TASK_HANDLER::tasks_cpu_stats_update(bool from_schedul
 			last_new_delay_cusec = curr_usec_clock;
 		}	
 			
+		bret = get_psi_stats();
+
+		if (bret == false) {
+			last_cpu_delayms_ 	= total_cpu_delus / GY_USEC_PER_MSEC;
+			last_vm_delayms_	= total_vm_delus / GY_USEC_PER_MSEC;
+			last_io_delayms_	= total_io_delus / GY_USEC_PER_MSEC;
+		}	
+
 		if (aggrnotmap.size() > 0 && servshr) {
 			const size_t			maxsz = sizeof(comm::COMM_HEADER) + sizeof(comm::EVENT_NOTIFY) + 
 								aggrnotmap.size() * sizeof(comm::AGGR_TASK_STATE_NOTIFY) + szstring;
@@ -1522,6 +1539,120 @@ void TASK_HANDLER::get_task_pgtree(TASK_PGTREE_MAP & treemap) const
 
 	tasktable.walk_hash_table_const(lambda_inittree); 	
 }
+
+bool get_total_psi_stats(int dirfd, const char * filename, uint64_t & tusec) noexcept
+{
+	ssize_t				sret;
+	const char			*ptmp;
+	bool				bret;
+	char				buf[512];
+
+	sret = read_file_to_buffer(filename, buf, sizeof(buf) - 1, dirfd, false /* read_syscall_till_err */);
+
+	if (sret > 0) {
+		buf[sret] = 0;
+
+		ptmp = strstr(buf, "total=");
+		if (ptmp) {
+			ptmp += GY_CONST_STRLEN("total=");
+			
+			bret = string_to_number(ptmp, tusec);
+
+			if (bret) {
+				return true;;
+			}
+		}
+	}	
+
+	return false;
+}
+
+
+void TASK_HANDLER::init_psi_fds() noexcept
+{
+	uint64_t			cpuusec, vmusec, iousec;
+	int				dirfd;
+	bool				bret1, bret2, bret3;
+
+	dirfd = open("/proc/pressure", O_PATH | O_CLOEXEC);
+	
+	if (dirfd >= 0) {
+		bret1 = get_total_psi_stats(dirfd, "./cpu", cpuusec);
+		bret2 = get_total_psi_stats(dirfd, "./memory", vmusec);
+		bret3 = get_total_psi_stats(dirfd, "./io", iousec);
+
+		if (bret1 && bret2 && bret3) {
+			INFOPRINT_OFFLOAD("Pressure Stall Statistics available on this host...\n");
+
+			total_cpu_delayus_ 	= cpuusec;
+			total_vm_delayus_	= vmusec;
+			total_io_delayus_	= iousec;
+			
+			psi_dir_fd.set_fd(dirfd);
+			return;
+		}
+	}	
+
+	close(dirfd);
+}	
+
+bool TASK_HANDLER::get_psi_stats() noexcept
+{
+	if (!is_proc_pressure()) {
+		return false;	
+	}	
+
+	uint64_t			total_cpu_delus = 0, total_vm_delus = 0, total_io_delus = 0;
+	bool				bret;
+
+	bret = get_total_psi_stats(psi_dir_fd.get(), "./cpu", total_cpu_delus);
+	if (bret) {
+		last_cpu_delayms_ 	= gy_diff_counter_safe(total_cpu_delus, total_cpu_delayus_);
+		total_cpu_delayus_	= total_cpu_delus;
+	}	
+	else {
+		last_cpu_delayms_	= 0;
+
+		if (++npsi_err_ > 20) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Too many Pressure Stall Errors seen. Disabling PSI...\n");
+			psi_dir_fd.close();
+			return false;
+		}	
+	}	
+
+	bret = get_total_psi_stats(psi_dir_fd.get(), "./memory", total_vm_delus);
+	if (bret) {
+		last_vm_delayms_ 	= gy_diff_counter_safe(total_vm_delus, total_vm_delayus_);
+		total_vm_delayus_	= total_vm_delus;
+	}	
+	else {
+		last_vm_delayms_	= 0;
+
+		if (++npsi_err_ > 20) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Too many Pressure Stall Errors seen. Disabling PSI...\n");
+			psi_dir_fd.close();
+			return false;
+		}	
+	}	
+
+	bret = get_total_psi_stats(psi_dir_fd.get(), "./io", total_io_delus);
+	if (bret) {
+		last_io_delayms_ 	= gy_diff_counter_safe(total_io_delus, total_io_delayus_);
+		total_io_delayus_	= total_io_delus;
+	}	
+	else {
+		last_io_delayms_	= 0;
+
+		if (++npsi_err_ > 20) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Too many Pressure Stall Errors seen. Disabling PSI...\n");
+			psi_dir_fd.close();
+			return false;
+		}	
+	}	
+
+	return true;
+}	
+
 
 void TASK_HANDLER::reset_server_stats() noexcept
 {

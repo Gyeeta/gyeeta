@@ -150,14 +150,16 @@ bool PS_REGISTER_REQ_S::validate_fields(uint32_t min_partha_version, uint32_t sh
 	}	
 
 	if (partha_version_ < min_partha_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Partha Version 0x%08X not supported : Please upgrade the Partha install", partha_version_);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Partha Version %s (0x%08X) not supported : Please upgrade the Partha install", 
+					get_string_from_version_num(partha_version_).get(), partha_version_);
 		errcode = ERR_PARTHA_VERSION;
 
 		return false;
 	}	
 
 	if (min_shyama_version_ > shyama_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Shyama Version 0x%08X not supported by Partha : Please upgrade Shyama install", shyama_version);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Shyama Version %s (0x%08X) not supported by Partha : Please upgrade Shyama install", 
+					get_string_from_version_num(shyama_version).get(), shyama_version);
 		errcode = ERR_SHYAMA_VERSION;
 
 		return false;
@@ -208,14 +210,16 @@ bool MM_CONNECT_CMD_S::validate_fields(uint64_t madhava_id, uint32_t min_madhava
 	}	
 
 	if (local_version_ < min_madhava_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version 0x%08X not supported : Please upgrade the Madhava install", local_version_);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version %s (0x%08X) not supported : Please upgrade the Madhava install", 
+					get_string_from_version_num(local_version_).get(), local_version_);
 		errcode = ERR_MADHAVA_VERSION;
 
 		return false;
 	}	
 
 	if (min_remote_version_ > curr_madhava_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version 0x%08X not supported by Remote madhava : Please upgrade the Madhava install", curr_madhava_version);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version %s (0x%08X) not supported by Remote madhava : Please upgrade the Madhava install", 
+					get_string_from_version_num(curr_madhava_version).get(), curr_madhava_version);
 		errcode = ERR_MADHAVA_VERSION;
 
 		return false;
@@ -260,14 +264,16 @@ bool PM_CONNECT_CMD_S::validate_fields(uint64_t madhava_id, uint32_t min_partha_
 	}	
 
 	if (partha_version_ < min_partha_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Partha Version 0x%08X not supported : Please upgrade the Partha install", partha_version_);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Partha Version %s (0x%08X) not supported : Please upgrade the Partha install", 
+					get_string_from_version_num(partha_version_).get(), partha_version_);
 		errcode = ERR_PARTHA_VERSION;
 
 		return false;
 	}	
 
 	if (min_madhava_version_ > madhava_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version 0x%08X not supported by Partha : Please upgrade the Madhava install", madhava_version);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version %s (0x%08X) not supported by Partha : Please upgrade the Madhava install", 
+					get_string_from_version_num(madhava_version).get(), madhava_version);
 		errcode = ERR_MADHAVA_VERSION;
 
 		return false;
@@ -319,14 +325,16 @@ bool MS_REGISTER_REQ_S::validate_fields(uint32_t min_madhava_version, uint32_t s
 	}	
 
 	if (madhava_version_ < min_madhava_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version 0x%08X not supported : Please upgrade the Madhava install", madhava_version_);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version %s (0x%08X) not supported : Please upgrade the Madhava install", 
+						get_string_from_version_num(madhava_version_).get(), madhava_version_);
 		errcode = ERR_MADHAVA_VERSION;
 
 		return false;
 	}	
 
 	if (min_shyama_version_ > shyama_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Shyama Version 0x%08X not supported by Madhava : Please upgrade the Shyama install", shyama_version);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Shyama Version %s (0x%08X) not supported by Madhava : Please upgrade the Shyama install", 
+						get_string_from_version_num(shyama_version).get(), shyama_version);
 		errcode = ERR_SHYAMA_VERSION;
 
 		return false;
@@ -387,14 +395,16 @@ bool NS_REGISTER_REQ_S::validate_fields(uint32_t min_node_version, uint32_t shya
 	}	
 
 	if (node_version_ < min_node_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Node Version 0x%08X not supported : Please upgrade the Node install", node_version_);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Node Version %s (0x%08X) not supported : Please upgrade the Node install", 
+						get_string_from_version_num(node_version_).get(), node_version_);
 		errcode = ERR_NODE_VERSION;
 
 		return false;
 	}	
 
 	if (min_shyama_version_ > shyama_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Shyama Version 0x%08X not supported by Node", shyama_version);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Shyama Version %s (0x%08X) not supported by Node", 
+						get_string_from_version_num(shyama_version).get(), shyama_version);
 		errcode = ERR_SHYAMA_VERSION;
 
 		return false;
@@ -442,14 +452,16 @@ bool NM_CONNECT_CMD_S::validate_fields(uint32_t min_node_version, uint32_t madha
 	}	
 
 	if (node_version_ < min_node_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Node Version 0x%08X not supported : Please upgrade the Node install", node_version_);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Node Version %s (0x%08X) not supported : Please upgrade the Node install", 
+						get_string_from_version_num(node_version_).get(), node_version_);
 		errcode = ERR_NODE_VERSION;
 
 		return false;
 	}	
 
 	if (min_madhava_version_ > madhava_version) {
-		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version 0x%08X not supported by node", madhava_version);
+		snprintf(ebuf, COMM_MAX_ERROR_LEN, "Madhava Version %s (0x%08X) not supported by node", 
+						get_string_from_version_num(madhava_version).get(), madhava_version);
 		errcode = ERR_SHYAMA_VERSION;
 
 		return false;

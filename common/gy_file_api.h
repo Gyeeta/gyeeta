@@ -128,7 +128,8 @@ std::string & 	string_delete_char(std::string & str, char c);
 char * 		read_fd_to_alloc_buffer(int fd, size_t *preadsize, size_t max_sz = ~0u) noexcept;
 char * 		read_file_to_alloc_buffer(const char *pfilename, size_t *preadsize, size_t max_sz = ~0u, int dir_fd = -1) noexcept; 
 
-ssize_t 	read_file_to_buffer(const char *pfilename, void *buf, size_t max_readlen, int dir_fd = -1, bool is_stream_fd = false) noexcept; 
+// Specify read_syscall_till_err as false in case reads can be less than max_readlen and a single read call is sufficient
+ssize_t 	read_file_to_buffer(const char *pfilename, void *buf, size_t max_readlen, int dir_fd = -1, bool read_syscall_till_err = true) noexcept; 
 
 void 		gy_host_to_nw_bo(void *pd, void *ps, int size, int is_little_endian) noexcept;
 void 		gy_nw_to_host_bo(void *pd, void *ps, int size, int is_little_endian) noexcept;
@@ -140,8 +141,6 @@ void 		gy_nw_to_host_bo(void *pd, void *ps, int size, int is_little_endian) noex
  */
 uint32_t 	get_version_from_string(const char *pversion, int num_octets = 3) noexcept;
 bool 		get_version_from_string(const char *pversion, uint32_t & version, uint8_t *poctet_array, int num_octets) noexcept;
-
-char * 		get_string_from_version_num(uint32_t version, char (&verbuf)[32], int num_octets = 3) noexcept;
 
 int 		set_proc_file_limit(uint32_t max_files) noexcept; 
 int 		set_proc_rtprio_limit(uint32_t max_rtprio) noexcept; 

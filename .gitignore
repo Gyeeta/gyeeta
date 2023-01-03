@@ -35,9 +35,12 @@
 # Misc
 .gdb_history
 
+# Temporaries
 install/
+test/test1.cc
+test/test1
 
-partha/partha
+# Binaries
 partha/partha-bcc
 partha/partha-bpf
 server/madhava

@@ -5947,7 +5947,7 @@ public :
 
 	~GY_SIGNAL_HANDLER() noexcept
 	{
-		if ((stack1.ss_size == SIGSTKSZ) && stack1.ss_sp) {
+		if ((stack1.ss_size == (size_t)SIGSTKSZ) && stack1.ss_sp) {
 			free(stack1.ss_sp);
 		}	
 	}
@@ -11777,6 +11777,11 @@ public :
 		}	
 		return fd_;
 	}	
+
+	bool isvalid() const noexcept
+	{
+		return fd_ >= 0;
+	}	
 };
 
 template <typename T>
@@ -11831,6 +11836,31 @@ struct WEAK_PTR_EQUAL
 		return weak_ptr_equal(a, b);
 	}
 };
+
+static char * get_string_from_version_num(uint32_t version, char (&verbuf)[32], int num_octets = 3) noexcept
+{
+	std::memset(verbuf, 0, sizeof(verbuf));
+
+	switch (num_octets) {
+
+	case 1 :	sprintf(verbuf, "%hhu", version & 0xFF); break;
+
+	case 2 :	sprintf(verbuf, "%hhu.%hhu", (version >> 8) & 0xFF, version & 0xFF); break;
+
+	case 3 :	sprintf(verbuf, "%hhu.%hhu.%hhu", (version >> 16) & 0xFF, (version >> 8) & 0xFF, version & 0xFF); break;
+	
+	default :	sprintf(verbuf, "%hhu.%hhu.%hhu.%hhu", (version >> 24) & 0xFF, (version >> 16) & 0xFF, (version >> 8) & 0xFF, version & 0xFF); break;
+	}	
+
+	return verbuf;
+}
+
+static CHAR_BUF<32> get_string_from_version_num(uint32_t version, int num_octets = 3) noexcept
+{
+	char			buf[32];
+
+	return CHAR_BUF<32>(get_string_from_version_num(version, buf, num_octets));
+}	
 
 static constexpr uint32_t gy_crc32_table[256] = {
 	0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9, 0x130476dc, 0x17c56b6b,

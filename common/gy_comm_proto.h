@@ -174,7 +174,7 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_MP_CLI_TCP_INFO,
 	NOTIFY_CPU_MEM_STATE,
 	NOTIFY_AGGR_TASK_STATE,
-	NOTIFY_HOST_STATE,
+	NOTIFY_HOST_STATE__V000100,		// v0.1.0 
 	NOTIFY_ACTIVE_CONN_STATS,
 	NOTIFY_LISTENER_DOMAIN_EVENT,
 	NOTIFY_LISTEN_TASKMAP_EVENT,
@@ -185,6 +185,9 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_NOTIFICATION_MSG,
 	NOTIFY_AGGR_TASK_HIST_STATS,
 	NOTIFY_LISTEN_CLUSTER_INFO,
+	NOTIFY_HOST_STATE,
+
+	NOTIFY_PM_EVT_MAX,
 
 	NOTIFY_MS_TCP_CONN		= 0x501,
 	NOTIFY_MS_TCP_CONN_CLOSE,
@@ -202,6 +205,7 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_MS_CLUSTER_STATE,
 	NOTIFY_MS_PARTHA_PING,
 	NOTIFY_MS_REG_PARTHA,
+	NOTIFY_MS_EVT_MAX,
 
 	NOTIFY_MM_TASK_AGGR_PING	= 0x701,
 	NOTIFY_MM_TASK_AGGR_DEL,
@@ -212,8 +216,10 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_MM_LISTENER_DELETE,
 	NOTIFY_MM_LISTENER_DEPENDS,
 	NOTIFY_MM_ACTIVE_CONN_STATS,
+	NOTIFY_MM_EVT_MAX,
 
 	NOTIFY_SM_PARTHA_IDENT		= 0x901,
+	NOTIFY_SM_EVT_MAX,
 	
 	NOTIFY_PING_CONN		= 0xA01,
 	NOTIFY_JSON_EVENT		= 0xA02,		// EVENT_NOTIFY immediately followed by JSON 
@@ -473,6 +479,10 @@ struct alignas(8) EVENT_NOTIFY
 	EVENT_NOTIFY(NOTIFY_TYPE_E subtype, uint32_t nevents) noexcept 
 		: subtype_(subtype), nevents_(nevents)
 	{}	
+
+	static_assert(NOTIFY_PM_EVT_MAX < NOTIFY_MS_TCP_CONN, 		"Event ID Overflow detected");
+	static_assert(NOTIFY_MS_EVT_MAX < NOTIFY_MM_TASK_AGGR_PING, 	"Event ID Overflow detected");
+	static_assert(NOTIFY_SM_EVT_MAX < NOTIFY_PING_CONN, 		"Event ID Overflow detected");
 };
 
 struct alignas(8) QUERY_CMD
@@ -1987,6 +1997,32 @@ private :
 
 };
 
+struct alignas(8) HOST_STATE_NOTIFY__V000100
+{
+	uint64_t			curr_time_usec_		{0};
+
+	uint32_t			ntasks_issue_		{0};
+	uint32_t			ntasks_severe_		{0};
+	uint32_t			ntasks_			{0};
+
+	uint32_t			nlisten_issue_		{0};
+	uint32_t			nlisten_severe_		{0};
+	uint32_t			nlisten_		{0};
+
+	uint8_t				curr_state_		{STATE_DOWN};
+	uint8_t				issue_bit_hist_		{0};
+	bool				cpu_issue_		{false};
+	bool				mem_issue_		{false};
+	bool				severe_cpu_issue_	{false};
+	bool				severe_mem_issue_	{false};
+
+	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
+	{
+		return ((phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(HOST_STATE_NOTIFY__V000100)) && (pnotify->nevents_ == 1));
+	}
+};
+
+
 
 struct alignas(8) HOST_STATE_NOTIFY
 {
@@ -2006,6 +2042,12 @@ struct alignas(8) HOST_STATE_NOTIFY
 	bool				mem_issue_		{false};
 	bool				severe_cpu_issue_	{false};
 	bool				severe_mem_issue_	{false};
+
+	// XXX alignas(8) needed below to ensure compatability with HOST_STATE_NOTIFY__V000100
+
+	alignas(8) uint32_t		total_cpu_delayms_	{0};
+	uint32_t			total_vm_delayms_	{0};
+	uint32_t			total_io_delayms_	{0};
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{

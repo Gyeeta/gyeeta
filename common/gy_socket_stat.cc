@@ -4201,9 +4201,14 @@ done :
 		curr_host_status_.severe_cpu_issue_	= severe_cpu_issue;
 		curr_host_status_.severe_mem_issue_	= severe_mem_issue;
 
-		INFOPRINT_OFFLOAD("%sHost State %s : #Tasks with issues %d, #Tasks with severe issues %d, #Total Tasks %d : "
-			"#Listeners with issue %d, #Listeners with severe issue %d, #Total Listeners %d : CPU Issue %s : Memory Issue %s%s\n",
-			get_state_color(curr_state), state_to_string(curr_state), ntaskissue, ntasksevere, ntasks, nlistissue, nlistsevere, nlisten, 
+		curr_host_status_.total_cpu_delayms_	= ptask_handler_->last_cpu_delayms_;
+		curr_host_status_.total_vm_delayms_	= ptask_handler_->last_vm_delayms_;
+		curr_host_status_.total_io_delayms_	= ptask_handler_->last_io_delayms_;
+
+		INFOPRINT_OFFLOAD("%sHost State %s : #Procs with issues %d, #Total Procs %d : "
+			"#Listeners with issue %d, #Total Listeners %d : #CPU Delay %u ms, #VM Delay %u ms, #IO Delay %u ms, CPU Issue %s : Memory Issue %s%s\n",
+			get_state_color(curr_state), state_to_string(curr_state), ntaskissue, ntasks, nlistissue, nlisten, 
+			curr_host_status_.total_cpu_delayms_, curr_host_status_.total_vm_delayms_, curr_host_status_.total_io_delayms_, 
 			severe_cpu_issue ? "Severe" : cpu_issue ? "Yes" : "No", severe_mem_issue ? "Severe" : mem_issue ? "Yes" : "No", GY_COLOR_RESET);
 		
 		if (!servshr) {

@@ -2074,24 +2074,6 @@ uint32_t get_version_from_string(const char *pversion, int num_octets) noexcept
 	return ~0u;
 }
 
-char * get_string_from_version_num(uint32_t version, char (&verbuf)[32], int num_octets) noexcept
-{
-	std::memset(verbuf, 0, sizeof(verbuf));
-
-	switch (num_octets) {
-
-	case 1 :	sprintf(verbuf, "%hhu", version & 0xFF); break;
-
-	case 2 :	sprintf(verbuf, "%hhu.%hhu", (version >> 8) & 0xFF, version & 0xFF); break;
-
-	case 3 :	sprintf(verbuf, "%hhu.%hhu.%hhu", (version >> 16) & 0xFF, (version >> 8) & 0xFF, version & 0xFF); break;
-	
-	default :	sprintf(verbuf, "%hhu.%hhu.%hhu.%hhu", (version >> 24) & 0xFF, (version >> 16) & 0xFF, (version >> 8) & 0xFF, version & 0xFF); break;
-	}	
-
-	return verbuf;
-}
-
 int gy_fork_system(char *systemcmd, char *pdirchange, int to_wait, pid_t *pchldpid, int prctlsigno, const char *plogpath, uid_t ch_uid, gid_t ch_gid, bool ignore_sighup, bool drop_all_cap) noexcept
 {
 	pid_t 			cpid, w;	
@@ -3068,7 +3050,7 @@ char * read_file_to_alloc_buffer(const char *pfilename, size_t *preadsize, size_
 	return pbuf;
 }	
 
-ssize_t read_file_to_buffer(const char *pfilename, void *buf, size_t max_readlen, int dir_fd, bool is_stream_fd) noexcept 
+ssize_t read_file_to_buffer(const char *pfilename, void *buf, size_t max_readlen, int dir_fd, bool read_syscall_till_err) noexcept 
 {
 	int			fd, old_errno;
 	char			*pbuf;
@@ -3079,7 +3061,16 @@ ssize_t read_file_to_buffer(const char *pfilename, void *buf, size_t max_readlen
 		return -1;
 	}	
 
-	bytes = gy_readbuffer(fd, buf, max_readlen, is_stream_fd);
+	if (read_syscall_till_err) {
+		bytes = gy_readbuffer(fd, buf, max_readlen);
+	}
+	else {
+try1 :		
+		bytes = ::read(fd, buf, max_readlen);
+		if (bytes == -1 && ((errno == EINTR) || (errno == EAGAIN))) {
+			goto try1;
+		}
+	}	
 
 	old_errno = errno;
 	close(fd);

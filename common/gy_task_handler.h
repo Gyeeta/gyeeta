@@ -171,6 +171,8 @@ public :
 	};	
 };	
 
+bool get_total_psi_stats(int dirfd, const char * filename, uint64_t & tusec) noexcept;
+
 static constexpr uint64_t		VERIFY_PROC_INTERVAL_MSEC = 30000;	// 30 sec : Keep this as 30 sec as cgroup also depends on this
 
 class SERVER_CONNTRACK;
@@ -241,7 +243,7 @@ public :
 	using AggrTaskStackMap		= INLINE_STACK_HASH_MAP<uint64_t, AGGR_TASK, (comm::TASK_AGGR_NOTIFY::MAX_NUM_AGGR_TASK - 100) * (sizeof(AGGR_TASK) + 8 + 8), GY_JHASHER<uint64_t>>;
 
 	static constexpr int		MAX_NDELAY_TASKS		{3000};		// Not a Hard Limit
-	static constexpr int		MAX_NDELAY_SERVER_TASKS		{512};		// Hard Limit : We store upto 512 task stats only per Partha
+	static constexpr int		MAX_NDELAY_SERVER_TASKS		{512};		// Hard Limit (Not currently used) 
 	static constexpr int		PING_TASK_INTERVAL_MSEC		{5 * GY_MSEC_PER_MINUTE};
 	static constexpr int 		MAX_KILL_PROCS			{8};
 
@@ -272,12 +274,22 @@ public :
 	uint64_t			last_delay_stat_cusec		{0};
 	uint64_t			last_netstats_cusec		{0};
 
+	uint64_t			total_cpu_delayus_		{0};		// Only updated for PSI
+	uint64_t			total_vm_delayus_		{0};
+	uint64_t			total_io_delayus_		{0};
+
+	uint32_t			last_cpu_delayms_		{0};
+	uint32_t			last_vm_delayms_		{0};
+	uint32_t			last_io_delayms_		{0};
+	uint16_t			npsi_err_			{0};
+
 	bool				init_table_done			{false};
 	bool				stats_updated_by_sock;
 	bool				is_kubernetes			{false};
 
 	int				proc_dir_fd;
 	int				sysfs_dir_fd;
+	SCOPE_FD			psi_dir_fd;
 
 	GY_THREAD			nltaskthr;
 	pthread_t			nltaskid			{0};
@@ -444,6 +456,13 @@ public :
 		}	
 	}	
 
+	bool is_proc_pressure() const noexcept
+	{
+		return psi_dir_fd.isvalid();
+	}
+
+	bool get_psi_stats() noexcept;
+
 	TASK_HANDLER(bool stats_updated_by_sock_in = true, bool is_kubernetes_in = false);
 	
 	TASK_HANDLER(const TASK_HANDLER &)		= delete;
@@ -460,6 +479,9 @@ public :
 	static int				init_singleton(bool stats_updated_by_sock = true, bool is_kubernetes_in = false);
 
 	MAKE_CLASS_FUNC_WRAPPER_NO_ARG(TASK_HANDLER, nltask_thread);
+
+private :
+	void init_psi_fds() noexcept;
 };	
 
 
