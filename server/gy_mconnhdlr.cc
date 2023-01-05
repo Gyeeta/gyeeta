@@ -3113,6 +3113,26 @@ int MCONN_HANDLER::handle_l1(GY_THREAD *pthr)
 
 								break;
 
+							// Older Partha
+							case NOTIFY_HOST_STATE__V000100 :
+								if ((!pconn1->is_registered()) || (pconn1->host_type_ != HOST_PARTHA)) {
+									statsmap["Invalid Message Error"]++; 
+									GY_THROW_EXCEPTION("Invalid Message received #%u. Closing connection", __LINE__);
+								}
+								else {
+									auto	 	*phost = (HOST_STATE_NOTIFY__V000100 *)(pevtnot + 1);
+
+									bret = phost->validate(&hdr, pevtnot);
+									if (bret == false) {
+										statsmap["Invalid Message Error"]++; 
+										GY_THROW_EXCEPTION("Invalid Message received #%u. Closing connection", __LINE__);
+									}
+
+									schedule_db_array(prdbuf, hdr.total_sz_, hdr.data_type_, TTYPE_L2_MISC);
+								}
+
+								break;
+
 							case NOTIFY_HOST_INFO :
 								if ((!pconn1->is_registered()) || (pconn1->host_type_ != HOST_PARTHA)) {
 									statsmap["Invalid Message Error"]++; 
@@ -4976,6 +4996,24 @@ int MCONN_HANDLER::handle_l2_misc(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoola
 								);
 
 								break;		
+
+							case NOTIFY_HOST_STATE__V000100 :
+								try {
+									statsmap["Partha v0.1.0 Host State"]++;
+
+									auto		 	*phost = (HOST_STATE_NOTIFY__V000100 *)(pevtnot + 1);
+
+									HOST_STATE_NOTIFY	hstate(*phost);	
+
+									handle_host_state(dbarr.shrconn_->get_partha_shared(), &hstate, dbpool);
+								}
+								GY_CATCH_EXCEPTION(
+									ERRORPRINT_OFFLOAD("Exception occurred while handling Partha v0.1.0 Host State : %s\n", GY_GET_EXCEPT_STRING);
+									statsmap["Exception Occurred"]++;
+								);
+
+								break;		
+
 
 							case NOTIFY_HOST_INFO :
 								try {
@@ -10571,11 +10609,11 @@ void MCONN_HANDLER::handle_host_state(const std::shared_ptr<PARTHA_INFO> & parth
 	CONDEXEC(
 		DEBUGEXECN(11,
 			if (state.curr_state_ >= STATE_BAD) {
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_BLUE, "%s : Host State %s : #Tasks with issues %d, #Tasks with severe issues %d, #Total Tasks %d : "
-					"#Listeners with issue %d, #Listeners with severe issue %d, #Total Listeners %d : CPU Issue %s : Memory Issue %s\n",
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_BLUE, "%s : Host State %s : #Tasks with issues %d, #Total Tasks %d : "
+					"#Listeners with issue %d, #Total Listeners %d : Host CPU Delays %u msec, VM Delays %u msec, IO Delays %u msec : CPU Issue %s : Memory Issue %s\n",
 					prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), 
-					state_to_string((OBJ_STATE_E)state.curr_state_), state.ntasks_issue_, state.ntasks_severe_, state.ntasks_, 
-					state.nlisten_issue_, state.nlisten_severe_, state.nlisten_, 
+					state_to_string((OBJ_STATE_E)state.curr_state_), state.ntasks_issue_, state.ntasks_, state.nlisten_issue_, state.nlisten_, 
+					state.total_cpu_delayms_, state.total_vm_delayms_, state.total_io_delayms_,
 					state.severe_cpu_issue_ ? "Severe" : state.cpu_issue_ ? "Yes" : "No", 
 					state.severe_mem_issue_ ? "Severe" : state.mem_issue_ ? "Yes" : "No");
 			}
@@ -10608,11 +10646,12 @@ void MCONN_HANDLER::handle_host_state(const std::shared_ptr<PARTHA_INFO> & parth
 	rtscope.unlock();
 
 	qbuf.appendfmt("insert into %s.hoststatetbl%s(time, ntasks_issue, ntasks_severe, ntasks, nlisten_issue, nlisten_severe, nlisten, "
-			"state, issue_bit_hist, cpu_issue, mem_issue, severe_cpu_issue, severe_mem_issue) "
-			"values(\'%s\'::timestamptz, %d, %d, %d, %d, %d, %d, %hd, %hd, %hhd::boolean, %hhd::boolean, %hhd::boolean, %hhd::boolean);",
+			"state, issue_bit_hist, cpu_issue, mem_issue, severe_cpu_issue, severe_mem_issue, total_cpu_delay, total_vm_delay, total_io_delay) "
+			"values(\'%s\'::timestamptz, %d, %d, %d, %d, %d, %d, %hd, %hd, %hhd::boolean, %hhd::boolean, %hhd::boolean, %hhd::boolean, %d, %d, %d);",
 		schemabuf.get(), datetbl.get(), timebuf.get(), state.ntasks_issue_, state.ntasks_severe_,
 		state.ntasks_, state.nlisten_issue_, state.nlisten_severe_, state.nlisten_, state.curr_state_, state.issue_bit_hist_,
-		state.cpu_issue_, state.mem_issue_, state.severe_cpu_issue_, state.severe_mem_issue_);
+		state.cpu_issue_, state.mem_issue_, state.severe_cpu_issue_, state.severe_mem_issue_,
+		state.total_cpu_delayms_, state.total_vm_delayms_, state.total_io_delayms_);
 
 	bret = PQsendQueryOptim(pconn->get(), qbuf.buffer(), qbuf.size());
 	

@@ -16,10 +16,55 @@ namespace madhava {
 /*
  * XXX : Any modifications to DB schemas MUST result in incrementing CURR_DB_VERSION
  */
-int			CURR_DB_VERSION	= 1;
+const int			CURR_DB_VERSION	= 2;
 
 void MCONN_HANDLER::upgrade_db_schemas(int olddbver, int oldprocver, PGConnUniq & pconn)
 {
+	if (olddbver > 0 && olddbver < CURR_DB_VERSION) {
+		/*
+		 * Add DB Upgrade stuff here...
+		 * We limit the upgrade to max 2 prior versions.
+		 */
+
+		static constexpr const char		up_1_to_2[] = R"(
+do $$
+declare
+	c               refcursor;
+	r               record;
+	tbl             text;
+begin
+	open c for select nspname from pg_catalog.pg_namespace where nspname ~ '^sch[0-9a-f]{32}$';
+	loop
+		fetch c into r;
+		exit when not found;
+
+		execute format($fmt$ alter table if exists %s.hoststatetbl 
+					add column if not exists total_cpu_delay int default 0, 
+					add column if not exists total_vm_delay int default 0, 
+					add column if not exists total_io_delay int default 0; $fmt$ , r.nspname::text);
+
+	end loop;
+end;
+$$ language plpgsql;
+		)";
+
+		if (olddbver == 1) {
+			INFOPRINTCOLOR(GY_COLOR_YELLOW, "Altering current DB as Schema Version is lower %d than upgrade Schema version %d...\n", olddbver, CURR_DB_VERSION);
+
+			bool			bret = pconn->check_or_reconnect(false);
+			if (!bret) {
+				GY_THROW_EXCEPTION("Failed to connect to DB for upgrade to DB Schema");
+			}	
+
+			auto			gyres = pconn->pqexec_blocking(up_1_to_2);
+
+			if (true == gyres.is_error()) {
+				GY_THROW_EXCEPTION("Failed to Upgrade DB : Alter to hoststatetbl failed : Existing DB Schema Version is lower %d than current %d : %s", 
+						olddbver, CURR_DB_VERSION, gyres.get_error_no_newline().get());
+			}
+		}	
+	}
+
 	// Set CURR_DB_VERSION to DB
 	auto			gyres = pconn->pqexec_blocking(
 					gy_to_charbuf<512>("insert into public.instanceversiontbl(id, dbversion, procvernum, procverstr, tupd) values(1, %d, %d, \'%s\', now()) "
@@ -28,14 +73,8 @@ void MCONN_HANDLER::upgrade_db_schemas(int olddbver, int oldprocver, PGConnUniq 
 								CURR_DB_VERSION, gversion_num, gversion).get());
 
 	if (true == gyres.is_error()) {
-		GY_THROW_EXCEPTION("Failed to set Postgres Madhava DB Version  : %s", gyres.get_error_no_newline().get());
+		GY_THROW_EXCEPTION("Failed to update Postgres Madhava DB Version Info table : %s", gyres.get_error_no_newline().get());
 	}
-
-	if (olddbver == 0 || olddbver >= CURR_DB_VERSION) {
-		return;
-	}	
-
-	// XXX Add DB Upgrade code here...
 }	
 
 
@@ -243,7 +282,10 @@ begin
 			cpu_issue		boolean,
 			mem_issue		boolean,
 			severe_cpu_issue	boolean,
-			severe_mem_issue	boolean
+			severe_mem_issue	boolean,
+			total_cpu_delay 	int,
+			total_vm_delay 		int,
+			total_io_delay 		int
 			) PARTITION BY RANGE (time)
 		$fmt$, logmode, schname);
 	

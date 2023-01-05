@@ -155,6 +155,9 @@ public :
 			case FIELD_NLISTISSUE 		: 	return NUMBER_CRITERION((int)hstate.nlisten_issue_);
 			case FIELD_NLISTSEVERE 		: 	return NUMBER_CRITERION((int)hstate.nlisten_severe_);
 			case FIELD_NLISTEN 		: 	return NUMBER_CRITERION((int)hstate.nlisten_);
+			case FIELD_CPUDELMS 		: 	return NUMBER_CRITERION((int)hstate.total_cpu_delayms_);
+			case FIELD_VMDELMS 		: 	return NUMBER_CRITERION((int)hstate.total_vm_delayms_);
+			case FIELD_IODELMS 		: 	return NUMBER_CRITERION((int)hstate.total_io_delayms_);
 			
 			default				:	last_unknown_jsoncrc_ = pfield->jsoncrc; return {};
 			}	
@@ -309,6 +312,21 @@ public :
 			case FIELD_SEVEREMEM :
 				writer.KeyConst("severemem");
 				writer.Bool(hstate.severe_mem_issue_);
+				return true;
+
+			case FIELD_CPUDELMS :
+				writer.KeyConst("cpudelms");
+				writer.Uint(hstate.total_cpu_delayms_);
+				return true;
+
+			case FIELD_VMDELMS :
+				writer.KeyConst("vmdelms");
+				writer.Uint(hstate.total_vm_delayms_);
+				return true;
+
+			case FIELD_IODELMS :
+				writer.KeyConst("iodelms");
+				writer.Uint(hstate.total_io_delayms_);
 				return true;
 
 			default :

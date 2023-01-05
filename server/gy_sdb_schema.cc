@@ -15,7 +15,7 @@ namespace shyama {
 /*
  * XXX : Any modifications to DB schemas MUST result in incrementing CURR_DB_VERSION
  */
-int			CURR_DB_VERSION	= 1;
+const int		CURR_DB_VERSION	= 1;
 
 void SHCONN_HANDLER::upgrade_db_schemas(int olddbver, int oldprocver, PGConnUniq & pconn)
 {

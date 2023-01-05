@@ -9,7 +9,7 @@
 namespace gyeeta {
 namespace shyama {
 
-extern int 			CURR_DB_VERSION;
+extern const int		CURR_DB_VERSION;
 
 // Must end with "tbl" as its used in alerts db queries
 static constexpr const char	*db_glob_partition_tbls_[] = {

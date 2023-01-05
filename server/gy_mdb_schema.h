@@ -8,7 +8,7 @@
 namespace gyeeta {
 namespace madhava {	
 
-extern int 			CURR_DB_VERSION;
+extern const int 		CURR_DB_VERSION;
 
 static constexpr const char	*db_glob_partition_tbls_[] = {
 	"notificationtbl", 

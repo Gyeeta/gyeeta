@@ -1061,11 +1061,9 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 
 				netns_tbl_.insert_or_replace(pnetns, inode, inode_hash);
 
-				CONDEXEC(
-					DEBUGEXECN(1, 
-						INFOPRINT_OFFLOAD("New Network Namespace %lu seen for PID %u Thread %u from TCP New Listener handler\n", 
-							inode, pevent->pid, pevent->tid);
-					);
+				DEBUGEXECN(1, 
+					INFOPRINT_OFFLOAD("New Network Namespace %lu seen for PID %u Thread %u from TCP New Listener handler\n", 
+						inode, pevent->pid, pevent->tid);
 				);
 			}
 			GY_CATCH_EXCEPTION(
@@ -1280,8 +1278,10 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 			}	
 
 			if (bret == true && pnewlistener) {
-				INFOPRINT_OFFLOAD("[TCP Listener event] : Re-adding TCP Listener entry : %s\n", 
-					pnewlistener->print_string(STRING_BUFFER<512>().get_str_buf(), false));
+				DEBUGEXECN(5, 
+					INFOPRINT_OFFLOAD("[TCP Listener event] : Re-adding TCP Listener entry : %s\n", 
+						pnewlistener->print_string(STRING_BUFFER<512>().get_str_buf(), false));
+				);
 				return; 
 			}	
 		}	

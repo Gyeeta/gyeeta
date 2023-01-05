@@ -2043,8 +2043,6 @@ struct alignas(8) HOST_STATE_NOTIFY
 	bool				severe_cpu_issue_	{false};
 	bool				severe_mem_issue_	{false};
 
-	// XXX alignas(8) needed below to ensure compatability with HOST_STATE_NOTIFY__V000100
-
 	alignas(8) uint32_t		total_cpu_delayms_	{0};
 	uint32_t			total_vm_delayms_	{0};
 	uint32_t			total_io_delayms_	{0};
@@ -2053,6 +2051,15 @@ struct alignas(8) HOST_STATE_NOTIFY
 	{
 		return ((phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(HOST_STATE_NOTIFY)) && (pnotify->nevents_ == 1));
 	}
+
+	HOST_STATE_NOTIFY() noexcept	= default;
+
+	HOST_STATE_NOTIFY(const HOST_STATE_NOTIFY__V000100 & ohost) noexcept
+	{
+		static_assert(offsetof(HOST_STATE_NOTIFY, total_cpu_delayms_) == sizeof(HOST_STATE_NOTIFY__V000100), "Alignment of field change needed");
+
+		std::memcpy((void *)this, &ohost, sizeof(ohost));
+	}	
 };
 
 

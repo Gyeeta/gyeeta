@@ -1607,7 +1607,7 @@ bool TASK_HANDLER::get_psi_stats() noexcept
 
 	bret = get_total_psi_stats(psi_dir_fd.get(), "./cpu", total_cpu_delus);
 	if (bret) {
-		last_cpu_delayms_ 	= gy_diff_counter_safe(total_cpu_delus, total_cpu_delayus_);
+		last_cpu_delayms_ 	= gy_diff_counter_safe(total_cpu_delus, total_cpu_delayus_) / GY_USEC_PER_MSEC;
 		total_cpu_delayus_	= total_cpu_delus;
 	}	
 	else {
@@ -1622,7 +1622,7 @@ bool TASK_HANDLER::get_psi_stats() noexcept
 
 	bret = get_total_psi_stats(psi_dir_fd.get(), "./memory", total_vm_delus);
 	if (bret) {
-		last_vm_delayms_ 	= gy_diff_counter_safe(total_vm_delus, total_vm_delayus_);
+		last_vm_delayms_ 	= gy_diff_counter_safe(total_vm_delus, total_vm_delayus_) / GY_USEC_PER_MSEC;
 		total_vm_delayus_	= total_vm_delus;
 	}	
 	else {
@@ -1637,7 +1637,7 @@ bool TASK_HANDLER::get_psi_stats() noexcept
 
 	bret = get_total_psi_stats(psi_dir_fd.get(), "./io", total_io_delus);
 	if (bret) {
-		last_io_delayms_ 	= gy_diff_counter_safe(total_io_delus, total_io_delayus_);
+		last_io_delayms_ 	= gy_diff_counter_safe(total_io_delus, total_io_delayus_) / GY_USEC_PER_MSEC;
 		total_io_delayus_	= total_io_delus;
 	}	
 	else {
