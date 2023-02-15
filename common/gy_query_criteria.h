@@ -304,11 +304,11 @@ struct NUMBER_CRITERION
 	template <typename T>
 	T get() const noexcept
 	{
-		if (std::is_same<T, int8_t>{})		{ return int8; }
-		else if (std::is_same<T, int16_t>{})	{ return int16; }
-		else if (std::is_same<T, int32_t>{})	{ return int32; }
-		else if (std::is_same<T, int64_t>{})	{ return int64; }
-		else if (std::is_same<T, double>{})	{ return dbl; }
+		if (std::is_same_v<T, int8_t>)		{ return int8; }
+		else if (std::is_same_v<T, int16_t>)	{ return int16; }
+		else if (std::is_same_v<T, int32_t>)	{ return int32; }
+		else if (std::is_same_v<T, int64_t>)	{ return int64; }
+		else if (std::is_same_v<T, double>)	{ return dbl; }
 		else return T(int64);
 	}
 
@@ -1229,7 +1229,7 @@ public :
 	template <typename Num>
 	bool match_num_criterian(Num input, Num crit) const noexcept
 	{
-		if (std::is_same<Num, double>{}) { 
+		if (std::is_same_v<Num, double>) { 
 			return match_dbl_criterian(input, crit); 
 		}
 
