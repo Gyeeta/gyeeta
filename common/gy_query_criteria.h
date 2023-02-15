@@ -1229,6 +1229,10 @@ public :
 	template <typename Num>
 	bool match_num_criterian(Num input, Num crit) const noexcept
 	{
+		if (std::is_same<Num, double>{}) { 
+			return match_dbl_criterian(input, crit); 
+		}
+
 		switch (comp_) {
 		
 		case COMP_EQ		:	return input == crit;
@@ -1258,6 +1262,49 @@ public :
 						icrit = pnumarray_[i].get<Num>();
 
 						if (input == icrit) {
+							return bret;
+						}	
+					}	
+					
+					return !bret;
+				}
+				return false;
+			
+		default			:	return false;	
+		}
+	}	
+
+	bool match_dbl_criterian(double input, double crit) const noexcept
+	{
+		switch (comp_) {
+		
+		case COMP_EQ		:	return gy_is_dbl_equal(input, crit);
+
+		case COMP_NEQ		:	return !gy_is_dbl_equal(input, crit);
+
+		case COMP_LT		:	return input < crit && (crit - input > std::numeric_limits<double>::epsilon());
+
+		case COMP_LE		:	return gy_is_dbl_equal(input, crit) || (input < crit);
+
+		case COMP_GT		:	return input > crit && (input - crit > std::numeric_limits<double>::epsilon());
+
+		case COMP_GE		:	return gy_is_dbl_equal(input, crit) || (input > crit);
+
+		case COMP_BIT2		:	return (((int)input & 3) == 3);
+
+		case COMP_BIT3		:	return (((int)input & 7) == 7);
+
+		case COMP_IN		:
+		case COMP_NOTIN		:
+				if (pnumarray_) {
+					bool		bret = (comp_ == COMP_IN ? true : false);
+
+					for (uint32_t i = 0; i < nin_elems_; ++i) {
+						double			icrit;
+
+						icrit = pnumarray_[i].get<double>();
+
+						if (gy_is_dbl_equal(input, icrit)) {
 							return bret;
 						}	
 					}	

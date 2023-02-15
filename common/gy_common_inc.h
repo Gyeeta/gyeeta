@@ -510,6 +510,40 @@ static constexpr bool gy_is_aligned(T val, T nalign) noexcept
 	return (val & (nalign - 1));
 }	
 
+static bool gy_is_dbl_equal(double a, double b, double epsilon = 1e-7, double abstol = 1e-12) noexcept
+{
+	if (a == b) {
+		return true;
+	}
+
+	double 			diff = std::fabs(a - b);
+	double 			reltol = std::max(std::fabs(a), std::fabs(b)) * epsilon;
+
+	return (diff < reltol || diff < abstol);
+}
+
+/*
+ * Use if definite double comparison needed. 
+ * In other cases a simple way is : a > b && (a - b > std::numeric_limits<double>::epsilon())
+ */
+static bool gy_is_dbl_greaterthan(double a, double b, double epsilon = 1e-7) noexcept
+{
+	double			fa = std::fabs(a), fb = std::fabs(b);
+
+	return (a - b) > ((fa < fb ? fb : fa) * epsilon);
+}
+
+/*
+ * Use if definite double comparison needed. 
+ * In other cases a simple way is : a < b && (b - a > std::numeric_limits<double>::epsilon())
+ */
+static bool gy_is_dbl_lessthan(double a, double b, double epsilon = 1e-7) noexcept
+{
+	double			fa = std::fabs(a), fb = std::fabs(b);
+
+	return (b - a) > ((fa < fb ? fb : fa) * epsilon);
+}
+
 typedef				void (*FREE_FPTR)(void *);
 typedef				void (*FREE_FPTR_ARG)(void *, void *);
 
