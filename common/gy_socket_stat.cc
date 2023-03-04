@@ -757,8 +757,14 @@ int TCP_SOCK_HANDLER::handle_bpf_close_cli(const CONN_BPF_EVENT & evt, bool more
 						ptcp->stats_.bytes_received	= bytes_rcvd;
 
 						if (ptcp->listen_shr_) {
-							ptcp->listen_shr_->close_bytes_in_	+= bytes_sent;
-							ptcp->listen_shr_->close_bytes_out_	+= bytes_rcvd;
+							auto			plistener = ptcp->listen_shr_.get();
+
+							plistener->close_bytes_in_	+= bytes_sent;
+							plistener->close_bytes_out_	+= bytes_rcvd;
+
+							if ((ptcp->is_dnat_) && (GY_READ_ONCE(ptcp->listen_updated_) == false)) {
+								plistener->set_nat_ip_port(ptcp->ser_, currusectime/GY_USEC_PER_SEC);
+							}
 						}
 					}	
 				}
@@ -780,6 +786,10 @@ int TCP_SOCK_HANDLER::handle_bpf_close_cli(const CONN_BPF_EVENT & evt, bool more
 
 							plistener->close_bytes_in_	+= evt.bytes_acked_;
 							plistener->close_bytes_out_	+= evt.bytes_received_;
+
+							if ((ptcp->is_dnat_) && (GY_READ_ONCE(ptcp->listen_updated_) == false)) {
+								plistener->set_nat_ip_port(ptcp->ser_, currusectime/GY_USEC_PER_SEC);
+							}
 						}	
 
 						return CB_OK;
@@ -927,6 +937,10 @@ int TCP_SOCK_HANDLER::handle_bpf_close_ser(const CONN_BPF_EVENT & evt, bool more
 
 						plistener->close_bytes_in_	+= evt.bytes_received_;
 						plistener->close_bytes_out_	+= evt.bytes_acked_;
+
+						if ((ptcp->is_dnat_) && (GY_READ_ONCE(ptcp->listen_updated_) == false)) {
+							plistener->set_nat_ip_port(ptcp->ser_, currusectime/GY_USEC_PER_SEC);
+						}
 					}	
 
 					return CB_OK;
@@ -956,10 +970,18 @@ int TCP_SOCK_HANDLER::handle_bpf_close_ser(const CONN_BPF_EVENT & evt, bool more
 					ptcp->stats_.bytes_received	= bytes_sent;
 				}	
 
-				if (ptcp->stats_.bytes_received + ptcp->stats_.bytes_acked && ptcp->listen_shr_) {
-					ptcp->listen_shr_->close_bytes_in_	+= ptcp->stats_.bytes_acked;
-					ptcp->listen_shr_->close_bytes_out_	+= ptcp->stats_.bytes_received;
-				}	
+				if (ptcp->listen_shr_) {
+					auto			plistener = ptcp->listen_shr_.get();
+
+					if (ptcp->stats_.bytes_received + ptcp->stats_.bytes_acked) {
+						plistener->close_bytes_in_	+= ptcp->stats_.bytes_acked;
+						plistener->close_bytes_out_	+= ptcp->stats_.bytes_received;
+					}	
+
+					if ((ptcp->is_dnat_) && (GY_READ_ONCE(ptcp->listen_updated_) == false)) {
+						plistener->set_nat_ip_port(ptcp->ser_, currusectime/GY_USEC_PER_SEC);
+					}
+				}
 			}	
 
 			if (false == ptcp->tcp_info_seen_) {

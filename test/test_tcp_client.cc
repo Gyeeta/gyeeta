@@ -4,8 +4,8 @@
 #include 		"gy_common_inc.h"
 #include		"gy_cli_socket.h"
 
-#include		<vector>
 #include 		<sys/wait.h>
+#include 		<list>
 
 using namespace gyeeta;
 
@@ -21,21 +21,47 @@ void *	clifunc(void * pport)
 
 		CLI_SOCKET			sock(port, gservaddr, false, true);
 		STRING_BUFFER<256>		strbuf1;
+		char				resbuf[512], rcvbuf[1024];
+		size_t				nres;
+
+		nres = 1 + GY_SAFE_SNPRINTF(resbuf, sizeof(resbuf), "Test from client PID = %d TID = %d for Server %s port %hu\n", getpid(), gy_gettid(), gservaddr, port);
 
 		INFOPRINTCOLOR(GY_COLOR_YELLOW, "Connection Status : %s\n", sock.print_tuple(strbuf1));
 		
-		sock.send_data((const uint8_t *)"Test from client", gy_strlen_constexpr("Test from client") + 1);
-
-		std::vector<CLI_SOCKET>		sockvec(nconn_per_thread - 1, sock);
+		std::list<CLI_SOCKET>		socklist(nconn_per_thread, sock);
 		
-		for (int i = 0; i < nconn_per_thread - 1; ++i) {
-			STRING_BUFFER<256>	strbuf;
+		sock.destroy();
 
-			INFOPRINTCOLOR(GY_COLOR_YELLOW, "Connection Status : %s\n", sockvec[i].print_tuple(strbuf));
-			sockvec[i].send_data((const uint8_t *)"Test from client", gy_strlen_constexpr("Test from client") + 1);
+		while (1) {
+			socklist.remove_if(
+				[&, resbuf, nres, maxrcv = sizeof(rcvbuf) - 1](CLI_SOCKET & csock)
+				{
+					int 			f = csock.get_sock();
+					ssize_t			sret = send(f, resbuf, nres, MSG_DONTWAIT | MSG_NOSIGNAL);
+
+					if (sret < 0 && errno != EAGAIN) {
+						close(f);
+						return true;
+					}	
+					
+					sret = recv(f, rcvbuf, maxrcv, MSG_DONTWAIT);
+					if (sret < 0 && errno != EAGAIN) {
+						close(f);
+						return true;
+					}	
+
+					return false;
+				}
+			);
+
+			if (socklist.empty()) {
+				INFOPRINTCOLOR(GY_COLOR_GREEN, "Exiting thread now as no connections exist for Client %s : PID = %d TID = %d for Server %s Port %hu\n", 
+					spawn_proc ? "process" : "thread", getpid(), gy_gettid(), gservaddr, port);
+				break;
+			}	
+			
+			gy_msecsleep(100);
 		}
-
-		gy_nanosleep(1000, 0);
 
 		return nullptr;
 	}
