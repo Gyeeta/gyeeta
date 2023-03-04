@@ -102,7 +102,7 @@ We provide a Docker container for building this repo source.
 docker pull ghcr.io/gyeeta/gyeeta-devel:latest
 ```
 
-Note that the container is of 4 GB size. 
+Note that the container is of 5 GB size. 
 
 Users can run the container optionally passing a Volume mount for the git source.
 
