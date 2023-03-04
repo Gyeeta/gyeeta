@@ -36,12 +36,23 @@ namespace gyeeta {
 class GY_EBPF_BASE : public ebpf::BPF
 {
 public :
-	using 				ebpf::BPF::BPF;
-
 	uint32_t			max_possible_cpus_		{(uint32_t)ebpf::BPFTable::get_possible_cpu_count()};
-	std::vector<uint64_t> 		bpf_resp_vec_			{max_possible_cpus_};				
+	std::vector<uint64_t> 		bpf_resp_vec_;
 	const char			*pgip_queue_xmit_		{nullptr};	
 	bool				use_per_cpu_config_		{false};
+
+	GY_EBPF_BASE() : ebpf::BPF(0, nullptr, false)
+	{
+		if (max_possible_cpus_ > 32767) {
+			GY_THROW_EXCEPTION("eBPF : Failed to get max possible CPU count");
+		}
+
+		bpf_resp_vec_.reserve(max_possible_cpus_);
+
+		for (uint32_t i = 0; i < max_possible_cpus_; ++i) {
+			bpf_resp_vec_.push_back(ENABLE_PERF_PROBE);
+		}	
+	}
 };	
 		
 thread_local		bool extra_cb_info;
@@ -84,7 +95,7 @@ GY_EBPF::GY_EBPF(TCP_SOCK_HANDLER *psock, TASK_HANDLER *ptask, uint8_t resp_samp
 	std::vector<std::string> 	cflags {};
 
 
-	auto pbpf = std::make_unique <GY_EBPF_BASE> (0, nullptr, false);
+	auto pbpf = std::make_unique <GY_EBPF_BASE>();
 
 	auto pos = OS_INFO::get_singleton();
 	if (pos) {
@@ -173,7 +184,7 @@ int GY_EBPF::set_resp_sampling(bool to_enable) noexcept
 
 			auto col_status = config_resp_tbl.update_value(0, pbpf_->bpf_resp_vec_);
 			if (col_status.code() != 0) {
-				/*ERRORPRINT("Could not set per cpu TCP response sampling to %s : %s\n", ptype, col_status.msg().c_str());*/
+				DEBUGEXECN(1, ERRORPRINT("Could not set ebpf per cpu TCP response sampling to %s : %s\n", ptype, col_status.msg().c_str()););
 				return -1;
 			}
 		}
