@@ -52,6 +52,18 @@ char * get_escaped_comm(char (&comm)[TASK_COMM_LEN], const char *pcomm, uint32_t
 	return comm;
 }	
 
+template <typename T>
+static T max_curr_prev(T currval, T prevval) noexcept
+{
+	if (currval >= prevval) return currval;
+
+	// Use the prevval if currval is at least half the prevval
+	if (currval * 2 > prevval) {
+		return prevval;
+	}	
+
+	return currval;
+}	
 
 TASK_DELAY_STATS::TASK_DELAY_STATS(TASK_STAT *pthis, bool is_kubernetes, uint64_t clock_nsec) 
 	: cpu_delay_histogram_(clock_nsec), blkio_delay_histogram_(clock_nsec), vol_cs_histogram_(clock_nsec), invol_cs_histogram_(clock_nsec)
@@ -188,43 +200,18 @@ int TASK_EXT_STATS::get_curr_state(OBJ_STATE_E & taskstate, TASK_ISSUE_SOURCE & 
 		delay_secs	= 1;
 	}	
 
-	auto lfltmax = [](float currval, float prevval) noexcept -> float
-	{
-		if (currval >= prevval) return currval;
-
-		// Use the prevval if currval is at least half the prevval
-		if (currval * 2 > prevval) {
-			return prevval;
-		}	
-
-		return currval;
-	};	
-
-
-	auto lintmax = [](uint64_t currval, uint64_t prevval) noexcept -> uint64_t
-	{
-		if (currval >= prevval) return currval;
-
-		// Use the prevval if currval is at least half the prevval
-		if (currval > (prevval >> 1)) {
-			return prevval;
-		}	
-
-		return currval;
-	};	
-
 	if (!pdelay_stats_) {
 		goto no_delay;
 	}
 	
-	max_cpu_delay 		= lintmax(pdelay_stats_->cpu_delay_nsec_[0], pdelay_stats_->cpu_delay_nsec_[1]);
-	max_blkio_delay		= lintmax(pdelay_stats_->blkio_delay_nsec_[0], pdelay_stats_->blkio_delay_nsec_[1]);
-	max_swapin_delay	= lintmax(pdelay_stats_->swapin_delay_nsec_[0], pdelay_stats_->swapin_delay_nsec_[1]);
-	max_reclaim_delay	= lintmax(pdelay_stats_->reclaim_delay_nsec_[0], pdelay_stats_->reclaim_delay_nsec_[1]);
-	max_thrashing_delay	= lintmax(pdelay_stats_->thrashing_delay_nsec_[0], pdelay_stats_->thrashing_delay_nsec_[1]);
-	max_compact_delay	= lintmax(pdelay_stats_->compact_delay_nsec_[0], pdelay_stats_->compact_delay_nsec_[1]);
-	max_vol_cs		= lintmax(pdelay_stats_->vol_cs_[0], pdelay_stats_->vol_cs_[1]);
-	max_invol_cs		= lintmax(pdelay_stats_->invol_cs_[0], pdelay_stats_->invol_cs_[1]);
+	max_cpu_delay 		= max_curr_prev<uint64_t>(pdelay_stats_->cpu_delay_nsec_[0], pdelay_stats_->cpu_delay_nsec_[1]);
+	max_blkio_delay		= max_curr_prev<uint64_t>(pdelay_stats_->blkio_delay_nsec_[0], pdelay_stats_->blkio_delay_nsec_[1]);
+	max_swapin_delay	= max_curr_prev<uint64_t>(pdelay_stats_->swapin_delay_nsec_[0], pdelay_stats_->swapin_delay_nsec_[1]);
+	max_reclaim_delay	= max_curr_prev<uint64_t>(pdelay_stats_->reclaim_delay_nsec_[0], pdelay_stats_->reclaim_delay_nsec_[1]);
+	max_thrashing_delay	= max_curr_prev<uint64_t>(pdelay_stats_->thrashing_delay_nsec_[0], pdelay_stats_->thrashing_delay_nsec_[1]);
+	max_compact_delay	= max_curr_prev<uint64_t>(pdelay_stats_->compact_delay_nsec_[0], pdelay_stats_->compact_delay_nsec_[1]);
+	max_vol_cs		= max_curr_prev<uint64_t>(pdelay_stats_->vol_cs_[0], pdelay_stats_->vol_cs_[1]);
+	max_invol_cs		= max_curr_prev<uint64_t>(pdelay_stats_->invol_cs_[0], pdelay_stats_->invol_cs_[1]);
 	
 	if (gy_unlikely(pthis_obj_->is_ptrace_active)) {
 		taskstate 	= STATE_BAD;
@@ -496,24 +483,30 @@ no_delay :
 	float			max_cpu_pct, max_blkio_pct;
 	int16_t			max_majflt;
 	
-	max_cpu_pct		= lfltmax(cpu_mem_io_.usercpu_pct_hist[0] + cpu_mem_io_.syscpu_pct_hist[0], 
+	max_cpu_pct		= max_curr_prev<float>(cpu_mem_io_.usercpu_pct_hist[0] + cpu_mem_io_.syscpu_pct_hist[0], 
 						cpu_mem_io_.usercpu_pct_hist[1] + cpu_mem_io_.syscpu_pct_hist[1]);
 
-	max_blkio_pct		= lfltmax(cpu_mem_io_.blkiodelay_pct_hist[0], cpu_mem_io_.blkiodelay_pct_hist[1]);
+	max_blkio_pct		= max_curr_prev<float>(cpu_mem_io_.blkiodelay_pct_hist[0], cpu_mem_io_.blkiodelay_pct_hist[1]);
 
-	max_majflt		= lfltmax(cpu_mem_io_.majflt_hist[0], cpu_mem_io_.majflt_hist[1]);
+	max_majflt		= max_curr_prev<float>(cpu_mem_io_.majflt_hist[0], cpu_mem_io_.majflt_hist[1]);
 
 	if (max_majflt > 0) {
 		if (((is_cpu_delay || is_blkio_delay) && (is_vol_cs)) || (max_majflt > 10)) {
-			taskstate 	= STATE_BAD;
-			task_issue 	= ISSUE_MAJOR_PAGE_FAULT;
+			/*
+			 * Check if not more than 10 Major faults in last 15 min
+			 */
+			if (!pdelay_stats_ || pdelay_stats_->pgfault_hist_.count() < 10) {  
+				taskstate 	= STATE_BAD;
+				task_issue 	= ISSUE_MAJOR_PAGE_FAULT;
 
-			strbuf.appendconst("State Bad : Process Has encountered Major Page Faults");
-			strbuf.appendfmt(" : %d", max_majflt);
-			return 0;
+				strbuf.appendconst("State Bad : Process Has encountered Major Page Faults");
+				strbuf.appendfmt(" : %d", max_majflt);
+				return 0;
+			}
 		}	
 	}
-	else if (max_cpu_pct >= pthis_obj_->ncpus_allowed * 100 * 0.9) {
+
+	if (max_cpu_pct >= pthis_obj_->ncpus_allowed * 100 * 0.9) {
 		if (is_invol_cs) {
 			taskstate 	= STATE_BAD;
 			task_issue 	= ISSUE_CPU_UTIL_HIGH;
@@ -605,6 +598,12 @@ int TASK_EXT_STATS::update_delay_stats(TASKSTATS_HDLR *ptaskstats, bool & is_iss
 		return ret;	
 	}	 	
 		
+	pdelay_stats_->pgfault_hist_ <<= 1;
+
+	if (cpu_mem_io_.majflt_hist[0] > 0) {
+		pdelay_stats_->pgfault_hist_ |= 1;
+	}	
+
 	ret = get_curr_state(taskstate, task_issue, strbuf, curr_nsec);
 	
 	if (gy_unlikely(ret != 0)) {

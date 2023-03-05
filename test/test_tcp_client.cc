@@ -40,13 +40,11 @@ void *	clifunc(void * pport)
 					ssize_t			sret = send(f, resbuf, nres, MSG_DONTWAIT | MSG_NOSIGNAL);
 
 					if (sret < 0 && errno != EAGAIN) {
-						close(f);
 						return true;
 					}	
 					
 					sret = recv(f, rcvbuf, maxrcv, MSG_DONTWAIT);
 					if (sret < 0 && errno != EAGAIN) {
-						close(f);
 						return true;
 					}	
 

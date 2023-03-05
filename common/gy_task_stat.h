@@ -171,10 +171,13 @@ public :
 	using MSEC_HISTOGRAM 			= GY_HISTOGRAM<int, DURATION_HASH>;
 	using CS_HISTOGRAM 			= GY_HISTOGRAM<int, SEMI_LOG_HASH>;
 
+	static constexpr size_t			MAX_PGFAULT_HIST				{12 * 15};		// Min Last 15 min
+
 	MSEC_HISTOGRAM				cpu_delay_histogram_;
 	MSEC_HISTOGRAM				blkio_delay_histogram_;
 	CS_HISTOGRAM				vol_cs_histogram_;
 	CS_HISTOGRAM				invol_cs_histogram_;
+	std::bitset<MAX_PGFAULT_HIST>		pgfault_hist_;				
 
 	uint64_t				cpu_delay_nsec_[MAX_TASK_STAT_HISTORY]		{};
 	uint64_t				blkio_delay_nsec_[MAX_TASK_STAT_HISTORY]	{};
@@ -229,6 +232,7 @@ public :
 	};	
 
 	using CPU_PCT_HISTOGRAM 		= GY_HISTOGRAM<int, HASH_1_3000>;
+
 
 	PROC_CPU_IO_STATS			cpu_mem_io_;
 	CPU_PCT_HISTOGRAM			cpu_pct_histogram_			{get_nsec_clock()};

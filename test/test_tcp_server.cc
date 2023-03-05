@@ -17,9 +17,9 @@ uint32_t		num_reuseports = 1, remservport = 0;
 int start_listener(uint16_t sport)
 {
 	try {
-		std::list<int>		fdlist;
-		int 			ssfd;	
-		char			tbuf1[16];
+		std::list<SCOPE_FD>		fdlist;
+		int 				ssfd;	
+		char				tbuf1[16];
 		
 		INFOPRINTCOLOR(GY_COLOR_GREEN, "Server %s : PID = %d TID = %d for %s port %hu\n", spawn_proc ? "process" : "thread", getpid(), gy_gettid(), gservaddr, sport);
 
@@ -76,14 +76,12 @@ int start_listener(uint16_t sport)
 						
 						sret = recv(f, rcvbuf, maxrcv, MSG_DONTWAIT);
 						if (sret < 0 && errno != EAGAIN) {
-							close(f);
 							return true;
 						}	
 
 						sret = send(f, resbuf, nres, MSG_DONTWAIT | MSG_NOSIGNAL);
 
 						if (sret < 0 && errno != EAGAIN) {
-							close(f);
 							return true;
 						}	
 						
