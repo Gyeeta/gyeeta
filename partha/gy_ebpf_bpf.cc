@@ -216,7 +216,9 @@ int GY_EBPF::set_resp_sampling(bool to_enable) noexcept
 
 		ret = bpf_map__update_elem(pbpf_->obj_.get()->maps.config_tcp_response, &key, sizeof(key), values, nmax * sizeof(uint64_t), BPF_ANY);
 		if (ret != 0) {
-			/*ERRORPRINT("Could not set per cpu TCP response sampling to %s\n", ptype);*/
+			ONCE_EVERY_MSEC(5000,
+				ERRORPRINT_OFFLOAD("Could not set ebpf per cpu TCP response sampling to %s\n", ptype);
+			);	
 			return -1;
 		}
 

@@ -184,7 +184,9 @@ int GY_EBPF::set_resp_sampling(bool to_enable) noexcept
 
 			auto col_status = config_resp_tbl.update_value(0, pbpf_->bpf_resp_vec_);
 			if (col_status.code() != 0) {
-				DEBUGEXECN(1, ERRORPRINT("Could not set ebpf per cpu TCP response sampling to %s : %s\n", ptype, col_status.msg().c_str()););
+				ONCE_EVERY_MSEC(5000,
+					ERRORPRINT_OFFLOAD("Could not set ebpf per cpu TCP response sampling to %s : %s\n", ptype, col_status.msg().c_str());
+				);	
 				return -1;
 			}
 		}
@@ -193,7 +195,9 @@ int GY_EBPF::set_resp_sampling(bool to_enable) noexcept
 
 			auto col_status = config_resp_tbl.update_value(0, updval);
 			if (col_status.code() != 0) {
-				/*ERRORPRINT("Could not set TCP response sampling to %s : %s\n", ptype, col_status.msg().c_str());*/
+				ONCE_EVERY_MSEC(5000,
+					ERRORPRINT_OFFLOAD("Could not set ebpf per cpu TCP response sampling to %s : %s\n", ptype, col_status.msg().c_str());
+				);
 				return -1;
 			}
 		}	
