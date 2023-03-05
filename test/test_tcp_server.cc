@@ -61,7 +61,7 @@ int start_listener(uint16_t sport)
 					ret = ::write(sdclient, resbuf, nres);
 
 					if (ret > 0) {
-						fdlist.push_back(sdclient);
+						fdlist.emplace_back(sdclient);
 					}	
 				}
 			}
@@ -70,16 +70,16 @@ int start_listener(uint16_t sport)
 			
 			if (currmsec >= nxtsendtms) {
 				fdlist.remove_if(
-					[&, resbuf, nres, maxrcv = sizeof(rcvbuf) - 1](int f)
+					[&, resbuf, nres, maxrcv = sizeof(rcvbuf) - 1](SCOPE_FD & f)
 					{
 						ssize_t			sret;
 						
-						sret = recv(f, rcvbuf, maxrcv, MSG_DONTWAIT);
+						sret = recv(f.getfd(), rcvbuf, maxrcv, MSG_DONTWAIT);
 						if (sret < 0 && errno != EAGAIN) {
 							return true;
 						}	
 
-						sret = send(f, resbuf, nres, MSG_DONTWAIT | MSG_NOSIGNAL);
+						sret = send(f.getfd(), resbuf, nres, MSG_DONTWAIT | MSG_NOSIGNAL);
 
 						if (sret < 0 && errno != EAGAIN) {
 							return true;

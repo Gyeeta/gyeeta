@@ -11839,11 +11839,17 @@ public :
 		return ret;	
 	}	
 
+	// get fd and set errno if error
 	int get() const noexcept
 	{
 		if (fd_ < 0 && savederrno_) {
 			errno = savederrno_;
 		}	
+		return fd_;
+	}	
+
+	int getfd() const noexcept
+	{
 		return fd_;
 	}	
 
