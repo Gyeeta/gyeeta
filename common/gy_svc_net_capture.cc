@@ -161,7 +161,9 @@ void SVC_NET_CAPTURE::add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) 
 		for (auto & [inode, vecone] : nslistmap) {
 
 			if (nmap.size() >= MAX_NETNS_CAP) {
-				WARNPRINT_OFFLOAD("Cannot add more listeners Network Capture as max Network Namespace limit breached : %lu\n", nmap.size());
+				ONCE_EVERY_MSEC(60000,
+					WARNPRINT_OFFLOAD("Cannot add more listeners Network Capture as max Network Namespace limit breached : %lu\n", nmap.size());
+				);	
 				return;
 			}
 
@@ -199,8 +201,10 @@ void SVC_NET_CAPTURE::add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) 
 
 						if (!portused && nports >= MAX_NETNS_PORTS) {
 							DEBUGEXECN(1,
-								INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Skipping Network Capture for Listener %s as Max Ports Monitored breached %u\n",
-									listenshr->comm_, nports);
+								if (nskipped < 8) {
+									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Skipping Network Capture for Listener %s as Max Ports Monitored breached %u\n",
+										listenshr->comm_, nports);
+								}
 							);
 
 							nskipped++;

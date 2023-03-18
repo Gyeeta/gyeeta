@@ -1038,6 +1038,7 @@ public :
 	size_t					ntcp_conns_		{0};
 	size_t					nconn_recent_active_	{0};
 	int					ntcp_coalesced_		{0};
+	int					nlisten_missed_		{0};
 
 	DATA_BUFFER				diag_cache_;
 	NETNS_HASH_TABLE			netns_tbl_;
@@ -1218,7 +1219,7 @@ public :
 	int update_ser_conn_info_madhava(const comm::MP_SER_TCP_INFO *pinfo, int nevents, const uint8_t * const pendptr) noexcept;
 
 	void handle_listener_event(tcp_listener_event_t * pevent, bool more_data) noexcept;
-	bool notify_new_listener(TCP_LISTENER *plistener, bool more_data); 
+	bool notify_new_listener(TCP_LISTENER *plistener, bool more_data, bool is_listen_event_thread); 
 	int notify_init_listeners() noexcept;
 	int send_listen_taskmap() noexcept;
 
@@ -1273,11 +1274,13 @@ private :
 	int populate_ns_tbl();
 	int populate_inode_tbl(SOCK_INODE_TABLE & socktbl, bool get_all);
 
+	void upd_new_listen_task(TCP_LISTENER *pnewlistener, TASK_STAT *ptask, uint64_t curr_tusec) noexcept;
+
 	int upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rta_len, NETNS_ELEM *pnetns, uint64_t clock_diag, uint64_t tusec_diag, \
 			SOCK_INODE_TABLE *psocktbl, SOCK_INODE_SET * pchkset, LIST_HASH_SET *);
 	int add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rta_len, NETNS_ELEM *pnetns, uint64_t clock_diag, \
-			SOCK_INODE_TABLE *psocktbl, LIST_HASH_SET *, TASK_PGTREE_MAP * ptreemap);
-	int do_inet_diag_info(NETNS_ELEM *pnetns, uint8_t *pdiagbuf, bool add_conn,	\
+			SOCK_INODE_TABLE *psocktbl, LIST_HASH_SET *, TASK_PGTREE_MAP * ptreemap, bool only_listen);
+	int do_inet_diag_info(NETNS_ELEM *pnetns, uint8_t *pdiagbuf, bool add_conn, bool add_listen,	\
 			SOCK_INODE_TABLE *psocktbl, SOCK_INODE_SET *pchkset, TASK_PGTREE_MAP * ptreemap) noexcept;
 	void cleanup_lbl_map() noexcept;					
 

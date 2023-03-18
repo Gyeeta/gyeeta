@@ -109,7 +109,7 @@ static const char	*gstr_resp_sampling = "Check for ebpf response collection togg
 static void listener_idle_cb() noexcept
 {
 	try {
-		TCP_SOCK_HANDLER::get_singleton()->notify_new_listener(nullptr, false /* more_data */);
+		TCP_SOCK_HANDLER::get_singleton()->notify_new_listener(nullptr, false /* more_data */, true /* is_listen_event_thread */);
 	}
 	catch(...) {
 	}

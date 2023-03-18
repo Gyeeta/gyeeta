@@ -1059,6 +1059,118 @@ bool TCP_SOCK_HANDLER::notify_tcp_conn(TCP_CONN *ptcp, uint64_t close_usec_time,
 	}	
 }
 
+void TCP_SOCK_HANDLER::upd_new_listen_task(TCP_LISTENER *pnewlistener, TASK_STAT *ptask, uint64_t curr_tusec) noexcept
+{
+	try {
+		auto 		task_shrlisten = ptask->listen_tbl_shr.load(std::memory_order_acquire);
+		auto 		ptask_listen_table = task_shrlisten.get();
+
+		auto 		task_relshrlisten = ptask->related_listen_.load(std::memory_order_acquire);
+		auto 		ptask_rellisten_table = task_relshrlisten.get();
+
+		uint8_t		inhval = ptask->listen_tbl_inherited.load(std::memory_order_acquire);
+	
+		if ((0 != inhval) && (ptask->is_execv_task)) {
+
+			if (inhval == 1 && (true == ptask->listen_tbl_inherited.compare_exchange_strong(inhval, 2))) {
+				ptask->clear_listener_table();
+			}
+			else if (inhval == 2) {
+				int		ntimes = 0;
+
+				while (++ntimes < 4 && (0 != ptask->listen_tbl_inherited.load(std::memory_order_relaxed))) {
+					sched_yield();	
+				}
+
+				if (ntimes >= 4) {
+					return;
+				}	
+			}
+			
+			ptask_listen_table 	= nullptr;
+			ptask_rellisten_table 	= nullptr; 
+		}	
+
+		ptask->is_tcp_server = true;
+		ptask->ntcp_listeners.fetch_add(1, std::memory_order_relaxed);
+
+		std::memcpy(pnewlistener->comm_, ptask->task_comm, sizeof(pnewlistener->comm_));
+
+		auto shrlisten 		= pnewlistener->listen_task_table_.load(std::memory_order_relaxed);
+		auto relshrlisten 	= pnewlistener->related_listen_.load(std::memory_order_relaxed);
+
+		if (!ptask_listen_table || !ptask_rellisten_table) {
+			if (!shrlisten || !relshrlisten) {
+				shrlisten = std::make_shared<SHR_TASK_HASH_TABLE>(8, 8, 1024, true, false);
+
+				pnewlistener->listen_task_table_.store(shrlisten, std::memory_order_release);
+
+				relshrlisten = std::make_shared<RELATED_LISTENERS>(pnewlistener, false);
+
+				pnewlistener->related_listen_.store(relshrlisten, std::memory_order_release);
+				pnewlistener->related_listen_id_ = (int64_t)relshrlisten.get();
+
+				TCP_LISTENER_PTR	key(pnewlistener);
+				
+				WEAK_LISTEN_RAW		*praw = new WEAK_LISTEN_RAW(pnewlistener->weak_from_this(), pnewlistener);
+
+				relshrlisten->related_table_.template insert_or_replace<RCU_LOCK_FAST>(praw, key, get_pointer_hash(pnewlistener));
+			}
+				
+			task_shrlisten = shrlisten;
+
+			ptask->listen_tbl_shr.store(task_shrlisten, std::memory_order_release);
+			ptask->related_listen_.store(relshrlisten, std::memory_order_release);
+			ptask->last_listen_tusec_ = curr_tusec;
+		
+			ptask->listen_tbl_inherited.store(0, std::memory_order_release);
+
+			if (task_shrlisten) {
+				SHR_TASK_ELEM_TYPE		*pshrelem;
+
+				pshrelem = new SHR_TASK_ELEM_TYPE(ptask->shared_from_this());	
+
+				task_shrlisten->template insert_or_replace<RCU_LOCK_FAST>(pshrelem, ptask->task_pid, get_pid_hash(ptask->task_pid));
+			}
+		}	
+		else if (ptask_listen_table != shrlisten.get()) {
+
+			TCP_LISTENER_PTR	key(pnewlistener);
+			const uint32_t		khash = get_pointer_hash(pnewlistener);
+
+			// Overwrite with task listen table as that may contain references to other listener tasks
+			pnewlistener->listen_task_table_.store(task_shrlisten, std::memory_order_release);
+
+			if (relshrlisten) {
+				// Delete this listener from the older related listener list
+				relshrlisten->related_table_.template delete_single_elem<RCU_LOCK_FAST>(key, khash);
+			}
+				
+			relshrlisten = task_relshrlisten;
+
+			pnewlistener->related_listen_.store(relshrlisten, std::memory_order_release);
+			pnewlistener->related_listen_id_ = (int64_t)relshrlisten.get();
+				
+			// Set server_stats_fetched_ to enable intimation to server
+			pnewlistener->server_stats_fetched_ = false;
+
+			WEAK_LISTEN_RAW		*praw = new WEAK_LISTEN_RAW(pnewlistener->weak_from_this(), pnewlistener);
+
+			relshrlisten->related_table_.insert_or_replace(praw, key, khash);
+
+		}	
+		pnewlistener->task_weak_ = ptask->weak_from_this();
+		GY_STRNCPY(pnewlistener->cmdline_, ptask->task_cmdline, sizeof(pnewlistener->cmdline_));
+		pnewlistener->ser_aggr_task_id_ = ptask->get_set_aggr_id();
+
+		pnewlistener->set_aggr_glob_id();
+	}
+	GY_CATCH_EXCEPTION(
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while updating Listener Task Table for bpf TCP Listen event : %s\n", 
+							GY_GET_EXCEPT_STRING);
+	);
+}	
+
 void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool more_data) noexcept
 {
 	RCU_DEFER_OFFLINE		deferlock(more_data);
@@ -1106,114 +1218,7 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 		
 		auto newtaskcb = [&](TASK_STAT *ptask) noexcept 
 		{ 
-			try {
-				auto 		task_shrlisten = ptask->listen_tbl_shr.load(std::memory_order_acquire);
-				auto 		ptask_listen_table = task_shrlisten.get();
-
-				auto 		task_relshrlisten = ptask->related_listen_.load(std::memory_order_acquire);
-				auto 		ptask_rellisten_table = task_relshrlisten.get();
-
-				uint8_t		inhval = ptask->listen_tbl_inherited.load(std::memory_order_acquire);
-			
-				if ((0 != inhval) && (ptask->is_execv_task)) {
-
-					if (inhval == 1 && (true == ptask->listen_tbl_inherited.compare_exchange_strong(inhval, 2))) {
-						ptask->clear_listener_table();
-					}
-					else if (inhval == 2) {
-						int		ntimes = 0;
-
-						while (++ntimes < 4 && (0 != ptask->listen_tbl_inherited.load(std::memory_order_relaxed))) {
-							sched_yield();	
-						}
-
-						if (ntimes >= 4) {
-							return;
-						}	
-					}
-					
-					ptask_listen_table 	= nullptr;
-					ptask_rellisten_table 	= nullptr; 
-				}	
-
-				ptask->is_tcp_server = true;
-				ptask->ntcp_listeners.fetch_add(1, std::memory_order_relaxed);
-
-				std::memcpy(pnewlistener->comm_, ptask->task_comm, sizeof(pnewlistener->comm_));
-
-				auto shrlisten 		= pnewlistener->listen_task_table_.load(std::memory_order_relaxed);
-				auto relshrlisten 	= pnewlistener->related_listen_.load(std::memory_order_relaxed);
-
-				if (!ptask_listen_table || !ptask_rellisten_table) {
-					if (!shrlisten || !relshrlisten) {
-						shrlisten = std::make_shared<SHR_TASK_HASH_TABLE>(8, 8, 1024, true, false);
-
-						pnewlistener->listen_task_table_.store(shrlisten, std::memory_order_release);
-
-						relshrlisten = std::make_shared<RELATED_LISTENERS>(pnewlistener, false);
-
-						pnewlistener->related_listen_.store(relshrlisten, std::memory_order_release);
-						pnewlistener->related_listen_id_ = (int64_t)relshrlisten.get();
-
-						TCP_LISTENER_PTR	key(pnewlistener);
-						
-						WEAK_LISTEN_RAW		*praw = new WEAK_LISTEN_RAW(pnewlistener->weak_from_this(), pnewlistener);
-
-						relshrlisten->related_table_.template insert_or_replace<RCU_LOCK_FAST>(praw, key, get_pointer_hash(pnewlistener));
-					}
-						
-					task_shrlisten = shrlisten;
-
-					ptask->listen_tbl_shr.store(task_shrlisten, std::memory_order_release);
-					ptask->related_listen_.store(relshrlisten, std::memory_order_release);
-					ptask->last_listen_tusec_ = curr_tusec;
-				
-					ptask->listen_tbl_inherited.store(0, std::memory_order_release);
-
-					if (task_shrlisten) {
-						SHR_TASK_ELEM_TYPE		*pshrelem;
-
-						pshrelem = new SHR_TASK_ELEM_TYPE(ptask->shared_from_this());	
-
-						task_shrlisten->template insert_or_replace<RCU_LOCK_FAST>(pshrelem, ptask->task_pid, get_pid_hash(ptask->task_pid));
-					}
-				}	
-				else if (ptask_listen_table != shrlisten.get()) {
-
-					TCP_LISTENER_PTR	key(pnewlistener);
-					const uint32_t		khash = get_pointer_hash(pnewlistener);
-
-					// Overwrite with task listen table as that may contain references to other listener tasks
-					pnewlistener->listen_task_table_.store(task_shrlisten, std::memory_order_release);
-
-					if (relshrlisten) {
-						// Delete this listener from the older related listener list
-						relshrlisten->related_table_.template delete_single_elem<RCU_LOCK_FAST>(key, khash);
-					}
-						
-					relshrlisten = task_relshrlisten;
-
-					pnewlistener->related_listen_.store(relshrlisten, std::memory_order_release);
-					pnewlistener->related_listen_id_ = (int64_t)relshrlisten.get();
-						
-					// Set server_stats_fetched_ to enable intimation to server
-					pnewlistener->server_stats_fetched_ = false;
-
-					WEAK_LISTEN_RAW		*praw = new WEAK_LISTEN_RAW(pnewlistener->weak_from_this(), pnewlistener);
-
-					relshrlisten->related_table_.insert_or_replace(praw, key, khash);
-
-				}	
-				pnewlistener->task_weak_ = ptask->weak_from_this();
-				GY_STRNCPY(pnewlistener->cmdline_, ptask->task_cmdline, sizeof(pnewlistener->cmdline_));
-				pnewlistener->ser_aggr_task_id_ = ptask->get_set_aggr_id();
-
-				pnewlistener->set_aggr_glob_id();
-			}
-			GY_CATCH_EXCEPTION(
-				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while updating Listener Task Table for bpf TCP Listen event : %s\n", 
-									GY_GET_EXCEPT_STRING);
-			);
+			upd_new_listen_task(pnewlistener, ptask, curr_tusec);
 		};
 
 		auto 	lam_chk = [&, this](TCP_LISTENER_ELEM_TYPE *pdatanode, void *arg1, void *arg2) -> CB_RET_E
@@ -1347,26 +1352,41 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 
 		INFOPRINT_OFFLOAD("[TCP Listener event] : Adding new Listener : %s\n", pnewlistener->print_string(STRING_BUFFER<512>().get_str_buf(), false));
 	
-		notify_new_listener(pnewlistener, true /* Batch always */);
+		notify_new_listener(pnewlistener, true /* Batch always */, true /* is_listen_event_thread */);
 	}
 	GY_CATCH_EXCEPTION(
 		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Exception caught while handling bpf TCP Listen event : %s\n", GY_GET_EXCEPT_STRING);
 	);		
 }	
 
-bool TCP_SOCK_HANDLER::notify_new_listener(TCP_LISTENER *plistener, bool more_data) 
+bool TCP_SOCK_HANDLER::notify_new_listener(TCP_LISTENER *plistener, bool more_data, bool is_listen_event_thread) 
 {
 	using namespace 		comm;
 
 	auto				pser =  SERVER_COMM::get_singleton();
-	size_t				elemsz = 0;
+	size_t				elemsz = 0, fixedsz = 0;
+	void				*palloc1 = nullptr;
 
 	if (gy_unlikely(false == pser->is_server_connected())) {
 		return false;
 	}	
 
 	if (plistener) {
-		comm::NEW_LISTENER		*pone = (comm::NEW_LISTENER *)listen_cache_.get_next_buffer();
+		comm::NEW_LISTENER		*pone;
+		
+		if (is_listen_event_thread) {
+			pone = (comm::NEW_LISTENER *)listen_cache_.get_next_buffer();
+		}
+		else {
+			fixedsz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(NEW_LISTENER);
+
+			palloc1 = ::malloc(fixedsz);
+			if (!palloc1) {
+				return false;
+			}	
+
+			pone = (comm::NEW_LISTENER *)((uint8_t *)palloc1 + sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY));
+		}	
 
 		new (pone) comm::NEW_LISTENER(plistener->ns_ip_port_, plistener->glob_id_, 0 /* Set as 0 as validation will be done in inode check */,
 						plistener->related_listen_id_, plistener->tstart_usec_, plistener->ser_aggr_task_id_, 
@@ -1383,7 +1403,23 @@ bool TCP_SOCK_HANDLER::notify_new_listener(TCP_LISTENER *plistener, bool more_da
 		return pser->send_event_cache(listen_cache_, palloc, sz, free_fp, nelems, comm::NOTIFY_NEW_LISTENER, pser->get_server_conn(comm::CLI_TYPE_REQ_ONLY));
 	};	
 
-	return listen_cache_.set_buffer_sz(sendcb, elemsz, !more_data);
+	if (is_listen_event_thread) {
+		return listen_cache_.set_buffer_sz(sendcb, elemsz, !more_data);
+	}
+	else if (palloc1) {
+		COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc1);
+		EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1); 
+
+		new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, fixedsz, pser->get_conn_magic());
+
+		new (pnot) EVENT_NOTIFY(NOTIFY_NEW_LISTENER, 1);
+
+		return pser->send_server_data(EPOLL_IOVEC_ARR(2, false, phdr, phdr->get_act_len(), ::free, pser->gpadbuf, phdr->get_pad_len(), nullptr), 
+						comm::CLI_TYPE_REQ_ONLY, COMM_EVENT_NOTIFY, pser->get_server_conn(comm::CLI_TYPE_REQ_ONLY));
+	}
+	else {
+		return false;
+	}	
 }
 
 void TCP_SOCK_HANDLER::handle_create_netns(create_ns_data_t * pevent, ino_t inode) noexcept
@@ -6773,12 +6809,16 @@ int TCP_SOCK_HANDLER::upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 	};	
 
 	bret = listener_tbl_.lookup_single_elem(l_ns_ip_port, lhash, lambda_list);
+
+	if (!bret) {
+		nlisten_missed_++;
+	}	
 	
 	return 0;
 }	
 
 // Called from under a RCU_LOCK_SLOW
-int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rta_len, NETNS_ELEM *pnetns, uint64_t clock_diag, SOCK_INODE_TABLE *psocktbl, LIST_HASH_SET * plisten_filter, TASK_PGTREE_MAP *ptreemap)
+int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rta_len, NETNS_ELEM *pnetns, uint64_t clock_diag, SOCK_INODE_TABLE *psocktbl, LIST_HASH_SET * plisten_filter, TASK_PGTREE_MAP *ptreemap, bool only_listen)
 {
 	struct rtattr 			*attr;
 	uint8_t				idiag_family = pdiag_msg->idiag_family;
@@ -6794,6 +6834,10 @@ int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 	conn_state = (GY_TCP_STATE_E)pdiag_msg->idiag_state;
 
 	if (conn_state >= GY_TCP_FIN_WAIT1 && conn_state <= GY_TCP_CLOSE_WAIT) {
+		return 0;
+	}	
+
+	if (only_listen && (conn_state != GY_TCP_LISTEN)) {
 		return 0;
 	}	
 
@@ -7159,7 +7203,7 @@ int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 		std::shared_ptr <SHR_TASK_HASH_TABLE>	listen_task_table;
 		
 		pnewlistener = new TCP_LISTENER(lhs_addr, lhs_port, pnetns->get_ns_inode(), it->second.pid_, pdiag_msg->idiag_wqueue /* backlog */, 
-						it->second.task_weak_, listen_task_table, it->second.comm_, nullptr, true /* is_pre_existing */);
+						it->second.task_weak_, listen_task_table, it->second.comm_, nullptr, !only_listen /* is_pre_existing */);
 
 		if (lhs_addr.is_ipv4_addr()) {
 			pnewlistener->sock_ipv4_inode_ 	= sock_inode;
@@ -7262,6 +7306,17 @@ int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 						if (inhval == 1 && (true == ptask->listen_tbl_inherited.compare_exchange_strong(inhval, 2))) {
 							ptask->clear_listener_table();
 						}
+						else if (inhval == 2) {
+							int		ntimes = 0;
+
+							while (++ntimes < 4 && (0 != ptask->listen_tbl_inherited.load(std::memory_order_relaxed))) {
+								sched_yield();	
+							}
+
+							if (ntimes >= 4) {
+								return;
+							}	
+						}
 						
 						ptask_listen_table = nullptr;
 						ptask_rellisten_table 	= nullptr; 
@@ -7318,13 +7373,35 @@ int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 						if (ptaskelem && ptask->listen_tbl_inherited.load(std::memory_order_relaxed) && 
 							((0 == strcmp(ptaskelem->task_cmdline, ptask->task_cmdline)) || (ptask->task_ppid == ptaskelem->task_pid))) {
 
-							ptask->clear_listener_table();
-							nlist = 0;
+							inhval = ptask->listen_tbl_inherited.load(std::memory_order_acquire);
+						
+							if (0 != inhval) {
 
-							ptask->listen_tbl_shr.store(shrlisten, std::memory_order_release);
-							ptask->listen_tbl_inherited.store(is_pg_proc, std::memory_order_release);
-							ptask->related_listen_.store(relshrlisten, std::memory_order_release);
-							ptask->last_listen_tusec_ = get_usec_time();
+								if (inhval == 1 && (true == ptask->listen_tbl_inherited.compare_exchange_strong(inhval, 2))) {
+									ptask->clear_listener_table();
+								}
+								else if (inhval == 2) {
+									int		ntimes = 0;
+
+									while (++ntimes < 4 && (0 != ptask->listen_tbl_inherited.load(std::memory_order_relaxed))) {
+										sched_yield();	
+									}
+
+									if (ntimes >= 4) {
+										return;
+									}	
+								}
+
+								nlist = 0;
+
+								ptask->listen_tbl_shr.store(shrlisten, std::memory_order_release);
+								ptask->listen_tbl_inherited.store(is_pg_proc, std::memory_order_release);
+								ptask->related_listen_.store(relshrlisten, std::memory_order_release);
+								ptask->last_listen_tusec_ = get_usec_time();
+							}	
+							else {
+								return;
+							}	
 						}	
 						else {
 							return;
@@ -7392,12 +7469,21 @@ int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 			pnewlistener->set_aggr_glob_id();
 		}
 
-		DEBUGEXECN(1, 
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Adding new TCP Listener from inet : %s\n", 
+		if (gdebugexecn >= 1 || only_listen) {
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Adding new TCP Listener from manual inet handling : %s\n", 
 				pnewlistener->print_string(STRING_BUFFER<512>().get_str_buf(), false));
-		);
+		}
 
-		listener_tbl_.template insert_or_replace<RCU_LOCK_FAST>(pelem, l_ns_ip_port, lhash);
+		if (!only_listen) {
+			listener_tbl_.template insert_or_replace<RCU_LOCK_FAST>(pelem, l_ns_ip_port, lhash);
+		}
+		else {
+			bret = listener_tbl_.template insert_unique<RCU_LOCK_FAST>(pelem, l_ns_ip_port, lhash);
+
+			if (bret && *pnewlistener->comm_) {
+				notify_new_listener(pnewlistener, false, false /* is_listen_event_thread */);
+			}	
+		}
 	}	
 
 	return 0;
@@ -7876,7 +7962,7 @@ int TCP_SOCK_HANDLER::notify_init_listeners() noexcept
 			}	
 		};	
 
-		auto lam_listen = [&, palloc, maxelems](TCP_LISTENER_ELEM_TYPE *pdatanode, void *arg1) -> CB_RET_E
+		auto lam_listen = [&, palloc, maxelems, fixedsz](TCP_LISTENER_ELEM_TYPE *pdatanode, void *arg1) -> CB_RET_E
 		{
 			auto 			plistener = pdatanode->get_cref().get();
 
@@ -7892,7 +7978,7 @@ int TCP_SOCK_HANDLER::notify_init_listeners() noexcept
 			totalsz += pone->get_elem_size();
 			nelems++;
 
-			if (nelems >= maxelems) {
+			if (nelems >= maxelems || totalsz + sizeof(NEW_LISTENER) >= fixedsz) {
 				return CB_BREAK_LOOP;
 			}	
 
@@ -8033,10 +8119,9 @@ int TCP_SOCK_HANDLER::notify_init_tcp_conns() noexcept
 }	
 
 
-static int sockdiag_send(int sockfd)
+static int sockdiag_send(int sockfd, bool only_listen)
 {
 	// We are only interested in Established TCP conns and existing TCP Listeners
-	static constexpr uint32_t 	GY_SOCK_DIAG_FLAGS = (1 | (1 << GY_TCP_ESTABLISHED) | (1 << GY_TCP_LISTEN));
 	
 	static constexpr uint32_t	GY_TCP_MAGIC_SEQ = 123456;
 	
@@ -8048,13 +8133,14 @@ static int sockdiag_send(int sockfd)
 	struct msghdr 			msg;
 	struct iovec 			iov[3];
 	int 				iovlen = 1;
+	uint32_t 			idiag_states = (1 | (!only_listen ? (1 << GY_TCP_ESTABLISHED) : 0) | (1 << GY_TCP_LISTEN));
 
 	req.nlh.nlmsg_len 		= sizeof(req);
 	req.nlh.nlmsg_flags 		= NLM_F_ROOT | NLM_F_MATCH | NLM_F_REQUEST;
 	req.nlh.nlmsg_seq 		= GY_TCP_MAGIC_SEQ;
 	req.nlh.nlmsg_type 		= TCPDIAG_GETSOCK;
 	req.r.idiag_family 		= AF_UNSPEC;
-	req.r.idiag_states 		= GY_SOCK_DIAG_FLAGS;
+	req.r.idiag_states 		= idiag_states;
 
 	req.r.idiag_ext 		|= (1 << (INET_DIAG_INFO - 1));
 
@@ -8080,7 +8166,7 @@ static int sockdiag_send(int sockfd)
 
 static constexpr int				DIAG_BUF_SIZE = 16 * 1024;	
 
-int TCP_SOCK_HANDLER::do_inet_diag_info(NETNS_ELEM *pnetns, uint8_t *pdiagbuf, bool add_conn, SOCK_INODE_TABLE *psocktbl, SOCK_INODE_SET *pchkset, TASK_PGTREE_MAP * ptreemap) noexcept
+int TCP_SOCK_HANDLER::do_inet_diag_info(NETNS_ELEM *pnetns, uint8_t *pdiagbuf, bool add_conn, bool add_listen, SOCK_INODE_TABLE *psocktbl, SOCK_INODE_SET *pchkset, TASK_PGTREE_MAP * ptreemap) noexcept
 {
 	try {
 		assert(gy_get_thread_local().get_thread_stack_freespace() > 128 * 1024 + sizeof(LIST_HASH_SET));
@@ -8118,7 +8204,7 @@ int TCP_SOCK_HANDLER::do_inet_diag_info(NETNS_ELEM *pnetns, uint8_t *pdiagbuf, b
 			close(nl_sock);
 		};
 		
-		if (sockdiag_send(nl_sock) < 0) {
+		if (sockdiag_send(nl_sock, add_listen /* only_listen */) < 0) {
 			return -1;
 		}
 
@@ -8174,11 +8260,11 @@ int TCP_SOCK_HANDLER::do_inet_diag_info(NETNS_ELEM *pnetns, uint8_t *pdiagbuf, b
 
 				rtalen = h->nlmsg_len - NLMSG_LENGTH(sizeof(*pdiag_msg));
 
-				if (gy_likely(!add_conn)) {
+				if (gy_likely(!add_conn && !add_listen)) {
 					upd_conn_from_diag(pdiag_msg, rtalen, pnetns, clock_diag, tusec_diag, psocktbl, pchkset, &listen_filter);
 				}
 				else {
-					add_conn_from_diag(pdiag_msg, rtalen, pnetns, clock_diag, psocktbl, &listen_filter, ptreemap);	
+					add_conn_from_diag(pdiag_msg, rtalen, pnetns, clock_diag, psocktbl, &listen_filter, ptreemap, add_listen /* only_listen */);	
 				}		
 
 				h = NLMSG_NEXT(h, msglen);
@@ -8214,7 +8300,7 @@ int TCP_SOCK_HANDLER::inet_diag_thread() noexcept
 
 	try {
 		int				ret;
-		bool				add_conn = true;
+		bool				add_conn = true, add_listen = false;
 		uint8_t 			*pdiagbuf;
 		bool				is_malloc;
 		SOCK_INODE_TABLE		socktbl, *psocktbl = &socktbl;
@@ -8251,7 +8337,11 @@ int TCP_SOCK_HANDLER::inet_diag_thread() noexcept
 				}	
 			}	
 
-			do_inet_diag_info(pdatanode, pdiagbuf, add_conn, psocktbl, pchkset, ptreemap);
+			do_inet_diag_info(pdatanode, pdiagbuf, add_conn, add_listen, psocktbl, pchkset, ptreemap);
+
+			if (add_listen) {
+				return CB_OK;
+			}
 
 			uint64_t		clock_diag = get_usec_clock();
 			uint64_t		tclock		= pdatanode->clock_usec_.load(std::memory_order_acquire),
@@ -8352,6 +8442,7 @@ int TCP_SOCK_HANDLER::inet_diag_thread() noexcept
 				ntcp_conns_ 		= 0;
 				nconn_recent_active_ 	= 0;
 				ntcp_coalesced_		= 0;
+				nlisten_missed_		= 0;
 	
 				if (auto mid = pser->get_madhava_id(); local_madhava_id_ != mid) {
 					local_madhava_id_ = mid;
@@ -8381,6 +8472,31 @@ int TCP_SOCK_HANDLER::inet_diag_thread() noexcept
 				if (inode_chked) {
 					socktbl.clear();
 				}
+
+				if (nlisten_missed_ > 0) {
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Missed adding %d listeners. Trying to add manually...\n", nlisten_missed_);
+
+					try {
+						ptask_handler_->get_task_pgtree(treemap);
+
+						ret = populate_inode_tbl(socktbl, true /* get_all */);
+						if (ret == 0) {
+							add_listen = true;
+							GY_CC_BARRIER();
+
+							netns_tbl_.walk_hash_table(lambda_ns); 	
+						}	
+					}
+					catch(...) {
+
+					}	
+
+					nlisten_missed_ = 0;
+
+					add_listen = false;
+					socktbl.clear();
+					treemap.clear();
+				}	
 
 				if (svcinodemap_.size() > 0) {
 					// Need to send svc net captures
