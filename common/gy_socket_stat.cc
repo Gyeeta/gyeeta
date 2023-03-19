@@ -7195,6 +7195,12 @@ int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 	// Add a new Listener
 	if (it != psocktbl->end()) {
 
+		if (only_listen) {
+			if (true == listener_tbl_.lookup_single_elem(l_ns_ip_port, lhash)) {
+				return 0;
+			}	
+		}
+
 		plisten_filter->emplace(lhash);
 
 		TCP_LISTENER 			*pnewlistener;
