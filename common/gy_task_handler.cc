@@ -2196,29 +2196,32 @@ int TASK_HANDLER::send_hist_stats() noexcept
 				stats.max_cores_allowed_ = ptask->ncpus_allowed;
 			}	
 			
-			if (ptask->is_throttled_cgroup) {
-				if (ptask->cg_cpu_shr) {
-					stats.cpu_cg_pct_limit_ = ptask->cg_cpu_shr->stats.cfs_bw_pct;
-				}
+			if (ptask->cgroups_updated.load(std::memory_order_acquire) == true) {
+				
+				if (ptask->is_throttled_cgroup) {
+					if (ptask->cg_cpu_shr) {
+						stats.cpu_cg_pct_limit_ = ptask->cg_cpu_shr->stats.cfs_bw_pct;
+					}
+					else if (ptask->cg_2_shr) {
+						stats.cpu_cg_pct_limit_ = ptask->cg_2_shr->stats.cfs_bw_pct;
+					}	
+				}	
+
+				if (ptask->cg_memory_shr) {
+					uint8_t 		pct = ptask->cg_memory_shr->get_rss_pct_used();
+
+					if (stats.max_mem_cg_pct_rss_ < pct) {
+						stats.max_mem_cg_pct_rss_ = pct;
+					}	
+				}	
 				else if (ptask->cg_2_shr) {
-					stats.cpu_cg_pct_limit_ = ptask->cg_2_shr->stats.cfs_bw_pct;
-				}	
-			}	
+					uint8_t 		pct = ptask->cg_2_shr->get_rss_pct_used();
 
-			if (ptask->cg_memory_shr) {
-				uint8_t 		pct = ptask->cg_memory_shr->get_rss_pct_used();
-
-				if (stats.max_mem_cg_pct_rss_ < pct) {
-					stats.max_mem_cg_pct_rss_ = pct;
+					if (stats.max_mem_cg_pct_rss_ < pct) {
+						stats.max_mem_cg_pct_rss_ = pct;
+					}	
 				}	
-			}	
-			else if (ptask->cg_2_shr) {
-				uint8_t 		pct = ptask->cg_2_shr->get_rss_pct_used();
-
-				if (stats.max_mem_cg_pct_rss_ < pct) {
-					stats.max_mem_cg_pct_rss_ = pct;
-				}	
-			}	
+			}
 
 			if (success && statmap.size() >= AGGR_TASK_HIST_STATS::MAX_NUM_TASKS - 1) {
 				return CB_BREAK_LOOP;
