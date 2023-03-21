@@ -80,6 +80,12 @@ Other Linux distributions based on Debian/Ubuntu or RHEL are supported as long a
 
 Container Platforms such as Kubernetes or Docker Swarm are also supported using Helm Charts or Docker containers.
 
+## Live Gyeeta Web UI Demo
+
+A live Gyeeta Web Demo is available for users to evaluate some of the features available. More information on
+accessing the Live Demo Web server can be obtained from the link : 
+
+[Live Demo Server](https://gyeeta.io/docs/livedemo)
 
 ## Main Github Repositories for different Gyeeta Components
 
