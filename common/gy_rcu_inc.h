@@ -2313,7 +2313,7 @@ public :
 	 * On failure returns 0
 	 *
 	 * Users need to define the lambda FCB which returns CB_OK in normal case, CB_BREAK_LOOP to break the loop and return or 
-	 * CB_DELETE_ELEM to delete the element as well.
+	 * CB_DELETE_ELEM to delete the element as well. CB_DELETE_BREAK to delete and break from loop.
 	 *
 	 * handle_elem is called within rcu read lock. 
 	 *
@@ -2346,7 +2346,7 @@ public :
 				pht_node = cds_lfht_iter_get_node(&iter);
 				delete_rcu_locked(pht_node);
 
-				if (cbret == CB_BREAK_LOOP) {
+				if (cbret == CB_DELETE_BREAK) {
 					break;
 				}	
 			}	
