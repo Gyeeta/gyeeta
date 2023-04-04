@@ -3636,6 +3636,16 @@ static inline uint32_t gy_clk_tck() noexcept
 }
 
 /*
+ * Specify in function attribute to remove inlining and any optimization
+ */
+#if defined(__clang__)
+#	define GY_NO_OPTIMIZE __attribute__((noinline, optnone))
+#elif defined(__GNUC__)
+#	define GY_NO_OPTIMIZE __attribute__((noinline, optimize("O0")))
+#endif
+
+
+/*
  * sscanf() calls strlen() for each call which is expensive if the inputstr is large and we need to check only a few bytes ahead
  * This function modifies the input string by changing the inputstr, checking if strnlen() > max_len_to_check and if true, changing the 
  * max_len_to_check + 1 char to '\0' and calling sscanf() and again changing back thereafter
