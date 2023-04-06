@@ -487,7 +487,7 @@ struct alignas(8) EVENT_NOTIFY
 
 struct alignas(8) QUERY_CMD
 {
-	uint64_t			seqid_;
+	uint64_t			seqid_;			// Can be an incrementing counter : need not be unique across conns
 	time_t				timeoutsec_;		// In time_t 64 bit absolute sec format or 0 in case no timeout
 	QUERY_TYPE_E			subtype_;
 	RESP_FORMAT_E			respformat_;	
