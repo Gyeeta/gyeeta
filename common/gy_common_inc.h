@@ -309,6 +309,56 @@ static void *memcpy_or_move(void *dest, const void *src, size_t n) noexcept
 })
 
 
+/*
+ * Execute the passed block of code only once every nmsec millisec (at least). Will exec the first time it is called.
+ * Can be used for rate limiting passed code based on time intervals
+ * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
+ */
+#define ONCE_EVERY_MSEC(nmsec, ...)											\
+({ 															\
+	static uint64_t			_lastmsec = 0;									\
+	uint64_t			_nmsec = static_cast<uint64_t>((nmsec));					\
+	uint64_t			_cmsec = get_msec_clock();							\
+															\
+	if (_cmsec >= _lastmsec + _nmsec) {										\
+		_lastmsec = _cmsec;											\
+		__VA_ARGS__;												\
+	}														\
+})
+
+/*
+ * Execute the passed block of code only once every ntime. Will exec the first time it is called.
+ * Can be used for rate limiting passed code based on exec counts
+ * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
+ */
+#define ONCE_EVERY_NTIMES(ntimes, ...)											\
+({ 															\
+	uint64_t			_ntimes = static_cast<uint64_t>((ntimes));					\
+	static uint64_t			_lasttimes = _ntimes;								\
+															\
+	if (++_lasttimes >= _ntimes) {											\
+		_lasttimes = 0;												\
+		__VA_ARGS__;												\
+	}														\
+})
+
+
+/*
+ * Execute the passed block of code only first ntimes.
+ * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
+ */
+#define EXEC_FIRST_NTIMES(ntimes, ...)											\
+({ 															\
+	uint64_t			_ntimes = static_cast<uint64_t>((ntimes));					\
+	static uint64_t			_lasttimes = 0;									\
+															\
+	if (_lasttimes < _ntimes) {											\
+		_lasttimes++;												\
+		__VA_ARGS__;												\
+	}														\
+})
+
+
 
 // Will use strnlen for upto 512 bytes maxlen
 static size_t gy_strnlen(const char *str, size_t maxlen) noexcept
@@ -653,7 +703,7 @@ using UNIQUE_PTR_FREE = std::unique_ptr<T, FUNCTOR_FREE<T>>;
 
 /*
  * Valid only for a single expression. 
- * After the expression is over the rvalue will expire resulting in a dangling reference.
+ * After the expression is over the rvalue may expire resulting in a dangling reference.
  */
 template <typename T> 
 T & rvalue_to_lvalue(T && t)
@@ -1575,40 +1625,6 @@ do {																	\
 		throw _exc;														\
 	}																\
 } while (0)
-
-/*
- * Execute the passed block of code only once every nmsec millisec. Will exec the first time it is called.
- * Can be used for rate limiting passed code based on time intervals
- * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
- */
-#define ONCE_EVERY_MSEC(nmsec, ...)											\
-({ 															\
-	static uint64_t			_lastmsec = 0;									\
-	uint64_t			_nmsec = static_cast<uint64_t>((nmsec));					\
-	uint64_t			_cmsec = get_msec_clock();							\
-															\
-	if (_cmsec >= _lastmsec + _nmsec) {										\
-		_lastmsec = _cmsec;											\
-		__VA_ARGS__;												\
-	}														\
-})
-
-/*
- * Execute the passed block of code only once every ntime. Will exec the first time it is called.
- * Can be used for rate limiting passed code based on exec counts
- * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
- */
-#define ONCE_EVERY_NTIMES(ntimes, ...)											\
-({ 															\
-	uint64_t			_ntimes = static_cast<uint64_t>((ntimes));					\
-	static uint64_t			_lasttimes = _ntimes;								\
-															\
-	if (++_lasttimes >= _ntimes) {											\
-		_lasttimes = 0;												\
-		__VA_ARGS__;												\
-	}														\
-})
-
 
 
 /*
@@ -3227,6 +3243,17 @@ static inline time_t to_next_hour(time_t tcur) noexcept
 	return gy_align_up(tcur, 3600);
 }	
 
+static inline time_t to_curr_min(time_t tcur) noexcept
+{
+	return gy_align_down(tcur, 60);
+}	
+
+static inline time_t to_curr_hour(time_t tcur) noexcept
+{
+	return gy_align_down(tcur, 3600);
+}	
+
+
 static std::tuple<int, int, int> get_time_ymd(time_t tnow = time(nullptr), bool use_utc = false) noexcept
 {
 	struct tm 		tm = {};
@@ -3671,6 +3698,41 @@ static int sscanf_large_str(char *inputstr, size_t max_len_to_check, const char 
 
 	return ret;
 }	
+
+
+/*
+ * sscanf() calls strlen() for each call which is expensive if the inputstr is large and we need to check only a few bytes ahead
+ * Use this function for const input strings which could potentially be much larger than max_len_to_check
+ */
+template <size_t max_len_to_check>
+static int sscanf_large_str(const char *inputstr, const char *format, ...) noexcept
+{
+	static_assert(max_len_to_check <= 512, "Use sscanf() directly");
+
+	char			tstr[max_len_to_check + 1];
+	const char		*pinputstr;
+	size_t			slen = strnlen(inputstr, max_len_to_check + 1);
+	char			c = (slen == max_len_to_check + 1 ? inputstr[max_len_to_check] : 0);
+	int			ret;
+	va_list 		va;
+
+	if (c) {
+		pinputstr = tstr;
+
+		std::memcpy(tstr, inputstr, max_len_to_check);
+		tstr[max_len_to_check] = 0;
+	}	
+	else {
+		pinputstr = inputstr;
+	}	
+
+	va_start(va, format);
+	ret = vsscanf(pinputstr, format, va);
+	va_end(va);
+
+	return ret;
+}	
+
 
 
 static CHAR_BUF<32> number_to_string(uint64_t num, const char * fmt = "%lu") noexcept
