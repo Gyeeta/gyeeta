@@ -5996,7 +5996,7 @@ bool MCONN_HANDLER::handle_partha_active_conns(const std::shared_ptr<PARTHA_INFO
 	}	
 
 	time_t				tnewcur = time(nullptr), tcur = tnewcur, tlastsumm = prawpartha->tlast_active_insert_;
-	const bool			is_continue_batch = (tcur - tlastsumm <= 4);	// Partha sends every 15 sec
+	const bool			is_continue_batch = (labs(tcur - tlastsumm) <= 4);	// Partha sends every 15 sec
 	int				ncloselist = 0, nclosecli = 0;
 
 	if (is_continue_batch) {
@@ -8728,7 +8728,7 @@ bool MCONN_HANDLER::partha_listener_state(const std::shared_ptr<PARTHA_INFO> & p
 	time_t				tvsec = curr_tusec/GY_USEC_PER_SEC, tdaystart = 0;
 	auto				timebuf = gy_localtime_iso8601_sec(tvsec);
 
-	const bool			is_continue_batch = (curr_tusec - prawpartha->last_listen_state_tusec_ < 2 * GY_USEC_PER_SEC); // Partha sends every 5 sec
+	const bool			is_continue_batch = (labs(curr_tusec - prawpartha->last_listen_state_tusec_) < 2 * GY_USEC_PER_SEC); // Partha sends every 5 sec
 	
 	if (is_continue_batch) {
 		// Set all listen time consistent for pointintime queries

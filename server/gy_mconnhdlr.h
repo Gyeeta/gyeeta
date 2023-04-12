@@ -28,7 +28,7 @@
 #include		"folly/MPMCQueue.h"
 #include 		"folly/Function.h"
 #include		"folly/concurrency/AtomicSharedPtr.h" 
-#include 		"folly/Synchronized.h"
+/*#include 		"folly/Synchronized.h"*/
 #include 		"folly/SharedMutex.h"
 
 #include 		<variant>
@@ -48,7 +48,7 @@ class MRT_ALERTDEF;
 using S512_PROC_ELEM 	= MULTI_COMM_SINGLETON::SINGLE_PROC_SZ_512::MULTI_PROC_ELEM;
 using STATS_STR_MAP	= std::unordered_map<const char *, int64_t, GY_JHASHER<const char *>>;
 
-using SYNC_STRING	= folly::Synchronized<std::string, std::mutex>;
+/*using SYNC_STRING	= folly::Synchronized<std::string, std::mutex>;*/
 
 class MCONN_HANDLER
 {
