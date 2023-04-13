@@ -311,7 +311,7 @@ static void *memcpy_or_move(void *dest, const void *src, size_t n) noexcept
 
 /*
  * Execute the passed block of code only once every nmsec millisec (at least). Will exec the first time it is called.
- * Can be used for rate limiting passed code based on time intervals
+ * Can be used for rate limiting passed code based on time intervals. Returns bool indicating whether exec or not.
  * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
  */
 #define ONCE_EVERY_MSEC(nmsec, ...)											\
@@ -319,43 +319,52 @@ static void *memcpy_or_move(void *dest, const void *src, size_t n) noexcept
 	static uint64_t			_lastmsec = 0;									\
 	uint64_t			_nmsec = static_cast<uint64_t>((nmsec));					\
 	uint64_t			_cmsec = get_msec_clock();							\
+	bool				_bret = false;									\
 															\
 	if (_cmsec >= _lastmsec + _nmsec) {										\
+		_bret = true;												\
 		_lastmsec = _cmsec;											\
 		__VA_ARGS__;												\
 	}														\
+	_bret;														\
 })
 
 /*
  * Execute the passed block of code only once every ntime. Will exec the first time it is called.
- * Can be used for rate limiting passed code based on exec counts
+ * Can be used for rate limiting passed code based on exec counts. Returns bool indicating whether exec or not.
  * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
  */
 #define ONCE_EVERY_NTIMES(ntimes, ...)											\
 ({ 															\
 	uint64_t			_ntimes = static_cast<uint64_t>((ntimes));					\
 	static uint64_t			_lasttimes = _ntimes;								\
+	bool				_bret = false;									\
 															\
 	if (++_lasttimes >= _ntimes) {											\
+		_bret = true;												\
 		_lasttimes = 0;												\
 		__VA_ARGS__;												\
 	}														\
+	_bret;														\
 })
 
 
 /*
- * Execute the passed block of code only first ntimes.
+ * Execute the passed block of code only first ntimes. Returns bool indicating whether exec or not.
  * Uses a static variable and cannot debug the block statements in a debugger as it will be a single expression...
  */
 #define EXEC_FIRST_NTIMES(ntimes, ...)											\
 ({ 															\
 	uint64_t			_ntimes = static_cast<uint64_t>((ntimes));					\
 	static uint64_t			_lasttimes = 0;									\
+	bool				_bret = false;									\
 															\
 	if (_lasttimes < _ntimes) {											\
+		_bret = true;												\
 		_lasttimes++;												\
 		__VA_ARGS__;												\
 	}														\
+	_bret;														\
 })
 
 
