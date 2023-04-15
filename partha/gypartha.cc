@@ -334,6 +334,12 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);		// kNumberType is just a placeholder
 	}	
 
+	penv = getenv("CFG_ENABLE_TASK_DELAYS");
+	if (penv) {
+		ewriter.KeyConst("enable_task_delays");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);	
+	}	
+
 	penv = getenv("CFG_AUTO_RESPAWN_ON_EXIT");
 	if (penv) {
 		ewriter.KeyConst("auto_respawn_on_exit");
@@ -387,6 +393,7 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		"capture_errcode"		:	true,
 		"auto_respawn_on_exit"		:	true,
 		"is_kubernetes"			:	true,
+		"enable_task_delays"		:	2,
 		"log_use_utc_time"		:	false
 	}
 	 */ 
@@ -525,6 +532,14 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 	}	
 #endif
 
+
+	if (aiter = edoc.FindMember("enable_task_delays"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsInt()))) {
+		enable_task_delays = aiter->value.GetInt();
+	}	
+	else if (aiter = doc.FindMember("enable_task_delays"); ((aiter != doc.MemberEnd()) && (aiter->value.IsInt()))) {
+		enable_task_delays = aiter->value.GetInt();
+	}	
+
 	if (aiter = edoc.FindMember("auto_respawn_on_exit"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		auto_respawn_on_exit = aiter->value.GetBool();
 	}	
@@ -532,14 +547,12 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		auto_respawn_on_exit = aiter->value.GetBool();
 	}	
 
-
 	if (aiter = edoc.FindMember("is_kubernetes"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		is_kubernetes = aiter->value.GetBool();
 	}	
 	else if (aiter = doc.FindMember("is_kubernetes"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		is_kubernetes = aiter->value.GetBool();
 	}	
-
 
 	if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		log_use_utc_time = aiter->value.GetBool();
@@ -1002,6 +1015,62 @@ int PARTHA_C::verify_caps_kernhdr(bool is_bpf_core, bool trybcc)
 	return bret;
 }	
 
+/*
+ * Kernel 5.14+ task delays related checks...
+ */
+void PARTHA_C::check_task_stats() noexcept
+{
+	if (psettings_->enable_task_delays > 0) {
+		char			tbuf[32];
+		int			val, fdv, ret;
+		bool			bret;
+
+		ret = read_file_to_buffer("/proc/sys/kernel/task_delayacct", tbuf, sizeof(tbuf) - 1);
+		if (ret > 0 && ret != sizeof(tbuf) - 1) {
+			tbuf[ret] = '\0';
+
+			bret = string_to_number(tbuf, val);
+
+			if (bret && val == 0) {
+				SCOPE_FD		scfd("/proc/sys/kernel/task_delayacct", O_WRONLY);
+				
+				fdv = scfd.get();
+				if (fdv >= 0) {
+					ret = write(fdv, "1\n", 2);
+					if (ret < 0) {
+						WARNPRINT("Task Delays not enabled. Failed to enable delays...\n");	
+					}
+					else {
+						INFOPRINT("Task Delays not enabled by default. Enabling Task Delays for newer processes as per config param %d\n", 
+							psettings_->enable_task_delays);
+					}	
+				}
+
+				scfd.close();
+
+				if (psettings_->enable_task_delays > 1) {
+					SCOPE_FD		sysctlfd("/proc/1/root/etc/sysctl.conf", O_RDWR);
+					constexpr const char	strsys[] = "\nkernel.task_delayacct = 1\n";
+
+					fdv = sysctlfd.get();
+					if (fdv >= 0) {
+						lseek(fdv, 0, SEEK_END);
+						
+						ret = write(fdv, strsys, sizeof(strsys) - 1);
+						if (ret > 0) {
+							INFOPRINT("Enabling Task Delays after boot as per config param %d\n", psettings_->enable_task_delays);
+						}	
+					}
+				}	
+			}
+			else {
+				INFOPRINT("Task Delays are enabled by default...\n");
+			}	
+		}
+	}
+}
+
+
 PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const char *cfgdir, const char *tmpdir, bool allow_core, bool trybcc)
 	: proc_cap_(getpid()), log_debug_level_(gdebugexecn), allow_core_(allow_core)
 {
@@ -1162,6 +1231,8 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 	
 	// Spawn the multi process buffer handler
 	MULTI_COMM_SINGLETON::init_singleton();
+
+	check_task_stats();
 
 	INFOPRINT("Spawning the partha monitor \'parmon\' and command handler processes ...\n"); 
 
@@ -1358,6 +1429,7 @@ static int start_partha(int argc, char **argv)
 						hash_cfg_shyama_hosts	= fnv1_consthash("--cfg_shyama_hosts"),	hash_cfg_shyama_ports	= fnv1_consthash("--cfg_shyama_ports"),
 						hash_cfg_response_sampling_pct	= fnv1_consthash("--cfg_response_sampling_percent"),
 						hash_cfg_capture_errcode	= fnv1_consthash("--cfg_capture_errcode"),
+						hash_cfg_enable_task_delays	= fnv1_consthash("--cfg_enable_task_delays"),
 						hash_cfg_auto_respawn_on_exit	= fnv1_consthash("--cfg_auto_respawn_on_exit"),
 						hash_cfg_is_kubernetes		= fnv1_consthash("--cfg_is_kubernetes"),
 						hash_cfg_log_use_utc_time	= fnv1_consthash("--cfg_log_use_utc_time"),
@@ -1479,6 +1551,13 @@ static int start_partha(int argc, char **argv)
 			case hash_cfg_capture_errcode :
 				if (i + 1 < argc) {
 					setenv("CFG_CAPTURE_ERRCODE", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_enable_task_delays :
+				if (i + 1 < argc) {
+					setenv("CFG_ENABLE_TASK_DELAYS", argv[i + 1], 1);
 					i++;
 				}
 				break;

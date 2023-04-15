@@ -35,6 +35,7 @@ public :
 		uint8_t				response_sampling_percent			{100};
 		bool				capture_errcode					{true};
 		bool				capture_api_call				{false};
+		uint8_t				enable_task_delays				{1};
 		bool				auto_respawn_on_exit				{true};
 		bool				is_kubernetes					{false};
 		bool				log_use_utc_time				{false};
@@ -74,7 +75,7 @@ public :
 	static PARTHA_C *		get_singleton() noexcept;
 
 private :
-
+	void				check_task_stats() noexcept;
 	int				init_all_singletons();
 };	
 

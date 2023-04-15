@@ -3196,16 +3196,16 @@ int SHCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 				size_t		pool_szarr[5], pool_maxarr[5];
 			
 				pool_szarr[0] 	= sizeof(SHTCP_CONN) + 16;
-				pool_maxarr[0]	= 12 * 1024;
+				pool_maxarr[0]	= 18 * 1024;
 
 				pool_szarr[1] 	= 4096;
 				pool_maxarr[1]	= 1024;
 
 				pool_szarr[2]	= sizeof(comm::SHYAMA_CLI_TCP_INFO) + 16; 
-				pool_maxarr[2]	= 4 * 1024;
+				pool_maxarr[2]	= 6 * 1024;
 
 				pool_szarr[3]	= sizeof(SHYAMA_SER_TCP_INFO) + 16; 
-				pool_maxarr[3]	= 4 * 1024;
+				pool_maxarr[3]	= 6 * 1024;
 
 				pool_szarr[4]	= 512;
 				pool_maxarr[4]	= 1024;

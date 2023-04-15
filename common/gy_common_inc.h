@@ -3721,11 +3721,10 @@ static int sscanf_large_str(const char *inputstr, const char *format, ...) noexc
 	char			tstr[max_len_to_check + 1];
 	const char		*pinputstr;
 	size_t			slen = strnlen(inputstr, max_len_to_check + 1);
-	char			c = (slen == max_len_to_check + 1 ? inputstr[max_len_to_check] : 0);
 	int			ret;
 	va_list 		va;
 
-	if (c) {
+	if (slen == max_len_to_check + 1) {
 		pinputstr = tstr;
 
 		std::memcpy(tstr, inputstr, max_len_to_check);
@@ -8469,7 +8468,7 @@ public :
 		return (cmp < 0);
 	}
 
-	// Get an lvalue ref to STR_WR_BUF (Can also be used for a temporary object) 
+	// Get an lvalue ref to STR_WR_BUF (For a temporary object, ensure not used after the statement) 
 	STR_WR_BUF & get_str_buf() noexcept
 	{
 		return *this;
