@@ -1008,6 +1008,13 @@ int PARTHA_C::verify_caps_kernhdr(bool is_bpf_core, bool trybcc)
 
 		ret = stat(kernpath, &stat1);
 		if (ret == -1) {
+			/*
+			 * Check if BTF available without modules
+			 */
+			if ((host_btf_enabled(false /* check_module */)) && (0 != stat("/proc/net/ip_vs_conn", &stat1))) {
+				return 0;
+			}
+
 			GY_THROW_EXCEPTION("Missing Kernel Headers Package : These are required by partha : Please install your Distribution Kernel Headers package");
 		}
 	}	
@@ -1025,18 +1032,17 @@ void PARTHA_C::check_task_stats() noexcept
 		int			val, fdv, ret;
 		bool			bret;
 
-		ret = read_file_to_buffer("/proc/sys/kernel/task_delayacct", tbuf, sizeof(tbuf) - 1);
+		ret = read_file_to_buffer("/proc/sys/kernel/task_delayacct", tbuf, sizeof(tbuf) - 1, -1, false /* read_syscall_till_err */);
 		if (ret > 0 && ret != sizeof(tbuf) - 1) {
 			tbuf[ret] = '\0';
 
 			bret = string_to_number(tbuf, val);
 
 			if (bret && val == 0) {
-				SCOPE_FD		scfd("/proc/sys/kernel/task_delayacct", O_WRONLY);
 				
-				fdv = scfd.get();
+				fdv = ::open("/proc/sys/kernel/task_delayacct", O_WRONLY);
 				if (fdv >= 0) {
-					ret = write(fdv, "1\n", 2);
+					ret = ::write(fdv, "1\n", 2);
 					if (ret < 0) {
 						WARNPRINT("Task Delays not enabled. Failed to enable delays...\n");	
 					}
@@ -1046,21 +1052,22 @@ void PARTHA_C::check_task_stats() noexcept
 					}	
 				}
 
-				scfd.close();
+				::close(fdv);
 
 				if (psettings_->enable_task_delays > 1) {
-					SCOPE_FD		sysctlfd("/proc/1/root/etc/sysctl.conf", O_RDWR);
 					constexpr const char	strsys[] = "\nkernel.task_delayacct = 1\n";
 
-					fdv = sysctlfd.get();
+					fdv = ::open("/proc/1/root/etc/sysctl.conf", O_RDWR);
 					if (fdv >= 0) {
 						lseek(fdv, 0, SEEK_END);
 						
-						ret = write(fdv, strsys, sizeof(strsys) - 1);
+						ret = ::write(fdv, strsys, sizeof(strsys) - 1);
 						if (ret > 0) {
 							INFOPRINT("Enabling Task Delays after boot as per config param %d\n", psettings_->enable_task_delays);
 						}	
 					}
+					
+					::close(fdv);
 				}	
 			}
 			else {

@@ -168,6 +168,11 @@ public :
 					return ip_vs_new_conn_thread();
 				}
 				GY_CATCH_EXCEPTION(
+					if (is_bpf_core()) {
+						ERRORPRINT("Could not start kprobe on IPVS due to %s. Exiting now...\n", GY_GET_EXCEPT_STRING);
+						_exit(1);
+					}
+
 					ERRORPRINT("Could not start kprobe on ip_vs_conn_new due to %s. Will ignore IPVS conntrack now...\n", GY_GET_EXCEPT_STRING);
 					return -1;
 				);

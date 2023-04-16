@@ -106,6 +106,12 @@ if [[ $DISTNAME =~ "Container-Optimized OS"* ]]; then
 		timeout 30 curl --head -f https://storage.googleapis.com/cos-tools/ &> /dev/null
 
 		if [ $? -ne 0 ]; then
+			if [ -f /sys/kernel/btf/vmlinux ]; then
+				if [ ! -f /proc/net/ip_vs_conn ]; then
+					exit 0
+				fi	
+			fi				
+
 			echo -e "\nDetected Container-Optimized OS but Failed to connect to from https://storage.googleapis.com/cos-tools/ to download Kernel Headers...\n\n"
 			exit 1
 		fi	
@@ -202,7 +208,8 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 
 		echo -e "\nLinux kernel headers from Host dir is being used for Kernel Headers...\n\n"
 		exit 0
-	else
+
+	elif [ ! -f /sys/kernel/btf/vmlinux ]; then
 		echo -e "\n\nERROR : Could not install Kernel Headers package to Host for eBPF monitoring. Exiting...\n\n"
 		exit 1
 	fi	
@@ -210,6 +217,12 @@ if [ -n "$CFG_HOST_INSTALL_PKG" ]; then
 fi	
 
 if [ ! -d "/lib/modules/${KERN_VER}/build/" ]; then
+	if [ -f /sys/kernel/btf/vmlinux ]; then
+		if [ ! -f /proc/net/ip_vs_conn ]; then
+			exit 0
+		fi	
+	fi	
+	
 	echo -e "\n\nERROR : Could not find Kernel Headers for eBPF monitoring. Exiting...\n\n"
 	exit 1
 else
