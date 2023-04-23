@@ -17,9 +17,9 @@ namespace gyeeta {
 void RESP_SAMPLING::set_resp_sampling_pct(uint8_t resp_sampling_pct) noexcept
 {
 	if (resp_sampling_pct > 0 && resp_sampling_pct < 100) {
-		resp_sampling_pct = gy_align_up(resp_sampling_pct - 1, 10);
+		resp_sampling_pct = gy_align_up(resp_sampling_pct, 10);
 	}	
-	else if (resp_sampling_pct > 100) {
+	else {
 		resp_sampling_pct = 100;
 	}	
 

@@ -525,20 +525,23 @@ static constexpr uint32_t gy_round_down_to_power_of_2(uint32_t x) noexcept
 
 
 template <typename T, typename U = T>
-static constexpr T gy_align_up(T nelem, U nalign) noexcept
-{
-	static_assert(std::is_integral<U>::value, "Integral data type required.");
-
-	return ((nelem / nalign) * nalign) + nalign;
-}
-
-template <typename T, typename U = T>
 static constexpr T gy_align_down(T nelem, U nalign) noexcept
 {
 	static_assert(std::is_integral<U>::value, "Integral data type required.");
 
 	return ((nelem / nalign) * nalign);
 }
+
+template <typename T, typename U = T>
+static constexpr T gy_align_up(T nelem, U nalign) noexcept
+{
+	T			ndown = 0;
+	
+	ndown = gy_align_down(nelem, nalign);
+
+	return ndown + (!!(nelem - ndown)) * nalign;
+}
+
 
 // Faster version of gy_align_up but nalign needs to be a power of 2
 [[gnu::const]] 
@@ -3242,11 +3245,13 @@ static time_t get_day_start(time_t tnow = time(nullptr), bool use_utc = false) n
 	return tcalc;
 }
 
+// If on min boundary will return same time
 static inline time_t to_next_min(time_t tcur) noexcept
 {
 	return gy_align_up(tcur, 60);
 }	
 
+// If on hour boundary will return same time
 static inline time_t to_next_hour(time_t tcur) noexcept
 {
 	return gy_align_up(tcur, 3600);

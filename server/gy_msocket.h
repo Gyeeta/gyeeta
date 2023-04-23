@@ -260,6 +260,120 @@ struct CONN_CLIENT_ONE
 
 using ConnClientMap			= INLINE_STACK_HASH_MAP<uint64_t, CONN_CLIENT_ONE, MAX_CLOSE_CONN_ELEM * (sizeof(CONN_CLIENT_ONE) + 8 + 8), GY_JHASHER<uint64_t>>;
 
+struct CONN_PEER_UNKNOWN
+{
+	uint64_t			bytes_sent_			{0};
+	uint64_t			bytes_received_			{0};
+	uint32_t			nconns_				{0};
+
+	comm::ACTIVE_CONN_STATS get_active_conn(uint64_t listener_glob_id, uint64_t cli_aggr_task_id, const char *ser_comm, const GY_MACHINE_ID & svc_machine_id_) const noexcept
+	{
+		comm::ACTIVE_CONN_STATS		aconn;
+
+		aconn.listener_glob_id_		= listener_glob_id;
+		aconn.cli_aggr_task_id_		= cli_aggr_task_id;
+		std::memcpy(aconn.ser_comm_, ser_comm, sizeof(aconn.ser_comm_));
+		aconn.bytes_sent_		= bytes_sent_;
+		aconn.bytes_received_		= bytes_received_;
+		aconn.active_conns_		= nconns_;
+		aconn.cli_listener_proc_	= false;
+		aconn.is_remote_listen_		= false;
+		aconn.is_remote_cli_		= true;
+
+		return aconn;
+	}	
+
+	comm::ACTIVE_CONN_STATS get_remote_conn(uint64_t cli_aggr_task_id, const char *cli_comm, bool cli_listener_proc) const noexcept
+	{
+		comm::ACTIVE_CONN_STATS		aconn;
+
+		aconn.cli_aggr_task_id_		= cli_aggr_task_id;
+		std::memcpy(aconn.cli_comm_, cli_comm, sizeof(aconn.cli_comm_));
+		aconn.bytes_sent_		= bytes_sent_;
+		aconn.bytes_received_		= bytes_received_;
+		aconn.active_conns_		= nconns_;
+		aconn.cli_listener_proc_	= cli_listener_proc;
+		aconn.is_remote_listen_		= true;
+		aconn.is_remote_cli_		= false;
+
+		return aconn;
+	}	
+	
+};	
+
+using ConnUnknownMap			= INLINE_STACK_HASH_MAP<uint64_t, CONN_PEER_UNKNOWN, gy_align_up_2(uint64_t(MAX_CLOSE_CONN_ELEM * 0.67) * (sizeof(CONN_PEER_UNKNOWN) + 8 + 8), 16), 
+									GY_JHASHER<uint64_t>>;
+
+struct CLI_UN_SERV_INFO
+{
+	time_t				tstart_;
+	uint64_t 			cli_task_aggr_id_;
+	char 				cli_comm_[TASK_COMM_LEN];
+	uint64_t			cli_related_listen_id_;
+	uint64_t			ser_glob_id_;
+	uint64_t			ser_related_listen_id_;
+	char 				ser_comm_[TASK_COMM_LEN];
+	GY_MACHINE_ID 			ser_partha_machine_id_;
+	uint64_t			close_cli_bytes_sent_;
+	uint64_t			close_cli_bytes_rcvd_;
+	uint64_t			ser_madhava_id_;
+
+	CLI_UN_SERV_INFO(time_t tstart, uint64_t cli_task_aggr_id, const char *cli_comm, uint64_t cli_related_listen_id, uint64_t ser_glob_id, uint64_t ser_related_listen_id,
+				const char *ser_comm, GY_MACHINE_ID ser_partha_machine_id, uint64_t close_cli_bytes_sent, uint64_t close_cli_bytes_rcvd, uint64_t ser_madhava_id) noexcept
+		: tstart_(tstart), cli_task_aggr_id_(cli_task_aggr_id), cli_related_listen_id_(cli_related_listen_id), ser_glob_id_(ser_glob_id), 
+		ser_related_listen_id_(ser_related_listen_id), ser_partha_machine_id_(ser_partha_machine_id), close_cli_bytes_sent_(close_cli_bytes_sent), 
+		close_cli_bytes_rcvd_(close_cli_bytes_rcvd), ser_madhava_id_(ser_madhava_id)
+
+	{
+		GY_STRNCPY(cli_comm_, cli_comm, sizeof(cli_comm_));
+		GY_STRNCPY(ser_comm_, ser_comm, sizeof(ser_comm_));
+	}
+
+	CLI_UN_SERV_INFO(const comm::SHYAMA_CLI_TCP_INFO & obj) noexcept
+		: tstart_(obj.tusec_start_/GY_USEC_PER_SEC), cli_task_aggr_id_(obj.cli_task_aggr_id_), cli_related_listen_id_(obj.cli_related_listen_id_), ser_glob_id_(obj.ser_glob_id_), 
+		ser_related_listen_id_(obj.ser_related_listen_id_), ser_partha_machine_id_(obj.ser_partha_machine_id_), close_cli_bytes_sent_(obj.close_cli_bytes_sent_), 
+		close_cli_bytes_rcvd_(obj.close_cli_bytes_rcvd_), ser_madhava_id_(obj.ser_madhava_id_)
+	{
+		GY_STRNCPY(cli_comm_, obj.cli_comm_, sizeof(cli_comm_));
+		GY_STRNCPY(ser_comm_, obj.ser_comm_, sizeof(ser_comm_));
+	}
+
+};
+
+struct SER_UN_CLI_INFO
+{
+	time_t				tstart_;
+	uint64_t			ser_glob_id_;
+	char 				ser_comm_[TASK_COMM_LEN];
+	uint64_t 			cli_task_aggr_id_;
+	uint64_t			cli_related_listen_id_;
+	char 				cli_comm_[TASK_COMM_LEN];
+	GY_MACHINE_ID 			cli_partha_machine_id_;
+	uint64_t			close_cli_bytes_sent_;
+	uint64_t			close_cli_bytes_rcvd_;
+	uint64_t			cli_madhava_id_;
+
+	SER_UN_CLI_INFO(time_t tstart, uint64_t ser_glob_id, const char *ser_comm, uint64_t cli_task_aggr_id, uint64_t cli_related_listen_id, \
+				const char *cli_comm, GY_MACHINE_ID cli_partha_machine_id, uint64_t close_cli_bytes_sent, uint64_t close_cli_bytes_rcvd, uint64_t cli_madhava_id) noexcept
+		: tstart_(tstart), ser_glob_id_(ser_glob_id), cli_task_aggr_id_(cli_task_aggr_id), cli_related_listen_id_(cli_related_listen_id),
+		cli_partha_machine_id_(cli_partha_machine_id), close_cli_bytes_sent_(close_cli_bytes_sent), close_cli_bytes_rcvd_(close_cli_bytes_rcvd), cli_madhava_id_(cli_madhava_id)
+	{
+		GY_STRNCPY(ser_comm_, ser_comm, sizeof(ser_comm_));
+		GY_STRNCPY(cli_comm_, cli_comm, sizeof(cli_comm_));
+	}
+
+	SER_UN_CLI_INFO(const comm::SHYAMA_SER_TCP_INFO & obj) noexcept
+		: tstart_(obj.tusec_start_/GY_USEC_PER_SEC), ser_glob_id_(obj.ser_glob_id_), cli_task_aggr_id_(obj.cli_task_aggr_id_), cli_related_listen_id_(obj.cli_related_listen_id_),
+		cli_partha_machine_id_(obj.cli_partha_machine_id_), close_cli_bytes_sent_(obj.close_cli_bytes_sent_), close_cli_bytes_rcvd_(obj.close_cli_bytes_rcvd_), 
+		cli_madhava_id_(obj.cli_madhava_id_)
+	{
+		GY_STRNCPY(ser_comm_, obj.ser_comm_, sizeof(ser_comm_));
+		GY_STRNCPY(cli_comm_, obj.cli_comm_, sizeof(cli_comm_));
+	}
+	
+};
+
+
 class MULTI_HOST_IDENT
 {
 public :
@@ -1032,6 +1146,9 @@ public :
 		uint32_t				ser_sock_inode_			{0};
 		char					ser_comm_[TASK_COMM_LEN]	{};
 
+		uint64_t				close_cli_bytes_sent_		{0};		// Will be non-zero only for closed conns
+		uint64_t				close_cli_bytes_rcvd_		{0};
+
 		uint64_t				tusec_start_			{0};
 
 		MTCP_CONN() 						= default;
@@ -1049,6 +1166,11 @@ public :
 			return (0 != ser_glob_id_);
 		}	
 
+		bool is_conn_closed() const noexcept
+		{
+			return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
+		}
+
 		void set_notify_elem(comm::MS_TCP_CONN_NOTIFY *pnot) const noexcept
 		{
 			using namespace			comm;
@@ -1057,8 +1179,11 @@ public :
 			pnot->cli_			= cli_;
 			pnot->ser_			= ser_;
 
-			pnot->tusec_start_		= tusec_start_;
 			pnot->cli_ser_cluster_hash_	= cli_ser_cluster_hash_;	 
+
+			pnot->close_cli_bytes_sent_	= close_cli_bytes_sent_;
+			pnot->close_cli_bytes_rcvd_	= close_cli_bytes_rcvd_;
+			pnot->tusec_start_		= tusec_start_;
 
 			if (false == is_server_updated()) {
 				pnot->nat_cli_			= cli_nat_cli_;

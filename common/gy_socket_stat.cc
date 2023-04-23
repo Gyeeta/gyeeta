@@ -5688,11 +5688,20 @@ bool TCP_SOCK_HANDLER::send_active_stats() noexcept
 		activeconnmap_.clear();
 	};	
 
-	if (activeconnmap_.size() == 0) {
-		return false;
-	}	
-
 	try {
+
+		time_t				tcur = time(nullptr);
+
+		if (activeconnmap_.size() == 0) {
+			if (tlast_active_send_ + 10 >= tcur) {
+				return false;
+			}
+
+			/*
+			 * We need to send an empty msg to enable flushing of any short lived connections in madhava
+			 */
+		}	
+
 		auto				pser =  SERVER_COMM::get_singleton();
 		auto				shrp = pser->get_server_conn(comm::CLI_TYPE_REQ_ONLY);
 		auto				pconn1 = shrp.get();
@@ -5747,6 +5756,8 @@ bool TCP_SOCK_HANDLER::send_active_stats() noexcept
 
 		pser->send_server_data(EPOLL_IOVEC_ARR(2, false, phdr, phdr->get_act_len(), ::free, pser->gpadbuf, phdr->get_pad_len(), nullptr), 
 						comm::CLI_TYPE_REQ_ONLY, COMM_EVENT_NOTIFY, shrp);
+
+		tlast_active_send_ = tcur;
 
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Active Conn Stats : Sent %lu Active Listener stats to Madhava : Size of message %lu\n", nelem, totalsz);
 			

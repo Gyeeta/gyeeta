@@ -6,6 +6,7 @@
 		"shyama_hosts" 			:	[ "shyama1.local", "shyama2.local" ],
 		"shyama_ports"			:	[ 10037, 10037 ],
 		
+		"enable_task_delays"		:	2,
 		"is_kubernetes"			:	true
 }
 

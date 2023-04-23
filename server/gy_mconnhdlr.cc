@@ -4282,7 +4282,7 @@ int MCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 				size_t		pool_szarr[5], pool_maxarr[5];
 			
 				pool_szarr[0] 	= std::max(sizeof(MTCP_CONN), sizeof(MAGGR_TASK)) + 16;
-				pool_maxarr[0]	= 16 * 1024;
+				pool_maxarr[0]	= 20 * 1024;
 
 				pool_szarr[1] 	= 4096;
 				pool_maxarr[1]	= 1024;
@@ -4291,7 +4291,7 @@ int MCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 				pool_maxarr[2]	= 2048;
 
 				pool_szarr[3]	= std::max(sizeof(MAGGR_TASK_ELEM_TYPE), sizeof(MAGGR_TASK_WEAK)) + 16; 
-				pool_maxarr[3]	= 16 * 1024;
+				pool_maxarr[3]	= 20 * 1024;
 
 				pool_szarr[4]	= 750;
 				pool_maxarr[4]	= 1024;
@@ -6008,7 +6008,7 @@ bool MCONN_HANDLER::handle_partha_active_conns(const std::shared_ptr<PARTHA_INFO
 
 	// Add records from previously closed conns
 	if ((tnewcur >= prawpartha->tdbconnlistensec_ + 10) && (GY_READ_ONCE(prawpartha->tconnlistensec_) >= prawpartha->tdbconnlistensec_) && 
-		(prawpartha->connlistenmap_.size() || prawpartha->connclientmap_.size())) {
+		(!prawpartha->connlistenmap_.empty() || !prawpartha->connclientmap_.empty())) {
 		
 		auto p = insert_close_conn_records(prawpartha, tcur, pthrpoolarr, dbpool);
 
@@ -6028,6 +6028,10 @@ bool MCONN_HANDLER::handle_partha_active_conns(const std::shared_ptr<PARTHA_INFO
 
 std::pair<int, int> MCONN_HANDLER::insert_active_conns(PARTHA_INFO *prawpartha, time_t tcur, const comm::ACTIVE_CONN_STATS * pactive, int nconn, uint8_t *pendptr, PGConnPool & dbpool) 
 {
+	if (nconn <= 0) {
+		return {};
+	}
+
 	assert(gy_get_thread_local().get_thread_stack_freespace() >= 900 * 1024);
 	
 	using ExtActMap			= INLINE_STACK_HASH_MAP<uint64_t, const MTCP_LISTENER *, 48 * 1024, GY_JHASHER<uint64_t>>;
@@ -6884,7 +6888,8 @@ bool MCONN_HANDLER::add_local_conn_task_ref(PARTHA_INFO *pcli_partha, uint64_t a
 	return newadd;
 }	
 
-std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
+// Returns {is_resolved, newconn, newtask}
+std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, SER_UN_CLI_INFO_MAP & serunmap, SER_UN_CLI_INFO_VEC_ARENA & serunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
 {
 	/*
 	 * We first check if the Server corresponding half connection is already present in the glob_tcp_conn_tbl_.
@@ -6894,18 +6899,20 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PART
 	PARTHA_INFO			*prawpartha = partha_shr.get();
 
 	if (!prawpartha) {
-		return {false, false};
+		return {};
 	}	
 
 	std::shared_ptr<MTCP_LISTENER>	listenshr;
-	uint64_t			ser_cluster_hash = 0;
+	uint64_t			ser_cluster_hash = 0, ser_tusec_start = 0;
 	uint32_t			ser_conn_hash = 0, ser_sock_inode = 0;
-	bool				bret;
+	bool				bret, conn_closed, updunmap = false;
+
+	conn_closed = !!pone->tusec_close_;
 
 	if (pone->is_loopback_conn_ || pone->is_pre_existing_) {
 
-		if (!pone->cli_task_aggr_id_) {
-			return {false, false};
+		if (!pone->cli_task_aggr_id_ || conn_closed) {
+			return {};
 		}	
 
 		MTCP_LISTENER_ELEM_TYPE		*plistenelem = nullptr;
@@ -6917,7 +6924,7 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PART
 		bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, plistenelem ? plistenelem->get_cref().get() : nullptr,
 						pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
 
-		return {false, bret};
+		return {false, false, bret};
 	}
 
 	PAIR_IP_PORT			ctuple(pone->nat_cli_, pone->nat_ser_);
@@ -6931,9 +6938,12 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PART
 		 * once and then deleted.
 		 */
 		listenshr		= std::move(ptcp->ser_listen_shr_);
+		ser_tusec_start		= ptcp->tusec_start_;
 		ser_conn_hash		= ptcp->ser_conn_hash_;
 		ser_sock_inode		= ptcp->ser_sock_inode_;
 		ser_cluster_hash	= ptcp->cli_ser_cluster_hash_;
+
+		updunmap = ptcp->is_conn_closed();
 
 		return CB_DELETE_ELEM;
 	};	
@@ -6941,6 +6951,12 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PART
 	bret = glob_tcp_conn_tbl_.lookup_single_elem(ctuple, chash, lamtcp);
 
 	if (!listenshr) {
+		if (conn_closed) {
+			if (glob_tcp_conn_tbl_.approx_count_fast() > MAX_UNRESOLVED_TCP_CONNS) {
+				return {};
+			}	
+		}
+
 		MTCP_CONN		*ptcp;
 		FREE_FPTR		free_fp;
 		uint32_t		act_size;
@@ -6967,12 +6983,17 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PART
 			ptcp->cli_cmdline_.assign((const char *)(pone + 1), pone->cli_cmdline_len_ - 1);
 		}	
 
+		if (conn_closed) {
+			ptcp->close_cli_bytes_sent_	= pone->bytes_sent_;
+			ptcp->close_cli_bytes_rcvd_	= pone->bytes_rcvd_;
+		}
+
 		ptcp->tusec_start_		= tcurrusec;
 
 		CONDEXEC(
 			DEBUGEXECN(10,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding new Client side TCP conn : NAT Tuple %s : Original Client %s Server %s from Client Comm \'%s\' and %s\n",
-					ctuple.print_string(STRING_BUFFER<256>().get_str_buf()), ptcp->cli_.print_string(STRING_BUFFER<128>().get_str_buf()),
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding %s Client side TCP conn : NAT Tuple %s : Original Client %s Server %s from Client Comm \'%s\' and %s\n",
+					conn_closed ? "closed" : "new", ctuple.print_string(STRING_BUFFER<256>().get_str_buf()), ptcp->cli_.print_string(STRING_BUFFER<128>().get_str_buf()),
 					ptcp->ser_.print_string(STRING_BUFFER<128>().get_str_buf()), ptcp->cli_comm_, 
 					prawpartha->print_string(STRING_BUFFER<128>().get_str_buf()));
 			);
@@ -6990,40 +7011,64 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PART
 	}
 
 	if (listenshr) {
-		auto			plistener = listenshr.get();
-		PAIR_IP_PORT		corigtup(pone->cli_, pone->ser_);
+		auto				plistener = listenshr.get();
 
-		auto 			[it, success] = parclimap.try_emplace(partha_shr, parclivecarena);
-		auto 			& parclivec = it->second;
+		bret = false;
 
-		parclivec.emplace_back(corigtup, plistener->partha_machine_id_, plistener->glob_id_, gmadhava_id_, plistener->related_listen_id_, ser_cluster_hash != prawpartha->cluster_hash_,
-					plistener->comm_);
+		// Update pone with the resolved entries
+		pone->ser_glob_id_ = plistener->glob_id_;
+		pone->cli_ser_machine_id_ = plistener->partha_machine_id_;
+		pone->ser_related_listen_id_ = plistener->related_listen_id_;
+		pone->ser_madhava_id_ = gmadhava_id_;
 
-		bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, plistener, pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
+		if (!conn_closed) {
 
-		if (plistener->parthashr_) {
-			auto 			[sit, ssuccess] = parsermap.try_emplace(plistener->parthashr_, parservecarena);
-			auto 			& parservec = sit->second;
+			PAIR_IP_PORT		corigtup(pone->cli_, pone->ser_);
 
-			parservec.emplace_back(prawpartha->machine_id_, pone->cli_task_aggr_id_, gmadhava_id_, pone->cli_related_listen_id_, pone->cli_comm_, corigtup.ser_, ser_conn_hash, ser_sock_inode);
+			auto 			[it, success] = parclimap.try_emplace(partha_shr, parclivecarena);
+			auto 			& parclivec = it->second;
+
+			parclivec.emplace_back(corigtup, plistener->partha_machine_id_, plistener->glob_id_, gmadhava_id_, plistener->related_listen_id_, ser_cluster_hash != prawpartha->cluster_hash_,
+						plistener->comm_);
+
+			bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, plistener, pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
+
+			if (plistener->parthashr_) {
+				auto 			[sit, ssuccess] = parsermap.try_emplace(plistener->parthashr_, parservecarena);
+				auto 			& parservec = sit->second;
+
+				parservec.emplace_back(prawpartha->machine_id_, pone->cli_task_aggr_id_, gmadhava_id_, pone->cli_related_listen_id_, 
+							pone->cli_comm_, corigtup.ser_, ser_conn_hash, ser_sock_inode);
+			}
+		}
+		else if (updunmap && plistener->parthashr_) {
+			auto 			[sit, ssuccess] = serunmap.try_emplace(plistener->parthashr_, serunvecarena);
+			auto 			& serunvec = sit->second;
+
+			serunvec.emplace_back(ser_tusec_start/GY_USEC_PER_SEC, plistener->glob_id_, plistener->comm_, pone->cli_task_aggr_id_, pone->cli_related_listen_id_,
+						pone->cli_comm_, prawpartha->machine_id_, pone->bytes_sent_, pone->bytes_rcvd_, gmadhava_id_);
 		}	
 
-		return {false, bret};
+		return {true, false, bret};
 	}	
 	else {
+		if (conn_closed) {
+			return {};
+		}
+
 		// Add the entry to the local task list
 		bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, nullptr, pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
 
-		return {false, bret};
+		return {false, true, bret};
 	}	
 }	
 
-std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
+std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, CLI_UN_SERV_INFO_MAP & cliunmap, CLI_UN_SERV_INFO_VEC_ARENA & cliunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
 {
 	PARTHA_INFO			*prawpartha = partha_shr.get();
 
 	if (gy_unlikely(!prawpartha || pone->is_loopback_conn_ || !pone->ser_glob_id_ || pone->cli_task_aggr_id_ || pone->is_pre_existing_)) {
-		return {false, false};
+		return {};
 	}	
 
 	/*
@@ -7031,20 +7076,21 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PART
 	 * We use the Original Client/Server IP for lookup.
 	 */
 	 
-	bool				bret;
+	bool				bret, conn_closed = !!pone->tusec_close_, updunmap = false;
 	MTCP_LISTENER_ELEM_TYPE		*plistenelem;
 
 	plistenelem = prawpartha->listen_tbl_.lookup_single_elem_locked(pone->ser_glob_id_, get_uint64_hash(pone->ser_glob_id_));
 	
 	if (!plistenelem) {
-		return {false, false};
+		return {};
 	}
+
 
 	auto				plistener = plistenelem->get_cref().get();
 	PAIR_IP_PORT			stuple(pone->cli_, pone->ser_), corigtup;
 	const uint32_t			shash = stuple.get_hash();
 
-	uint64_t			cli_task_aggr_id = 0, cli_related_listen_id = 0, cli_cluster_hash = 0;
+	uint64_t			cli_task_aggr_id = 0, cli_related_listen_id = 0, cli_cluster_hash = 0, cli_tusec_start = 0;
 	std::shared_ptr <PARTHA_INFO>	cli_shr_host;
 	char				cli_comm[TASK_COMM_LEN], cli_cmdline[comm::MAX_PROC_CMDLINE_LEN];
 	uint32_t			cli_cmdline_len = 0;
@@ -7059,6 +7105,7 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PART
 		 * and delete this conn
 		 */
 		corigtup		= {ptcp->cli_, ptcp->ser_}; 
+		cli_tusec_start		= ptcp->tusec_start_;
 		cli_shr_host		= std::move(ptcp->cli_shr_host_);
 		cli_task_aggr_id 	= ptcp->cli_task_aggr_id_;
 		cli_related_listen_id	= ptcp->cli_related_listen_id_;
@@ -7077,12 +7124,20 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PART
 			cli_cmdline_len = 0;
 		}	
 
+		updunmap = ptcp->is_conn_closed();
+
 		return CB_DELETE_ELEM;
 	};	
 
 	bret = glob_tcp_conn_tbl_.lookup_single_elem(stuple, shash, lamtcp);
 
 	if (!cli_shr_host) {
+		if (conn_closed) {
+			if (glob_tcp_conn_tbl_.approx_count_fast() > MAX_UNRESOLVED_TCP_CONNS) {
+				return {};
+			}	
+		}
+		
 		MTCP_CONN		*ptcp;
 		FREE_FPTR		free_fp;
 		uint32_t		act_size;
@@ -7109,14 +7164,20 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PART
 		GY_STRNCPY(ptcp->ser_comm_, pone->ser_comm_, sizeof(ptcp->ser_comm_));
 
 		ptcp->cli_ser_cluster_hash_	= prawpartha->cluster_hash_;
+
+		if (conn_closed) {
+			ptcp->close_cli_bytes_sent_	= pone->bytes_sent_;
+			ptcp->close_cli_bytes_rcvd_	= pone->bytes_rcvd_;
+		}
+
 		ptcp->tusec_start_		= tcurrusec;
 
 		CONDEXEC(
 			DEBUGEXECN(10,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding new Server side TCP conn : Tuple %s : NAT Client %s Server %s from Server comm \'%s\' and %s\n",
-					stuple.print_string(STRING_BUFFER<256>().get_str_buf()), ptcp->ser_nat_cli_.print_string(STRING_BUFFER<128>().get_str_buf()),
-					ptcp->ser_nat_ser_.print_string(STRING_BUFFER<128>().get_str_buf()), ptcp->ser_comm_, 
-					prawpartha->print_string(STRING_BUFFER<128>().get_str_buf()));
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding %s Server side TCP conn : Tuple %s : NAT Client %s Server %s from Server comm \'%s\' and %s\n",
+					conn_closed ? "closed" : "new", stuple.print_string(STRING_BUFFER<256>().get_str_buf()), 
+					ptcp->ser_nat_cli_.print_string(STRING_BUFFER<128>().get_str_buf()), ptcp->ser_nat_ser_.print_string(STRING_BUFFER<128>().get_str_buf()), 
+					ptcp->ser_comm_, prawpartha->print_string(STRING_BUFFER<128>().get_str_buf()));
 			);
 		);
 
@@ -7131,29 +7192,48 @@ std::pair<bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PART
 		}	
 	}
 
-	if (cli_shr_host && cli_task_aggr_id) {
+	if (cli_shr_host && cli_task_aggr_id && plistener) {
 		auto			pclihost = cli_shr_host.get();	
 
-		auto 			[it, success] = parclimap.try_emplace(std::move(cli_shr_host), parclivecarena);
-		auto 			& parclivec = it->second;
+		bret = false;
 
-		parclivec.emplace_back(corigtup, plistener->partha_machine_id_, plistener->glob_id_, gmadhava_id_, plistener->related_listen_id_, prawpartha->cluster_hash_ != cli_cluster_hash,
-			plistener->comm_);
+		// Update pone with the resolved entries
+		pone->cli_task_aggr_id_ = cli_task_aggr_id;
+		pone->cli_ser_machine_id_ = pclihost->machine_id_;
+		pone->cli_related_listen_id_ = cli_related_listen_id;
+		pone->cli_madhava_id_ = gmadhava_id_;
 
-		bret = add_local_conn_task_ref(pclihost, cli_task_aggr_id, plistener, cli_comm, cli_cmdline_len, cli_cmdline, pthrpoolarr, tcurrusec);
 
-		auto 			[sit, ssuccess] = parsermap.try_emplace(partha_shr, parservecarena);
-		auto 			& parservec = sit->second;
+		if (!conn_closed) {
+			auto 			[it, success] = parclimap.try_emplace(std::move(cli_shr_host), parclivecarena);
+			auto 			& parclivec = it->second;
 
-		parservec.emplace_back(pclihost->machine_id_, cli_task_aggr_id, gmadhava_id_, cli_related_listen_id, cli_comm, corigtup.ser_, pone->ser_conn_hash_, pone->ser_sock_inode_);
+			parclivec.emplace_back(corigtup, plistener->partha_machine_id_, plistener->glob_id_, gmadhava_id_, plistener->related_listen_id_, prawpartha->cluster_hash_ != cli_cluster_hash,
+				plistener->comm_);
 
-		return {false, bret};
+			bret = add_local_conn_task_ref(pclihost, cli_task_aggr_id, plistener, cli_comm, cli_cmdline_len, cli_cmdline, pthrpoolarr, tcurrusec);
+
+			auto 			[sit, ssuccess] = parsermap.try_emplace(partha_shr, parservecarena);
+			auto 			& parservec = sit->second;
+
+			parservec.emplace_back(pclihost->machine_id_, cli_task_aggr_id, gmadhava_id_, cli_related_listen_id, cli_comm, corigtup.ser_, pone->ser_conn_hash_, pone->ser_sock_inode_);
+		}
+		else if (updunmap) {
+			auto 			[sit, ssuccess] = cliunmap.try_emplace(std::move(cli_shr_host), cliunvecarena);
+			auto 			& cliunvec = sit->second;
+
+			cliunvec.emplace_back(cli_tusec_start/GY_USEC_PER_SEC, cli_task_aggr_id, cli_comm, cli_related_listen_id, 
+						plistener->glob_id_, plistener->related_listen_id_, plistener->comm_, plistener->partha_machine_id_, pone->bytes_sent_, pone->bytes_rcvd_,
+						gmadhava_id_);
+		}	
+
+		return {true, false, bret};
 	}	
 
-	return {true, false};
+	return {false, true, false};
 }	
 
-bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr)
+bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr)
 {
 	PARTHA_INFO 			*prawpartha = partha_shr.get(); 
 
@@ -7189,6 +7269,13 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 	MP_SER_TCP_INFO_MAP_ARENA	parsermaparena;
 	MP_SER_TCP_INFO_MAP		parsermap(parsermaparena);
 
+	CLI_UN_SERV_INFO_VEC_ARENA	cliunvecarena;
+	CLI_UN_SERV_INFO_MAP_ARENA	cliunmaparena;
+	CLI_UN_SERV_INFO_MAP		cliunmap(cliunmaparena);
+	SER_UN_CLI_INFO_VEC_ARENA	serunvecarena;
+	SER_UN_CLI_INFO_MAP_ARENA	serunmaparena;
+	SER_UN_CLI_INFO_MAP		serunmap(serunmaparena);
+
 	MSVecArena			msveccleanuparena;
 	MSVec				msveccleanup(msveccleanuparena);
 
@@ -7199,17 +7286,35 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 	RCU_LOCK_SLOW			slowlock;
 
 	const uint64_t			tusec_start = get_usec_time(), tsec_start = tusec_start/GY_USEC_PER_SEC, local_madid = gmadhava_id_;
-	int				nnew = 0, nclosed = 0, nclosed_no_not = 0, nconnadded = 0, ntaskadded = 0, nconndel = 0, nremmadhav = 0, nparcliinfo = 0, nparserinfo = 0;
+	int				nnew = 0, nclosed = 0, nclosed_no_not = 0, ncloseadded = 0, nconnadded = 0, ntaskadded = 0, nremmadhav = 0, nparcliinfo = 0, nparserinfo = 0;
+	int				ncliuninfo = 0, nseruninfo = 0;
 	const bool			multi_madhava = multiple_madhava_active();
+	bool				conn_closed, tcupdated = false;
+	auto				& cunknown = prawpartha->get_curr_unknown_locked(tsec_start, true /* reset_old */);
 	
-	if (prawpartha->tconnlistensec_ < (int64_t)tsec_start - 30) {
+	if (prawpartha->tconnlistensec_ < (int64_t)tsec_start - 60) {
 		prawpartha->connlistenmap_.clear();
 		prawpartha->connclientmap_.clear();
 		prawpartha->connpeerarena_.reset();
 	}
 
+	auto lamtcpc = [](MTCP_CONN *ptcp, void *arg1, void *arg2) -> CB_RET_E
+	{	
+		auto			*ptmp = (const comm::TCP_CONN_NOTIFY *)arg1;
+
+		if (ptcp && ptmp) {
+			ptcp->close_cli_bytes_sent_ = ptmp->bytes_sent_;
+			ptcp->close_cli_bytes_rcvd_ = ptmp->bytes_rcvd_;
+		}
+
+		return CB_OK;
+	};	
+
+
 	for (int i = 0; i < nconns && (uint8_t *)pone < pendptr; ++i, pone = (decltype(pone))((uint8_t *)pone + pone->get_elem_size())) {
-		if (pone->tusec_close_) {
+		conn_closed = !!pone->tusec_close_;
+
+		if (conn_closed) {
 			nclosed++;
 
 			if (false == pone->notified_before_) {
@@ -7243,83 +7348,137 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 							PAIR_IP_PORT		ctuple(pone->nat_cli_, pone->nat_ser_);
 							uint32_t		chash = ctuple.get_hash();
 
-							bret = glob_tcp_conn_tbl_.delete_single_elem(ctuple, chash);
-							if (bret == false && multi_madhava) {
-								msveccleanup.emplace_back(ctuple);
-							}
-							else if (bret == true) {
-								nconndel++;
-							}	
+							bret = glob_tcp_conn_tbl_.lookup_single_elem(ctuple, chash, lamtcpc, pone);
+							// Only send shyama conn close msg for listener conns
 						}	
 						else {
 							PAIR_IP_PORT		stuple(pone->cli_, pone->ser_);
 							uint32_t		shash = stuple.get_hash();
 
-							bret = glob_tcp_conn_tbl_.delete_single_elem(stuple, shash);
+							bret = glob_tcp_conn_tbl_.lookup_single_elem(stuple, shash, lamtcpc, pone);
 							if (bret == false && multi_madhava) {
-								msveccleanup.emplace_back(stuple);
-							}	
-							else if (bret == true) {
-								nconndel++;
+								msveccleanup.emplace_back(stuple, pone->bytes_sent_, pone->bytes_rcvd_);
 							}	
 						}
 					}
-					else if (multi_madhava && pone->tusec_start_ > tusec_start - 100 * GY_USEC_PER_SEC) {
-						msveccleanup.emplace_back(pone->is_tcp_connect_event_ ? 
-							PAIR_IP_PORT(pone->nat_cli_, pone->nat_ser_) : PAIR_IP_PORT(pone->cli_, pone->ser_));
-					}	
 				}	
 			}	
 
 			if (pone->bytes_sent_ + pone->bytes_rcvd_ > 0) {
-				if (pone->ser_glob_id_ && pone->is_tcp_accept_event_) {
-					if (prawpartha->connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && prawpartha->connlistenmap_.size() < MAX_CLOSE_CONN_ELEM - 1) {
-						auto [sit, sret] = prawpartha->connlistenmap_.try_emplace(pone->ser_glob_id_, pone->ser_comm_, prawpartha->connpeerarena_);
-						auto & climap = sit->second.climap_;
+				bool			connpeer = true;
 
-						auto [cit, cret] = climap.try_emplace(pone->cli_task_aggr_id_, pone->cli_comm_, pone->cli_ser_machine_id_, pone->cli_madhava_id_);
-						auto & clione = cit->second;
+				if ( !(pone->notified_before_ || (pone->cli_task_aggr_id_ && pone->ser_glob_id_) || pone->is_loopback_conn_ || pone->is_pre_existing_) ) {
+					if (pone->is_tcp_connect_event_) {
+						if (cunknown.cliunsermap_.bytes_left() > 2 * sizeof(CONN_PEER_UNKNOWN)) {
 
-						clione.bytes_sent_ 	+= pone->bytes_sent_;
-						clione.bytes_received_	+= pone->bytes_rcvd_;
+							auto [is_resolved, newconn, newtask] = add_tcp_conn_cli(partha_shr, pone, tusec_start, 
+											parclimap, parclivecarena, parsermap, parservecarena, serunmap, serunvecarena, pthrpoolarr);
+							
+							connpeer = (is_resolved || !newconn);
 
-						clione.nconns_++;
-						clione.cli_listener_proc_ |= (!!pone->cli_related_listen_id_);
+							if (newconn) {
+								auto 			[cit, cret] = cunknown.cliunsermap_.try_emplace(pone->cli_task_aggr_id_);
+								auto 			& clione = cit->second;
 
-						prawpartha->tconnlistensec_ = tsec_start;
-					}
-				}	
-				else if (false == pone->is_tcp_accept_event_ && pone->is_tcp_connect_event_ && pone->cli_task_aggr_id_) {
-					if (prawpartha->connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && prawpartha->connclientmap_.size() < MAX_CLOSE_CONN_ELEM - 1) {
+								clione.bytes_sent_ 	+= pone->bytes_sent_;
+								clione.bytes_received_	+= pone->bytes_rcvd_;
+								clione.nconns_++;
+							
+								nconnadded++;
+								ncloseadded++;
 
-						auto [sit, sret] = prawpartha->connclientmap_.try_emplace(pone->cli_task_aggr_id_, 
-											pone->cli_comm_, !!pone->cli_related_listen_id_, prawpartha->connpeerarena_);
-						auto & listmap = sit->second.listmap_;
-
-						auto [cit, cret] = listmap.try_emplace(pone->ser_glob_id_, pone->ser_comm_, pone->cli_ser_machine_id_, pone->ser_madhava_id_);
-						auto & listone = cit->second;
-
-						listone.bytes_sent_ 	+= pone->bytes_sent_;
-						listone.bytes_received_	+= pone->bytes_rcvd_;
-
-						listone.nconns_++;
-
-						prawpartha->tconnlistensec_ = tsec_start;
+								if (!tcupdated) {
+									tcupdated = true;
+									prawpartha->tconnlistensec_ = tsec_start;
+								}
+							}	
+						}
 					}	
-				}	
+					else {
+						if (cunknown.serunclimap_.bytes_left() > 2 * sizeof(CONN_PEER_UNKNOWN)) {
+							auto [is_resolved, newconn, newtask] = add_tcp_conn_ser(partha_shr, pone, tusec_start, 
+											parclimap, parclivecarena, parsermap, parservecarena, cliunmap, cliunvecarena, pthrpoolarr);
+
+							connpeer = (is_resolved || !newconn);
+
+							if (newconn) {
+								auto 			[cit, cret] = cunknown.serunclimap_.try_emplace(pone->ser_glob_id_);
+								auto 			& clione = cit->second;
+
+								clione.bytes_sent_ 	+= pone->bytes_sent_;
+								clione.bytes_received_	+= pone->bytes_rcvd_;
+								clione.nconns_++;
+							
+								nconnadded++;
+								ncloseadded++;
+
+								if (!tcupdated) {
+									tcupdated = true;
+									prawpartha->tconnlistensec_ = tsec_start;
+								}
+							}
+						}
+					}	
+				}
+
+				if (connpeer) {
+					if (pone->ser_glob_id_ && pone->is_tcp_accept_event_) {
+						if (prawpartha->connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && prawpartha->connlistenmap_.size() < MAX_CLOSE_CONN_ELEM - 1) {
+							auto [sit, sret] = prawpartha->connlistenmap_.try_emplace(pone->ser_glob_id_, pone->ser_comm_, prawpartha->connpeerarena_);
+							auto & climap = sit->second.climap_;
+
+							auto [cit, cret] = climap.try_emplace(pone->cli_task_aggr_id_, pone->cli_comm_, pone->cli_ser_machine_id_, pone->cli_madhava_id_);
+							auto & clione = cit->second;
+
+							clione.bytes_sent_ 	+= pone->bytes_sent_;
+							clione.bytes_received_	+= pone->bytes_rcvd_;
+
+							clione.nconns_++;
+							clione.cli_listener_proc_ |= (!!pone->cli_related_listen_id_);
+
+							if (!tcupdated) {
+								tcupdated = true;
+								prawpartha->tconnlistensec_ = tsec_start;
+							}
+						}
+					}	
+					else if (false == pone->is_tcp_accept_event_ && pone->is_tcp_connect_event_ && pone->cli_task_aggr_id_) {
+						if (prawpartha->connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && prawpartha->connclientmap_.size() < MAX_CLOSE_CONN_ELEM - 1) {
+
+							auto [sit, sret] = prawpartha->connclientmap_.try_emplace(pone->cli_task_aggr_id_, 
+												pone->cli_comm_, !!pone->cli_related_listen_id_, prawpartha->connpeerarena_);
+							auto & listmap = sit->second.listmap_;
+
+							auto [cit, cret] = listmap.try_emplace(pone->ser_glob_id_, pone->ser_comm_, pone->cli_ser_machine_id_, pone->ser_madhava_id_);
+							auto & listone = cit->second;
+
+							listone.bytes_sent_ 	+= pone->bytes_sent_;
+							listone.bytes_received_	+= pone->bytes_rcvd_;
+
+							listone.nconns_++;
+
+							if (!tcupdated) {
+								tcupdated = true;
+								prawpartha->tconnlistensec_ = tsec_start;
+							}
+						}	
+					}	
+				}
 			}
 		}
 		else {
 			nnew++;
 
 			if (pone->is_tcp_connect_event_) {
-				auto [newconn, newtask] = add_tcp_conn_cli(partha_shr, pone, tusec_start, parclimap, parclivecarena, parsermap, parservecarena, pthrpoolarr);
+				auto [is_resolved, newconn, newtask] = add_tcp_conn_cli(partha_shr, pone, tusec_start, parclimap, parclivecarena, 
+										parsermap, parservecarena, serunmap, serunvecarena, pthrpoolarr);
 
 				nconnadded += int(newconn);
 				ntaskadded += int(newtask);
 			}	
 			else {
-				auto [newconn, newtask] = add_tcp_conn_ser(partha_shr, pone, tusec_start, parclimap, parclivecarena, parsermap, parservecarena, pthrpoolarr);
+				auto [is_resolved, newconn, newtask] = add_tcp_conn_ser(partha_shr, pone, tusec_start, parclimap, parclivecarena, 
+										parsermap, parservecarena, cliunmap, cliunvecarena, pthrpoolarr);
 
 				nconnadded += int(newconn);
 				ntaskadded += int(newtask);
@@ -7378,6 +7537,9 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 	// Now RCU Offline the thread
 	slowlock.unlock();
 
+	ncliuninfo = upd_cli_ser_unknown_conns(cliunmap);
+	nseruninfo = upd_ser_cli_unknown_conns(serunmap);
+
 	for (const auto & epair : parclimap) {
 		const auto & parshr	= epair.first;
 		const auto & parclivec	= epair.second;
@@ -7414,18 +7576,144 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 		send_mp_ser_tcp_info(parshr.get(), parservec.data(), parservec.size(), pthrpoolarr);
 	}	
 
-	if (msveccleanup.size()) {
-		send_shyama_conn_close(msveccleanup.data(), msveccleanup.size(), pthrpoolarr);
-	}	
-
 	DEBUGEXECN(1, 
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_CYAN, "Partha Host \'%s\' has seen %d new TCP Conns, %d closed, %d closed without notify, "
-			"%d half conns added, %d tasks added, %d half conns deleted, %d remote madhava informs, %d Partha Cli Conn Infos sent, %d Partha Ser Conn Infos sent, "
-			"%lu Shyama conn close sent\n", 
-			prawpartha->hostname_, nnew, nclosed, nclosed_no_not, nconnadded, ntaskadded, nconndel, nremmadhav, nparcliinfo, nparserinfo, msveccleanup.size());
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_CYAN, "Partha Host \'%s\' has seen %d new TCP Conns, %d closed, %d closed without notify, %d closed conns added, "
+			"%d half conns added, %d tasks added, %d Client close conns updated, %d Server close conns updated, %d remote madhava informs, "
+			"%d Partha Cli Conn Infos sent, %d Partha Ser Conn Infos sent, %lu Shyama conn close sent\n", 
+			prawpartha->hostname_, nnew, nclosed, nclosed_no_not, ncloseadded, nconnadded, ntaskadded, ncliuninfo, nseruninfo,
+			nremmadhav, nparcliinfo, nparserinfo, msveccleanup.size());
 	);
 
 	return true;
+}
+
+int MCONN_HANDLER::upd_cli_ser_unknown_conns(CLI_UN_SERV_INFO_MAP & cliunmap)
+{
+	int			nupd = 0;
+
+	for (const auto & epair : cliunmap) {
+		const auto & clishr	= epair.first;
+		const auto & clivec	= epair.second;
+
+		if (!clishr || clivec.empty()) {
+			continue;
+		}
+
+		DEBUGEXECN(10,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Signalling %lu Closed TCP Conn Resolve for unknown listeners to Partha %s\n",
+				clivec.size(), clishr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
+
+		SCOPE_GY_MUTEX			scopelock(clishr->connlistenmutex_);
+		int				n = 0;
+		
+		for (const auto & obj : clivec) {
+			auto			*pcunknown = clishr->get_curr_unknown_locked(obj.tstart_);
+			
+			if (!pcunknown) {
+				continue;
+			}
+
+			if (clishr->connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && clishr->connclientmap_.size() < MAX_CLOSE_CONN_ELEM - 1) {
+
+				if (auto sit = pcunknown->cliunsermap_.find(obj.cli_task_aggr_id_); sit != pcunknown->cliunsermap_.end()) {
+					auto 			& clione = sit->second;
+					auto 			[it, sret] = clishr->connclientmap_.try_emplace(obj.cli_task_aggr_id_, 
+											obj.cli_comm_, !!obj.cli_related_listen_id_, clishr->connpeerarena_);
+					auto 			& listmap = it->second.listmap_;
+
+					auto 			[cit, cret] = listmap.try_emplace(obj.ser_glob_id_, obj.ser_comm_, obj.ser_partha_machine_id_, obj.ser_madhava_id_);
+					auto 			& listone = cit->second;
+
+					if (clione.bytes_sent_ >= obj.close_cli_bytes_sent_) 		clione.bytes_sent_	-= obj.close_cli_bytes_sent_;
+					if (clione.bytes_received_ >= obj.close_cli_bytes_rcvd_) 	clione.bytes_received_	-= obj.close_cli_bytes_rcvd_;
+					if (clione.nconns_ > 0) 					clione.nconns_--;
+
+					listone.bytes_sent_ 	+= obj.close_cli_bytes_sent_;
+					listone.bytes_received_	+= obj.close_cli_bytes_rcvd_;
+					listone.nconns_++;
+
+					n++;
+				}
+
+			}	
+			else {
+				break;
+			}	
+		}	
+
+		if (n > 0) {
+			clishr->tconnlistensec_ = time(nullptr);
+			nupd += n;
+		}
+	}	
+
+	return nupd;
+}	
+
+int MCONN_HANDLER::upd_ser_cli_unknown_conns(SER_UN_CLI_INFO_MAP & serunmap)
+{
+	int			nupd = 0;
+
+	for (const auto & epair : serunmap) {
+		const auto & sershr	= epair.first;
+		const auto & servec	= epair.second;
+
+		if (!sershr || servec.empty()) {
+			continue;
+		}
+
+		DEBUGEXECN(10,
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Signalling %lu Closed TCP Conn Resolve for unknown client to Partha %s\n",
+				servec.size(), sershr->print_string(STRING_BUFFER<256>().get_str_buf()));
+		);
+
+		SCOPE_GY_MUTEX			scopelock(sershr->connlistenmutex_);
+		int				n = 0;
+		
+		for (const auto & obj : servec) {
+			auto			*pcunknown = sershr->get_curr_unknown_locked(obj.tstart_);
+			
+			if (!pcunknown) {
+				continue;
+			}
+
+			if (sershr->connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && sershr->connlistenmap_.size() < MAX_CLOSE_CONN_ELEM - 1) {
+
+				if (auto sit = pcunknown->serunclimap_.find(obj.ser_glob_id_); sit != pcunknown->serunclimap_.end()) {
+					auto 			& serone = sit->second;
+
+					auto 			[it, sret] = sershr->connlistenmap_.try_emplace(obj.ser_glob_id_, obj.ser_comm_, sershr->connpeerarena_);
+					auto 			& climap = it->second.climap_;
+
+					auto 			[cit, cret] = climap.try_emplace(obj.cli_task_aggr_id_, obj.cli_comm_, obj.cli_partha_machine_id_, obj.cli_madhava_id_);
+					auto 			& clione = cit->second;
+
+					if (serone.bytes_sent_ >= obj.close_cli_bytes_sent_) 		serone.bytes_sent_	-= obj.close_cli_bytes_sent_;
+					if (serone.bytes_received_ >= obj.close_cli_bytes_rcvd_) 	serone.bytes_received_	-= obj.close_cli_bytes_rcvd_;
+					if (serone.nconns_ > 0) 					serone.nconns_--;
+
+					clione.bytes_sent_ 	+= obj.close_cli_bytes_sent_;
+					clione.bytes_received_	+= obj.close_cli_bytes_rcvd_;
+					clione.nconns_++;
+					clione.cli_listener_proc_ |= (!!obj.cli_related_listen_id_);
+
+					n++;
+				}
+
+			}	
+			else {
+				break;
+			}	
+		}	
+
+		if (n > 0) {
+			sershr->tconnlistensec_ = time(nullptr);
+			nupd += n;
+		}
+	}	
+
+	return nupd;
 }
 
 bool MCONN_HANDLER::send_mp_cli_tcp_info(PARTHA_INFO *prawpartha, const comm::MP_CLI_TCP_INFO *pone, size_t nconns, POOL_ALLOC_ARRAY *pthrpoolarr)
@@ -7514,10 +7802,17 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 	MP_SER_TCP_INFO_MAP_ARENA	parsermaparena;
 	MP_SER_TCP_INFO_MAP		parsermap(parsermaparena);
 
+	CLI_UN_SERV_INFO_VEC_ARENA	cliunvecarena;
+	CLI_UN_SERV_INFO_MAP_ARENA	cliunmaparena;
+	CLI_UN_SERV_INFO_MAP		cliunmap(cliunmaparena);
+	SER_UN_CLI_INFO_VEC_ARENA	serunvecarena;
+	SER_UN_CLI_INFO_MAP_ARENA	serunmaparena;
+	SER_UN_CLI_INFO_MAP		serunmap(serunmaparena);
+
 	NAT_TCP_NOTIFY			*porigone = pone;
 
 	const uint64_t			tusec_start = get_usec_time();
-	uint32_t			nshyama = 0, nparcliconn = 0, nparserconn = 0;
+	uint32_t			nshyama = 0, nparcliconn = 0, nparserconn = 0, ncliuninfo = 0, nseruninfo = 0;
 	bool				brets, bretc;
 	std::shared_ptr <PARTHA_INFO>	cli_shr_host;
 	std::shared_ptr<MTCP_LISTENER>	listenshr;
@@ -7538,7 +7833,9 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 		uint32_t			cli_cmdline_len = 0;
 		uint32_t			ser_conn_hash = 0, ser_sock_inode = 0;
 		MTCP_CONN			*pcliconn = nullptr;
+		uint64_t			tstart_usec_cli = 0, tstart_usec_ser = 0, cli_bytes_sent = 0, cli_bytes_rcvd = 0, ser_bytes_sent = 0, ser_bytes_rcvd = 0;
 		char				cli_comm[TASK_COMM_LEN], cli_cmdline[comm::MAX_PROC_CMDLINE_LEN];
+		bool				cli_closed = false, ser_closed = false, conn_closed;
 
 		*cli_comm 	= 0;
 		*cli_cmdline	= 0;
@@ -7564,7 +7861,12 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 				cli_cmdline_len = 0;
 			}	
 
-			pcliconn = ptcp;
+			pcliconn 		= ptcp;
+
+			cli_closed 		= ptcp->is_conn_closed();
+			tstart_usec_cli		= ptcp->tusec_start_;
+			cli_bytes_sent		= ptcp->close_cli_bytes_sent_;
+			cli_bytes_rcvd		= ptcp->close_cli_bytes_rcvd_;
 
 			return CB_OK;
 		};	
@@ -7592,6 +7894,11 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 			ser_sock_inode		= ptcp->ser_sock_inode_;
 			ser_cluster_hash	= ptcp->cli_ser_cluster_hash_;
 
+			ser_closed 		= ptcp->is_conn_closed();
+			tstart_usec_ser		= ptcp->tusec_start_;
+			ser_bytes_sent		= ptcp->close_cli_bytes_sent_;
+			ser_bytes_rcvd		= ptcp->close_cli_bytes_rcvd_;
+
 			return CB_DELETE_ELEM;
 		};	
 
@@ -7602,29 +7909,52 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 				glob_tcp_conn_tbl_.delete_elem_locked(pcliconn);
 			}
 
+			conn_closed = cli_closed || ser_closed;
+
 			auto			plistener = listenshr.get();
 			auto			pclihost = cli_shr_host.get();
 
-			auto 			[it, success] = parclimap.try_emplace(std::move(cli_shr_host), parclivecarena);
-			auto 			& parclivec = it->second;
+			if (!conn_closed) {
+				auto 			[it, success] = parclimap.try_emplace(std::move(cli_shr_host), parclivecarena);
+				auto 			& parclivec = it->second;
 
-			parclivec.emplace_back(corigtup, plistener->partha_machine_id_, plistener->glob_id_, gmadhava_id_, plistener->related_listen_id_, 
-						ser_cluster_hash != cli_cluster_hash, plistener->comm_);
+				parclivec.emplace_back(corigtup, plistener->partha_machine_id_, plistener->glob_id_, gmadhava_id_, plistener->related_listen_id_, 
+							ser_cluster_hash != cli_cluster_hash, plistener->comm_);
 
-			auto 			[sit, ssuccess] = parsermap.try_emplace(plistener->parthashr_, parservecarena);
-			auto 			& parservec = sit->second;
+				auto 			[sit, ssuccess] = parsermap.try_emplace(plistener->parthashr_, parservecarena);
+				auto 			& parservec = sit->second;
 
-			parservec.emplace_back(pclihost->machine_id_, cli_task_aggr_id, gmadhava_id_, cli_related_listen_id, cli_comm, pone->orig_tup_.ser_, ser_conn_hash, ser_sock_inode);
+				parservec.emplace_back(pclihost->machine_id_, cli_task_aggr_id, gmadhava_id_, cli_related_listen_id, cli_comm, pone->orig_tup_.ser_, ser_conn_hash, ser_sock_inode);
+			
+				add_local_conn_task_ref(pclihost, cli_task_aggr_id, plistener, cli_comm, cli_cmdline_len, cli_cmdline, pthrpoolarr, tusec_start);
+			}
+			else {
+				if (cli_closed) {
+					auto 			[sit, ssuccess] = cliunmap.try_emplace(std::move(cli_shr_host), cliunvecarena);
+					auto 			& cliunvec = sit->second;
+
+					cliunvec.emplace_back(tstart_usec_cli/GY_USEC_PER_SEC, cli_task_aggr_id, cli_comm, cli_related_listen_id, 
+								plistener->glob_id_, plistener->related_listen_id_, plistener->comm_, plistener->partha_machine_id_, 
+								cli_bytes_sent, cli_bytes_rcvd, gmadhava_id_);
+				}
+
+				if (ser_closed) {
+					auto 			[sit, ssuccess] = serunmap.try_emplace(plistener->parthashr_, serunvecarena);
+					auto 			& serunvec = sit->second;
+
+					serunvec.emplace_back(tstart_usec_ser/GY_USEC_PER_SEC, plistener->glob_id_, plistener->comm_, cli_task_aggr_id, cli_related_listen_id,
+								cli_comm, cli_shr_host->machine_id_, ser_bytes_sent, ser_bytes_rcvd, gmadhava_id_);
+				}	
+			}	
 
 			CONDEXEC(
 				DEBUGEXECN(11,
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, "Updated TCP Conn using NAT info : Orig Tuple %s : NAT Tuple %s\n",
-						pone->orig_tup_.print_string(STRING_BUFFER<128>().get_str_buf()), 
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, "Updated %sTCP Conn using NAT info : Orig Tuple %s : NAT Tuple %s\n",
+						conn_closed ? "Closed " : "", pone->orig_tup_.print_string(STRING_BUFFER<128>().get_str_buf()), 
 						pone->nat_tup_.print_string(STRING_BUFFER<128>().get_str_buf()));
 				);
 			);
 
-			add_local_conn_task_ref(pclihost, cli_task_aggr_id, plistener, cli_comm, cli_cmdline_len, cli_cmdline, pthrpoolarr, tusec_start);
 		}	
 		else if (!brets) {
 			CONDEXEC(
@@ -7641,6 +7971,9 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 
 	// Now RCU Offline the thread
 	slowlock.unlock();
+
+	ncliuninfo = upd_cli_ser_unknown_conns(cliunmap);
+	nseruninfo = upd_ser_cli_unknown_conns(serunmap);
 
 	for (const auto & epair : parclimap) {
 		const auto & parshr	= epair.first;
@@ -7739,9 +8072,10 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 		);
 	);
 
-	if ((nparcliconn + nparserconn) || print1) {
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Received %d NAT Info from %s : Sent %u Partha TCP Cli Conn Info and %u TCP Ser Conn Info messages and remaining %u NAT Info to Shyama\n",
-			nconns, dbarr.shrconn_ ? dbarr.shrconn_->print_peer(STRING_BUFFER<128>().get_str_buf()) : "", nparcliconn, nparserconn, nshyama);
+	if ((nparcliconn + nparserconn + ncliuninfo + nseruninfo) || print1) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Received %d NAT Info from %s :  %d Client close conns updated, %d Server close conns updated, "
+			"Sent %u Partha TCP Cli Conn Info and %u TCP Ser Conn Info messages and remaining %u NAT Info to Shyama\n",
+			nconns, dbarr.shrconn_ ? dbarr.shrconn_->print_peer(STRING_BUFFER<128>().get_str_buf()) : "", ncliuninfo, nseruninfo, nparcliconn, nparserconn, nshyama);
 	}	
 
 	return true;
@@ -8165,24 +8499,26 @@ void MCONN_HANDLER::handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int 
 	/*
 	 * We create entries in remote madhava listen_tbl_ for the remote Madhava Handled Listeners and create the Task References
 	 * We also send the Listener Info to the respective Partha.
-	 *
-	 * Stack based Maps/Vectors with arena's of sizes 128KB + 16KB = 144KB used
 	 */
 
 	using ParCliVec			= GY_STACK_VECTOR<comm::MP_CLI_TCP_INFO, 128 * 1024>;
 	using ParCliVecArena		= ParCliVec::allocator_type::arena_type;
 	using ParCliMap			= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, ParCliVec, 24 * 1024>;
 	using ParCliMapArena		= ParCliMap::allocator_type::arena_type;
-
+	
 	ParCliVecArena			parclivecarena;
 	ParCliMapArena			parclimaparena;
 	ParCliMap			parclimap(parclimaparena);
+
+	CLI_UN_SERV_INFO_VEC_ARENA	cliunvecarena;
+	CLI_UN_SERV_INFO_MAP_ARENA	cliunmaparena;
+	CLI_UN_SERV_INFO_MAP		cliunmap(cliunmaparena);
 
 	auto				*porigone = pone;
 
 	const uint64_t			tusec_start = get_usec_time();
 	bool				bret, is_new;
-	int				nmadmissed = 0, ninvpartha = 0, ninfo = 0;
+	int				nmadmissed = 0, ninvpartha = 0, ninfo = 0, ncliuninfo = 0;
 	uint64_t			last_madid = 0;
 	MTCP_LISTENER			*plistener;
 	MADHAVA_INFO			*premotemad = nullptr;	
@@ -8209,6 +8545,8 @@ void MCONN_HANDLER::handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int 
 
 	for (int i = 0; i < nconns; ++i, ++pone) {
 		
+		bool			conn_closed = pone->is_conn_closed();
+
 		if (!premotemad || last_madid != pone->ser_madhava_id_) {
 			bret = madhava_tbl_.lookup_single_elem(pone->ser_madhava_id_, get_uint64_hash(pone->ser_madhava_id_), madlam);
 		}
@@ -8224,32 +8562,54 @@ void MCONN_HANDLER::handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int 
 			continue;
 		}	
 	
-		plistener = upd_remote_listener(premotemad, pone, is_new, tusec_start);
-		
+		if (!conn_closed) {
+			plistener = upd_remote_listener(premotemad, pone, is_new, tusec_start);
+
+			if (!plistener) {
+				ninvpartha++;
+				continue;
+			}	
+		}
+		else {
+			plistener = nullptr;
+		}
+	
+
 		bret = partha_tbl_.lookup_single_elem(pone->cli_partha_machine_id_, pone->cli_partha_machine_id_.get_hash(), parlam);
 
-		if (!bret || !pclihost || !plistener) {
+		if (!bret || !pclihost) {
 			ninvpartha++;
 			continue;
 		}	
 	
-		auto 			[it, success] = parclimap.try_emplace(pclihost->shared_from_this(), parclivecarena);
-		auto 			& parclivec = it->second;
+		if (!conn_closed) {	
+			auto 			[it, success] = parclimap.try_emplace(pclihost->shared_from_this(), parclivecarena);
+			auto 			& parclivec = it->second;
 
-		parclivec.emplace_back(pone->tup_, pone->ser_partha_machine_id_, plistener->glob_id_, pone->ser_madhava_id_, pone->ser_related_listen_id_, 
-					pone->cli_ser_diff_clusters_, plistener->comm_);
+			parclivec.emplace_back(pone->tup_, pone->ser_partha_machine_id_, plistener->glob_id_, pone->ser_madhava_id_, pone->ser_related_listen_id_, 
+						pone->cli_ser_diff_clusters_, plistener->comm_);
+
+			add_local_conn_task_ref(pclihost, pone->cli_task_aggr_id_, plistener, "", 0, "", pthrpoolarr, tusec_start);
+		}
+		else {
+			// plistener is nullptr here
+			auto 			[it, success] = cliunmap.try_emplace(pclihost->shared_from_this(), cliunvecarena);
+			auto 			& cliunvec = it->second;
+
+			cliunvec.emplace_back(*pone);
+		}	
 
 		DEBUGEXECN(5,
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, "Updated TCP Client Conn using Shyama info : Orig Tuple %s : Remote Madhava Listener is \'%s\'\n",
-				pone->tup_.print_string(STRING_BUFFER<128>().get_str_buf()), plistener->comm_);
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, "Updated %sTCP Client Conn using Shyama info : Orig Tuple %s : Remote Madhava Listener is \'%s\'\n",
+				conn_closed ? "Closed " : "", pone->tup_.print_string(STRING_BUFFER<128>().get_str_buf()), pone->ser_comm_);
 		);
-
-		add_local_conn_task_ref(pclihost, pone->cli_task_aggr_id_, plistener, "", 0, "", pthrpoolarr, tusec_start);
 
 		ninfo++;
 	}
 
 	slowlock.unlock();
+
+	ncliuninfo = upd_cli_ser_unknown_conns(cliunmap);
 
 	for (const auto & epair : parclimap) {
 		const auto & parshr	= epair.first;
@@ -8267,8 +8627,8 @@ void MCONN_HANDLER::handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int 
 		send_mp_cli_tcp_info(parshr.get(), parclivec.data(), parclivec.size(), pthrpoolarr);
 	}	
 
-	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Shyama Client TCP Info : #Conn Info sent %d, #Valid Conn Info %d, #Madhava Errors %d, #Partha Errors %d\n",
-		nconns, ninfo, nmadmissed, ninvpartha);
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Shyama Client TCP Info : #Conn Info sent %d, #Closed Conns %d, #Valid Conn Info %d, #Madhava Errors %d, #Partha Errors %d\n",
+		nconns, ncliuninfo, ninfo, nmadmissed, ninvpartha);
 }
 
 void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr)
@@ -8287,11 +8647,15 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 	ParSerMapArena			parsermaparena;
 	ParSerMap			parsermap(parsermaparena);
 
+	SER_UN_CLI_INFO_VEC_ARENA	serunvecarena;
+	SER_UN_CLI_INFO_MAP_ARENA	serunmaparena;
+	SER_UN_CLI_INFO_MAP		serunmap(serunmaparena);
+
 	auto				*porigone = pone;
 
 	const uint64_t			tusec_start = get_usec_time();
 	bool				bret, is_new;
-	int				nmadmissed = 0, ninvpartha = 0, ninvlisten = 0, ninfo = 0;
+	int				nmadmissed = 0, ninvpartha = 0, ninvlisten = 0, ninfo = 0, nseruninfo = 0;
 	uint64_t			last_madid = 0;
 	MTCP_LISTENER			*plistener;
 	MADHAVA_INFO			*premotemad = nullptr;	
@@ -8325,6 +8689,8 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 
 	for (int i = 0; i < nconns; ++i, ++pone) {
 		
+		bool			conn_closed = pone->is_conn_closed();
+
 		if (!premotemad || last_madid != pone->cli_madhava_id_) {
 			bret = madhava_tbl_.lookup_single_elem(pone->cli_madhava_id_, get_uint64_hash(pone->cli_madhava_id_), madlam);
 		}
@@ -8356,25 +8722,37 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 			continue;
 		}	
 
-		auto 			[it, success] = parsermap.try_emplace(pserhost->shared_from_this(), parservecarena);
-		auto 			& parservec = it->second;
+		if (!conn_closed) {	
+			auto 			[it, success] = parsermap.try_emplace(pserhost->shared_from_this(), parservecarena);
+			auto 			& parservec = it->second;
 
-		parservec.emplace_back(pone->cli_partha_machine_id_, pone->cli_task_aggr_id_, pone->cli_madhava_id_, pone->cli_related_listen_id_, pone->cli_comm_, 
-					pone->ser_nat_ip_port_, pone->ser_conn_hash_, pone->ser_sock_inode_);
+			parservec.emplace_back(pone->cli_partha_machine_id_, pone->cli_task_aggr_id_, pone->cli_madhava_id_, pone->cli_related_listen_id_, pone->cli_comm_, 
+						pone->ser_nat_ip_port_, pone->ser_conn_hash_, pone->ser_sock_inode_);
+
+			add_remote_conn_task_ref(premotemad, pone->cli_task_aggr_id_, pone->cli_partha_machine_id_, plistener, pone->cli_comm_, 
+						pone->cli_cmdline_len_, pone->cli_cmdline_trunc_, pthrpoolarr, tusec_start);
+
+		}
+		else {
+			auto 			[it, success] = serunmap.try_emplace(pserhost->shared_from_this(), serunvecarena);
+			auto 			& serunvec = it->second;
+
+			serunvec.emplace_back(*pone);
+
+		}	
 	
 		DEBUGEXECN(11,
 			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, 
-				"Updated TCP Server Conn using Shyama info for listener \'%s\' : : Remote Client is \'%s\' : Remote Madhava from \'%s\'\n",
-				plistener->comm_, pone->cli_comm_, premotemad->get_domain());
+				"Updated %sTCP Server Conn using Shyama info for listener \'%s\' : : Remote Client is \'%s\' : Remote Madhava from \'%s\'\n",
+				conn_closed ? "Closed " : "", pone->ser_comm_, pone->cli_comm_, premotemad->get_domain());
 		);
-
-		add_remote_conn_task_ref(premotemad, pone->cli_task_aggr_id_, pone->cli_partha_machine_id_, plistener, pone->cli_comm_, 
-					pone->cli_cmdline_len_, pone->cli_cmdline_trunc_, pthrpoolarr, tusec_start);
 
 		ninfo++;
 	}
 
 	slowlock.unlock();
+
+	nseruninfo = upd_ser_cli_unknown_conns(serunmap);
 
 	for (const auto & epair : parsermap) {
 		const auto & parshr	= epair.first;
@@ -8392,8 +8770,8 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 		send_mp_ser_tcp_info(parshr.get(), parservec.data(), parservec.size(), pthrpoolarr);
 	}	
 
-	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Shyama Server TCP Info : #Conn Info sent %d, #Valid Conn Info %d, #Madhava Errors %d, #Partha Errors %d\n",
-		nconns, ninfo, nmadmissed, ninvpartha);
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Shyama Server TCP Info : #Conn Info sent %d, #Closed Conns %d, #Valid Conn Info %d, #Madhava Errors %d, #Partha Errors %d\n",
+		nconns, nseruninfo, ninfo, nmadmissed, ninvpartha);
 }
 
 

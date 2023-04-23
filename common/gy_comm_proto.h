@@ -50,6 +50,9 @@ static constexpr size_t			MAX_PARTHA_PER_MADHAVA		{1024};
  * Connections to Shyama and Madhava from Node Web servers are usually persistent but adhoc conns also allowed
  * 
  * Request / Response Multiplexing is supported with upto 4K outstanding responses (for persistent conns : this is variable).
+ * 
+ * Shyama and Madhava servers will support upto 2 previous Partha versions. Currently, Shyama and Madhava servers need to be on
+ * the same version. Older version connections within the Shyama and Madhava servers will be rejected.
  *
  * XXX Please ensure any changes related to underlying protocol for Node to other hosts is in sync with Node gyeeta_comm.js file.
  */
@@ -1579,9 +1582,11 @@ struct alignas(8) NAT_TCP_NOTIFY
 struct alignas(8) MS_TCP_CONN_CLOSE
 {
 	PAIR_IP_PORT			tup_;
+	uint64_t			close_cli_bytes_sent_;
+	uint64_t			close_cli_bytes_rcvd_;
 
-	MS_TCP_CONN_CLOSE(const PAIR_IP_PORT & tup) noexcept
-		: tup_(tup)
+	MS_TCP_CONN_CLOSE(const PAIR_IP_PORT & tup, uint64_t close_cli_bytes_sent, uint64_t close_cli_bytes_rcvd) noexcept
+		: tup_(tup), close_cli_bytes_sent_(close_cli_bytes_sent), close_cli_bytes_rcvd_(close_cli_bytes_rcvd)
 	{}
 
 	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
@@ -1654,7 +1659,7 @@ struct alignas(8) MS_TCP_CONN_NOTIFY
 	IP_PORT				nat_cli_;
 	IP_PORT				nat_ser_;
 	
-	uint64_t			tusec_start_			{0};
+	uint64_t			tusec_start_			{0};		// Time when conn was added to madhava (not partha start)
 
 	uint64_t			cli_task_aggr_id_		{0};
 	uint64_t			cli_related_listen_id_		{0};
@@ -1663,6 +1668,9 @@ struct alignas(8) MS_TCP_CONN_NOTIFY
 	uint32_t			ser_conn_hash_			{0};
 	uint32_t			ser_sock_inode_			{0};
 	uint64_t			ser_related_listen_id_		{0};
+
+	uint64_t			close_cli_bytes_sent_		{0};		// Will be non-zero only for closed conns
+	uint64_t			close_cli_bytes_rcvd_		{0};
 
 	GY_MACHINE_ID 			cli_ser_partha_machine_id_;
 	uint64_t			cli_ser_cluster_hash_		{0};
@@ -1675,6 +1683,11 @@ struct alignas(8) MS_TCP_CONN_NOTIFY
 	{
 		return (0 != ser_glob_id_);
 	}	
+
+	bool is_conn_closed() const noexcept
+	{
+		return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
+	}
 
 	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
 
@@ -1691,22 +1704,29 @@ struct alignas(8) SHYAMA_SER_TCP_INFO
 	uint64_t			cli_task_aggr_id_		{0};
 	uint64_t			cli_related_listen_id_		{0};
 	GY_MACHINE_ID			cli_partha_machine_id_;
+	char 				ser_comm_[TASK_COMM_LEN];
 	GY_MACHINE_ID 			ser_partha_machine_id_;
 	IP_PORT				ser_nat_ip_port_;
 	uint32_t			ser_conn_hash_			{0};
 	uint32_t			ser_sock_inode_			{0};
+	uint64_t			close_cli_bytes_sent_		{0};		// Will be non-zero only for closed conns
+	uint64_t			close_cli_bytes_rcvd_		{0};
+	uint64_t			tusec_start_			{0};
 	char 				cli_comm_[TASK_COMM_LEN];
 	char				cli_cmdline_trunc_[63];
 	uint8_t				cli_cmdline_len_		{0};
 
 	SHYAMA_SER_TCP_INFO(uint64_t ser_glob_id, uint64_t cli_madhava_id, uint64_t cli_task_aggr_id, uint64_t cli_related_listen_id, \
-		const GY_MACHINE_ID & cli_partha_machine_id, const GY_MACHINE_ID & ser_partha_machine_id, const IP_PORT & ser_nat_ip_port, \
-		uint32_t ser_conn_hash, uint32_t ser_sock_inode, const char *cli_comm, const char *cli_cmdline, uint8_t cli_cmdline_len) noexcept
+		const GY_MACHINE_ID & cli_partha_machine_id, const char *ser_comm, const GY_MACHINE_ID & ser_partha_machine_id, const IP_PORT & ser_nat_ip_port, \
+		uint32_t ser_conn_hash, uint32_t ser_sock_inode, uint64_t close_cli_bytes_sent, uint64_t close_cli_bytes_rcvd, uint64_t tusec_start, \
+		const char *cli_comm, const char *cli_cmdline, uint8_t cli_cmdline_len) noexcept
 
 		: ser_glob_id_(ser_glob_id), cli_madhava_id_(cli_madhava_id), cli_task_aggr_id_(cli_task_aggr_id), cli_related_listen_id_(cli_related_listen_id),
 		cli_partha_machine_id_(cli_partha_machine_id), ser_partha_machine_id_(ser_partha_machine_id), ser_nat_ip_port_(ser_nat_ip_port), 
-		ser_conn_hash_(ser_conn_hash), ser_sock_inode_(ser_sock_inode)
+		ser_conn_hash_(ser_conn_hash), ser_sock_inode_(ser_sock_inode), close_cli_bytes_sent_(close_cli_bytes_sent), 
+		close_cli_bytes_rcvd_(close_cli_bytes_rcvd), tusec_start_(tusec_start)
 	{
+		GY_STRNCPY(ser_comm_, ser_comm, sizeof(ser_comm_));
 		GY_STRNCPY(cli_comm_, cli_comm, sizeof(cli_comm_));
 
 		auto len = std::min<uint32_t>(sizeof(cli_cmdline_trunc_) - 1, cli_cmdline_len);
@@ -1718,6 +1738,11 @@ struct alignas(8) SHYAMA_SER_TCP_INFO
 	}
 
 	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+
+	bool is_conn_closed() const noexcept
+	{
+		return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -1733,20 +1758,27 @@ struct alignas(8) SHYAMA_CLI_TCP_INFO
 	uint64_t			ser_related_listen_id_;
 	IP_PORT 			ser_ip_port_;
 	uint64_t			cli_task_aggr_id_;
+	uint64_t			cli_related_listen_id_;
 	GY_MACHINE_ID 			cli_partha_machine_id_;
+	char 				cli_comm_[TASK_COMM_LEN];
 	GY_MACHINE_ID 			ser_partha_machine_id_;
+	uint64_t			close_cli_bytes_sent_;		// Will be non-zero only for closed conns
+	uint64_t			close_cli_bytes_rcvd_;
+	uint64_t			tusec_start_;
 	bool				cli_ser_diff_clusters_;
 	char 				ser_comm_[TASK_COMM_LEN];
 	char				ser_cmdline_trunc_[63];
 	uint8_t				ser_cmdline_len_;
 
 	SHYAMA_CLI_TCP_INFO(const PAIR_IP_PORT & tup, uint64_t ser_glob_id, uint64_t ser_madhava_id, uint64_t ser_related_listen_id, const IP_PORT & ser_ip_port, uint64_t cli_task_aggr_id, \
-		const GY_MACHINE_ID & cli_partha_machine_id, const GY_MACHINE_ID & ser_partha_machine_id, bool cli_ser_diff_clusters, \
-		const char *ser_comm, const char *ser_cmdline, uint8_t ser_cmdline_len) noexcept
+		uint64_t cli_related_listen_id, const GY_MACHINE_ID & cli_partha_machine_id, const char *cli_comm, const GY_MACHINE_ID & ser_partha_machine_id, uint64_t close_cli_bytes_sent, \
+		uint64_t close_cli_bytes_rcvd, uint64_t tusec_start, bool cli_ser_diff_clusters, const char *ser_comm, const char *ser_cmdline, uint8_t ser_cmdline_len) noexcept
 
 		: tup_(tup), ser_glob_id_(ser_glob_id), ser_madhava_id_(ser_madhava_id), ser_related_listen_id_(ser_related_listen_id), ser_ip_port_(ser_ip_port), 
-		cli_task_aggr_id_(cli_task_aggr_id), cli_partha_machine_id_(cli_partha_machine_id), ser_partha_machine_id_(ser_partha_machine_id), cli_ser_diff_clusters_(cli_ser_diff_clusters)
+		cli_task_aggr_id_(cli_task_aggr_id), cli_related_listen_id_(cli_related_listen_id), cli_partha_machine_id_(cli_partha_machine_id), ser_partha_machine_id_(ser_partha_machine_id), 
+		close_cli_bytes_sent_(close_cli_bytes_sent), close_cli_bytes_rcvd_(close_cli_bytes_rcvd), tusec_start_(tusec_start), cli_ser_diff_clusters_(cli_ser_diff_clusters)
 	{
+		GY_STRNCPY(cli_comm_, cli_comm, sizeof(cli_comm_));
 		GY_STRNCPY(ser_comm_, ser_comm, sizeof(ser_comm_));
 
 		auto len = std::min<uint32_t>(sizeof(ser_cmdline_trunc_) - 1, ser_cmdline_len);
@@ -1758,6 +1790,11 @@ struct alignas(8) SHYAMA_CLI_TCP_INFO
 	}
 
 	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+
+	bool is_conn_closed() const noexcept
+	{
+		return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -2475,8 +2512,8 @@ struct alignas(8) ACTIVE_CONN_STATS
 {
 	uint64_t			listener_glob_id_		{0};
 	uint64_t			cli_aggr_task_id_		{0};
-	char				ser_comm_[TASK_COMM_LEN];
-	char				cli_comm_[TASK_COMM_LEN];
+	char				ser_comm_[TASK_COMM_LEN]	{};
+	char				cli_comm_[TASK_COMM_LEN]	{};
 	GY_MACHINE_ID 			remote_machine_id_;
 	uint64_t			remote_madhava_id_		{0};
 	uint64_t			bytes_sent_			{0};

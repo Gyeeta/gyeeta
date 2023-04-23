@@ -858,7 +858,7 @@ bool MUTE_TIMES::in_range(const struct tm & tm, time_t tcurr) noexcept
 					tmutestart_ 	= tcurr;
 				}
 
-				tmuteend_ 	= to_next_min(tcurr) - 1;
+				tmuteend_ 	= to_next_min(tcurr + 1) - 1;
 
 				return true;
 			}	
@@ -885,7 +885,7 @@ bool MUTE_TIMES::in_range(const struct tm & tm1, time_t tcurr1, const struct tm 
 					tmutestart_ 	= tcurr1;
 				}
 
-				tmuteend_	= (hit2 ? tcurr2 : to_next_min(tcurr1) - 1);
+				tmuteend_	= (hit2 ? tcurr2 : to_next_min(tcurr1 + 1) - 1);
 
 				return true;
 			}
@@ -9002,7 +9002,7 @@ void ALERTMGR::check_adef_status() noexcept
 {
 	try {
 		struct tm			tmstart = {};
-		time_t				tcurr = time(nullptr), tstart = tcurr, tend = gy_align_up(tstart, 60); 
+		time_t				tcurr = time(nullptr), tstart = tcurr, tend = gy_align_up(tstart + 1, 60); 
 
 		localtime_r(&tstart, &tmstart);
 		
@@ -9184,8 +9184,6 @@ void ALERTMGR::check_silences_active() noexcept
 		struct tm			tmstart = {};
 		bool				is_muted = false;
 		time_t				tcurr = time(nullptr), tstart = gy_align_up(tcurr, 60), tend; 
-
-		if (tstart - tcurr == 60) tstart = tcurr;	// On minute boundary
 
 		localtime_r(&tstart, &tmstart);
 		
@@ -9440,7 +9438,7 @@ void ALERTMGR::check_schedules(time_t & tnext) noexcept
 
 						if (bool(mnode)) {
 
-							mnode.key() = gy_align_up(time(nullptr), repeat_sec) * GY_USEC_PER_SEC + 100'000;
+							mnode.key() = gy_align_up(time(nullptr) + 1, repeat_sec) * GY_USEC_PER_SEC + 100'000;
 							atimemap_.insert(std::move(mnode));
 						}
 					}
@@ -9456,7 +9454,7 @@ void ALERTMGR::check_schedules(time_t & tnext) noexcept
 
 						if (bool(mnode)) {
 
-							mnode.key() = (gy_align_up(time(nullptr), repeat_sec) - 2) * GY_USEC_PER_SEC + 10000;
+							mnode.key() = (gy_align_up(time(nullptr) + 1, repeat_sec) - 2) * GY_USEC_PER_SEC + 10000;
 							atimemap_.insert(std::move(mnode));
 						}
 					}
@@ -9472,7 +9470,7 @@ void ALERTMGR::check_schedules(time_t & tnext) noexcept
 						uint32_t		repeat_sec = param.repeat_sec_ > 0 ? param.repeat_sec_ : 700;
 
 						if (bool(mnode)) {
-							mnode.key() = gy_align_up(time(nullptr), repeat_sec) * GY_USEC_PER_SEC + 400'000;
+							mnode.key() = gy_align_up(time(nullptr) + 1, repeat_sec) * GY_USEC_PER_SEC + 400'000;
 							atimemap_.insert(std::move(mnode));
 						}
 					}
@@ -9488,7 +9486,7 @@ void ALERTMGR::check_schedules(time_t & tnext) noexcept
 
 						if (bool(mnode)) {
 
-							mnode.key() = gy_align_up(time(nullptr), repeat_sec) * GY_USEC_PER_SEC + 200'000;
+							mnode.key() = gy_align_up(time(nullptr) + 1, repeat_sec) * GY_USEC_PER_SEC + 200'000;
 							atimemap_.insert(std::move(mnode));
 						}
 					}
@@ -9504,7 +9502,7 @@ void ALERTMGR::check_schedules(time_t & tnext) noexcept
 
 						if (bool(mnode)) {
 
-							mnode.key() = gy_align_up(time(nullptr), repeat_sec) * GY_USEC_PER_SEC + 300'000;
+							mnode.key() = gy_align_up(time(nullptr) + 1, repeat_sec) * GY_USEC_PER_SEC + 300'000;
 							atimemap_.insert(std::move(mnode));
 						}
 					}
@@ -9520,7 +9518,7 @@ void ALERTMGR::check_schedules(time_t & tnext) noexcept
 
 						if (bool(mnode)) {
 
-							mnode.key() = gy_align_up(time(nullptr), repeat_sec) * GY_USEC_PER_SEC + 500'000;
+							mnode.key() = gy_align_up(time(nullptr) + 1, repeat_sec) * GY_USEC_PER_SEC + 500'000;
 							atimemap_.insert(std::move(mnode));
 						}
 					}
@@ -9572,19 +9570,19 @@ ALERTMGR::ALERTMGR(SA_SETTINGS_C & settings, SHCONN_HANDLER *pconnhdlr)
 	tusec = (gy_align_down(tcurr, 60) + 120 - 2) * GY_USEC_PER_SEC + 10000;
 	atimemap_.emplace(std::piecewise_construct, std::forward_as_tuple(tusec), std::forward_as_tuple(ACmd::CmdCheckSilence, 60)); 
 
-	tusec = (gy_align_up(tcurr, 60)) * GY_USEC_PER_SEC + 100'000;
+	tusec = (gy_align_up(tcurr + 1, 60)) * GY_USEC_PER_SEC + 100'000;
 	atimemap_.emplace(std::piecewise_construct, std::forward_as_tuple(tusec), std::forward_as_tuple(ACmd::CmdCheckADef, 60)); 
 
-	tusec = (gy_align_up(tcurr, 300)) * GY_USEC_PER_SEC + 500'000;
+	tusec = (gy_align_up(tcurr + 1, 300)) * GY_USEC_PER_SEC + 500'000;
 	atimemap_.emplace(std::piecewise_construct, std::forward_as_tuple(tusec), std::forward_as_tuple(ACmd::CmdAlertStats, 300)); 
 
-	tusec = (gy_align_up(tcurr, 600)) * GY_USEC_PER_SEC + 200'000;
+	tusec = (gy_align_up(tcurr + 1, 600)) * GY_USEC_PER_SEC + 200'000;
 	atimemap_.emplace(std::piecewise_construct, std::forward_as_tuple(tusec), std::forward_as_tuple(ACmd::CmdAlertStatCheck, 600)); 
 
-	tusec = (gy_align_up(tcurr, 400)) * GY_USEC_PER_SEC + 300'000;
+	tusec = (gy_align_up(tcurr + 1, 400)) * GY_USEC_PER_SEC + 300'000;
 	atimemap_.emplace(std::piecewise_construct, std::forward_as_tuple(tusec), std::forward_as_tuple(ACmd::CmdAlertGroupCheck, 400)); 
 
-	tusec = (gy_align_up(tcurr, 700)) * GY_USEC_PER_SEC + 400'000;
+	tusec = (gy_align_up(tcurr + 1, 700)) * GY_USEC_PER_SEC + 400'000;
 	atimemap_.emplace(std::piecewise_construct, std::forward_as_tuple(tusec), std::forward_as_tuple(ACmd::CmdConnReset, 700)); 
 
 	INFOPRINTCOLOR(GY_COLOR_GREEN, "Initialized Alert Manager successfully...\n");

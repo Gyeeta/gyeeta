@@ -293,7 +293,11 @@ public :
 		uint32_t				ser_conn_hash_			{0};
 		uint32_t				ser_sock_inode_			{0};
 
-		uint64_t				tusec_start_			{0};	// Start usec when conn was added in Shyama rather than at Partha level
+		uint64_t				close_cli_bytes_sent_		{0};	// Will be non-zero only for closed conns
+		uint64_t				close_cli_bytes_rcvd_		{0};
+
+		uint64_t				tusec_start_			{0};	// Start usec when conn was added in Madhava rather than at Partha level
+		uint64_t				tusec_shstart_			{0};	// Start usec when conn was added in Shyama rather than at Partha level
 
 		SHTCP_CONN() noexcept 					= default;
 	
@@ -309,6 +313,11 @@ public :
 		{
 			return (0 != ser_glob_id_);
 		}	
+
+		bool is_conn_closed() const noexcept
+		{
+			return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
+		}
 
 		friend inline bool operator== (const SHTCP_CONN & lhs, const PAIR_IP_PORT & tup) noexcept
 		{

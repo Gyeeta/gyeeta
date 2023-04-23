@@ -1035,6 +1035,7 @@ public :
 
 	ActiveConnMap				activeconnmap_;		// To be referenced only from inet_diag_thread() as no mutex protection
 	TCP_XPUT_TOP_N				topnxput_;		// Use only from within the inet_diag_thread() as NULL_MUTEX specified
+	time_t					tlast_active_send_	{0};
 	size_t					ntcp_conns_		{0};
 	size_t					nconn_recent_active_	{0};
 	int					ntcp_coalesced_		{0};

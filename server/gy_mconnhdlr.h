@@ -92,6 +92,8 @@ public :
 
 	static constexpr size_t			MAX_NODE_INSTANCES		{64};
 
+	static constexpr size_t			MAX_UNRESOLVED_TCP_CONNS	{100'000};		// Approx max
+
 	static_assert(MAX_L1_SHYAMA_THREADS == 1u, "Shyama L1 to be handled by a single thread only");
 
 	struct SHYAMA_INFO;
@@ -827,8 +829,28 @@ public :
 	using MP_SER_TCP_INFO_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, MP_SER_TCP_INFO_VEC, 8192>;
 	using MP_SER_TCP_INFO_MAP_ARENA		= MP_SER_TCP_INFO_MAP::allocator_type::arena_type;
 
+
+	using CLI_UN_SERV_INFO_VEC		= GY_STACK_VECTOR<CLI_UN_SERV_INFO, 32 * 1024>;
+	using CLI_UN_SERV_INFO_VEC_ARENA	= CLI_UN_SERV_INFO_VEC::allocator_type::arena_type;
+
+	using CLI_UN_SERV_INFO_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, CLI_UN_SERV_INFO_VEC, 8192>;
+	using CLI_UN_SERV_INFO_MAP_ARENA	= CLI_UN_SERV_INFO_MAP::allocator_type::arena_type;
+
+	using SER_UN_CLI_INFO_VEC		= GY_STACK_VECTOR<SER_UN_CLI_INFO, 32 * 1024>;
+	using SER_UN_CLI_INFO_VEC_ARENA		= SER_UN_CLI_INFO_VEC::allocator_type::arena_type;
+
+	using SER_UN_CLI_INFO_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, SER_UN_CLI_INFO_VEC, 8192>;
+	using SER_UN_CLI_INFO_MAP_ARENA		= SER_UN_CLI_INFO_MAP::allocator_type::arena_type;
+
+
 	using DOWNSTREAM_VEC			= GY_STACK_VECTOR<comm::MM_LISTENER_ISSUE_RESOL::DOWNSTREAM_ONE, 200 * 1024>;
 	using DOWNSTREAM_VEC_ARENA		= DOWNSTREAM_VEC::allocator_type::arena_type;
+
+	struct ConnUnknown {
+		time_t				tstartunknown_			{0};
+		ConnUnknownMap			serunclimap_;
+		ConnUnknownMap			cliunsermap_;
+	};
 
 	class RESOL_LISTENER_ONE
 	{
@@ -1035,6 +1057,7 @@ public :
 		LISTEN_TOP_ACTIVE_CONN		top_active_conn_listen_			{MAX_LISTEN_TOPN};	
 		LISTEN_TOP_NET			top_net_listen_				{MAX_LISTEN_TOPN};	
 
+		static constexpr size_t		MAX_UNKNOWN_MAPS			{3};		// Wait max 20 * 3 (60) sec for unknown entries
 		GY_MUTEX			connlistenmutex_;
 		time_t				tconnlistensec_				{0};
 		time_t				tdbconnlistensec_			{0};
@@ -1042,6 +1065,7 @@ public :
 		ConnPeerMapArena		connpeerarena_;
 		ConnListenMap			connlistenmap_;
 		ConnClientMap			connclientmap_;
+		ConnUnknown			unknownmaps_[MAX_UNKNOWN_MAPS];
 		
 		uint64_t			last_aggr_state_tusec_			{0};
 		uint64_t			last_aggrinfo_tsec_			{0};
@@ -1079,6 +1103,40 @@ public :
 		{
 			return host_state_.curr_time_usec_;
 		}
+
+		// Returns {Slot start sec, slot index}
+		static inline std::pair<time_t, uint8_t> get_unknown_slot(time_t tcur) noexcept
+		{
+			time_t			tmod = (tcur % 60);
+
+			return { tcur - tmod, tmod / (60 / MAX_UNKNOWN_MAPS) }; 
+		}	
+
+		ConnUnknown & get_curr_unknown_locked(time_t tcur, bool reset_old) noexcept
+		{
+			const auto 			[ tstart, slot ] = get_unknown_slot(tcur);
+			auto				& curr = unknownmaps_[slot];
+
+			if (reset_old && curr.tstartunknown_ < tstart) {
+				curr.tstartunknown_ = tstart;
+				curr.serunclimap_.clear();
+				curr.cliunsermap_.clear();
+			}	
+
+			return curr;
+		}	
+
+		ConnUnknown * get_curr_unknown_locked(time_t tcur) noexcept
+		{
+			const auto 			[ tstart, slot ] = get_unknown_slot(tcur);
+			auto				& curr = unknownmaps_[slot];
+
+			if (curr.tstartunknown_ == tstart) {
+				return &curr;
+			}	
+
+			return nullptr;
+		}	
 
 		char * print_string(STR_WR_BUF & strbuf) const noexcept
 		{
@@ -1659,28 +1717,34 @@ public :
 	void 	insert_db_top_procs(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::TASK_TOP_PROCS * ptask, uint8_t *pendptr, PGConnPool & dbpool);
 	void 	insert_db_task_stats(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::TASK_HISTOGRAM * ptask, int ntasks, uint8_t *pendptr);
 
-	std::pair<bool, bool> add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
+	std::tuple<bool, bool, bool> add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
 				MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, \
-				MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, POOL_ALLOC_ARRAY *pthrpoolarr); 
-	std::pair<bool, bool> add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
+				MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, \
+				SER_UN_CLI_INFO_MAP & serunmap, SER_UN_CLI_INFO_VEC_ARENA & serunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr); 
+	std::tuple<bool, bool, bool> add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
 				MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, \
-				MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, POOL_ALLOC_ARRAY *pthrpoolarr); 
+				MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, \
+				CLI_UN_SERV_INFO_MAP & cliunmap, CLI_UN_SERV_INFO_VEC_ARENA & cliunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr); 
 	bool 	cleanup_local_cli_tcp_conn(PARTHA_INFO *prawpartha, uint64_t cli_task_aggr_id, uint64_t ser_glob_id, uint64_t ser_madhava_id, int nconns_closed); 
 	bool 	add_local_conn_task_ref(PARTHA_INFO *pcli_partha, uint64_t aggr_task_id, MTCP_LISTENER *plistener, \
 				const char *pcli_comm, uint32_t cli_cmdline_len, const char *pcli_cmdline, POOL_ALLOC_ARRAY *pthrpoolarr, uint64_t tusec_start);
 	bool 	cleanup_remote_cli_tcp_conn(MADHAVA_INFO *pcli_madhava, uint64_t cli_task_aggr_id, uint64_t ser_glob_id, int nconns_closed); 
 	bool 	add_remote_conn_task_ref(MADHAVA_INFO *pcli_madhava, uint64_t aggr_task_id, GY_MACHINE_ID remote_machine_id, MTCP_LISTENER *plistener, \
 				const char *pcli_comm, uint32_t cli_cmdline_len, const char *pcli_cmdline, POOL_ALLOC_ARRAY *pthrpoolarr, uint64_t tusec_start);
+	int 	upd_cli_ser_unknown_conns(CLI_UN_SERV_INFO_MAP & cliunmap);
+	int 	upd_ser_cli_unknown_conns(SER_UN_CLI_INFO_MAP & serunmap);
 	void 	cleanup_tcp_conn_table() noexcept;
+	bool 	send_shyama_conn_close(const comm::MS_TCP_CONN_CLOSE *pone, size_t nconns, POOL_ALLOC_ARRAY *pthrpoolarr);
+	bool 	partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr);
+	bool 	handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr, bool is_last_elem, DB_WRITE_ARR && dbarr);
+	void 	handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr);
+	void 	handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr);
 	
+	bool 	handle_madhava_list(comm::MADHAVA_LIST * pone, int nelems, uint8_t *pendptr, STATS_STR_MAP & statsmap);
+
 	bool 	partha_aggr_task_state(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::AGGR_TASK_STATE_NOTIFY * pone, int ntasks, \
 				uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 	bool 	handle_mm_aggr_task_state(const std::shared_ptr<MADHAVA_INFO> & madhava_shr, const comm::AGGR_TASK_STATE_NOTIFY * pone, int ntasks, uint8_t *pendptr);
-
-	bool 	send_shyama_conn_close(const comm::MS_TCP_CONN_CLOSE *pone, size_t nconns, POOL_ALLOC_ARRAY *pthrpoolarr);
-
-	bool 	handle_madhava_list(comm::MADHAVA_LIST * pone, int nelems, uint8_t *pendptr, STATS_STR_MAP & statsmap);
-
 	void 	handle_aggr_task_deletion(MAGGR_TASK *pmtask, PARTHA_INFO *prawpartha, REMOTE_PING_MAP & remote_map, STACK_ID_SET_ARENA & stacksetarena);
 
 	uint64_t send_remote_aggr_task_ping(REMOTE_PING_MAP & remote_map, POOL_ALLOC_ARRAY *pthrpoolarr);
@@ -1696,12 +1760,7 @@ public :
 	bool 	handle_mm_ping_aggr_task(const std::shared_ptr<MADHAVA_INFO> &madshr, comm::MM_TASK_AGGR_PING *ptask, int nevents);
 	bool 	handle_mm_del_aggr_task(const std::shared_ptr<MADHAVA_INFO> &madshr, comm::MM_TASK_AGGR_DEL *ptask, int nevents, bool isdummycall = false);
 
-	bool 	partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr);
-	bool 	handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr, bool is_last_elem, DB_WRITE_ARR && dbarr);
-
 	MTCP_LISTENER * upd_remote_listener(MADHAVA_INFO *premotemad, const comm::SHYAMA_CLI_TCP_INFO *pone, bool & is_new, uint64_t tusec);
-	void 	handle_shyama_tcp_cli(comm::SHYAMA_CLI_TCP_INFO * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr);
-	void 	handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr);
 
 	void 	handle_cpu_mem_state(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::CPU_MEM_STATE_NOTIFY * pcpumem, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 	void 	handle_host_state(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::HOST_STATE_NOTIFY * phost, PGConnPool & dbpool);

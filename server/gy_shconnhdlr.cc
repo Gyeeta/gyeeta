@@ -3806,6 +3806,8 @@ std::pair<bool, bool> SHCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<MAD
 		ptcp->cli_madhava_id_			= madhava_shr->madhava_id_;
 		ptcp->cli_task_aggr_id_			= pone->cli_task_aggr_id_;
 		ptcp->cli_related_listen_id_		= pone->cli_related_listen_id_;
+		ptcp->close_cli_bytes_sent_		= pone->close_cli_bytes_sent_;
+		ptcp->close_cli_bytes_rcvd_		= pone->close_cli_bytes_rcvd_;
 		ptcp->cli_ser_partha_machine_id_	= pone->cli_ser_partha_machine_id_;
 		ptcp->cli_ser_cluster_hash_		= pone->cli_ser_cluster_hash_;
 
@@ -3819,11 +3821,13 @@ std::pair<bool, bool> SHCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<MAD
 			ptcp->cli_ser_cmdline_len_ 	= 0;
 		}	
 
-		ptcp->tusec_start_			= tcurrusec;
+		ptcp->tusec_start_			= pone->tusec_start_;
+		ptcp->tusec_shstart_			= tcurrusec;
 
 		CONDEXEC(
 			DEBUGEXECN(10,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding new Client side TCP conn : NAT Tuple %s : Original Client %s Server %s from Client Comm \'%s\' and %s\n",
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding new %sClient side TCP conn : NAT Tuple %s : Original Client %s Server %s from Client Comm \'%s\' and %s\n",
+					ptcp->is_conn_closed() ? "Closed " : "",
 					ctuple.print_string(STRING_BUFFER<256>().get_str_buf()), ptcp->cli_.print_string(STRING_BUFFER<128>().get_str_buf()),
 					ptcp->ser_.print_string(STRING_BUFFER<128>().get_str_buf()), ptcp->cli_comm_, 
 					madhava_shr->print_string(STRING_BUFFER<256>().get_str_buf()));
@@ -3845,15 +3849,17 @@ std::pair<bool, bool> SHCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<MAD
 			auto 		& clivec = cit->second;
 
 			clivec.emplace_back(PAIR_IP_PORT(pone->cli_, pone->ser_), pconn->ser_glob_id_, pconn->ser_madhava_id_, pconn->ser_related_listen_id_, pconn->ser_nat_ser_, 
-				pone->cli_task_aggr_id_, pone->cli_ser_partha_machine_id_, pconn->cli_ser_partha_machine_id_, pone->cli_ser_cluster_hash_ != pconn->cli_ser_cluster_hash_,
-				pconn->ser_comm_, pconn->cli_ser_cmdline_trunc_, pconn->cli_ser_cmdline_len_);
+				pone->cli_task_aggr_id_, pone->cli_related_listen_id_, pone->cli_ser_partha_machine_id_, pconn->cli_comm_, pconn->cli_ser_partha_machine_id_, 
+				pone->close_cli_bytes_sent_, pone->close_cli_bytes_rcvd_, pone->tusec_start_, 
+				pone->cli_ser_cluster_hash_ != pconn->cli_ser_cluster_hash_, pconn->ser_comm_, pconn->cli_ser_cmdline_trunc_, pconn->cli_ser_cmdline_len_);
 
 			auto 		[sit, ssuccess] = sermap.try_emplace(std::move(pconn->cli_ser_madhava_shr_), ser_vec_arena);
 			auto 		& servec = sit->second;
 
 			servec.emplace_back(pconn->ser_glob_id_, madhava_shr->madhava_id_, pone->cli_task_aggr_id_, pone->cli_related_listen_id_, 
-				pone->cli_ser_partha_machine_id_, pconn->cli_ser_partha_machine_id_, pone->ser_, pconn->ser_conn_hash_, pconn->ser_sock_inode_, 
-				pone->cli_ser_comm_, pone->cli_ser_cmdline_trunc_, pone->cli_ser_cmdline_len_);
+				pone->cli_ser_partha_machine_id_, pconn->ser_comm_, pconn->cli_ser_partha_machine_id_, pone->ser_, pconn->ser_conn_hash_, pconn->ser_sock_inode_, 
+				pconn->close_cli_bytes_sent_, pconn->close_cli_bytes_rcvd_, pconn->tusec_start_, pone->cli_ser_comm_, 
+				pone->cli_ser_cmdline_trunc_, pone->cli_ser_cmdline_len_);
 
 			binfo = true;
 		}
@@ -3927,11 +3933,15 @@ std::pair<bool, bool> SHCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<MAD
 			ptcp->cli_ser_cmdline_len_ 	= 0;
 		}	
 
-		ptcp->tusec_start_			= tcurrusec;
+		ptcp->close_cli_bytes_sent_		= pone->close_cli_bytes_sent_;
+		ptcp->close_cli_bytes_rcvd_		= pone->close_cli_bytes_rcvd_;
+		ptcp->tusec_start_			= pone->tusec_start_;
+		ptcp->tusec_shstart_			= tcurrusec;
 
 		CONDEXEC(
 			DEBUGEXECN(10,
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding new Server side TCP conn : Tuple %s : NAT Client %s Server %s from Server Comm \'%s\' and %s\n",
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_MAGENTA, "Adding new %sServer side TCP conn : Tuple %s : NAT Client %s Server %s from Server Comm \'%s\' and %s\n",
+					ptcp->is_conn_closed() ? "Closed " : "", 
 					stuple.print_string(STRING_BUFFER<256>().get_str_buf()), ptcp->ser_nat_cli_.print_string(STRING_BUFFER<128>().get_str_buf()),
 					ptcp->ser_nat_ser_.print_string(STRING_BUFFER<128>().get_str_buf()), ptcp->ser_comm_, 
 					madhava_shr->print_string(STRING_BUFFER<256>().get_str_buf()));
@@ -3955,15 +3965,16 @@ std::pair<bool, bool> SHCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<MAD
 			auto 		& clivec = cit->second;
 
 			clivec.emplace_back(PAIR_IP_PORT(pconn->cli_, pconn->ser_), pone->ser_glob_id_, madhava_shr->madhava_id_, pone->ser_related_listen_id_, pone->nat_ser_, 
-				pconn->cli_task_aggr_id_, pconn->cli_ser_partha_machine_id_, pone->cli_ser_partha_machine_id_, pone->cli_ser_cluster_hash_ != pconn->cli_ser_cluster_hash_,
-				pone->cli_ser_comm_, pone->cli_ser_cmdline_trunc_, pone->cli_ser_cmdline_len_);
+				pconn->cli_task_aggr_id_, pconn->cli_related_listen_id_, pconn->cli_ser_partha_machine_id_, pconn->cli_comm_,
+				pone->cli_ser_partha_machine_id_, pconn->close_cli_bytes_sent_, pconn->close_cli_bytes_rcvd_, pconn->tusec_start_,
+				pone->cli_ser_cluster_hash_ != pconn->cli_ser_cluster_hash_, pone->cli_ser_comm_, pone->cli_ser_cmdline_trunc_, pone->cli_ser_cmdline_len_);
 
 			auto 		[sit, ssuccess] = sermap.try_emplace(madhava_shr, ser_vec_arena);
 			auto 		& servec = sit->second;
 
 			servec.emplace_back(pone->ser_glob_id_, madhava_id, pconn->cli_task_aggr_id_, pconn->cli_related_listen_id_, 
-				pconn->cli_ser_partha_machine_id_, pone->cli_ser_partha_machine_id_, pconn->ser_, pone->ser_conn_hash_, pone->ser_sock_inode_, 
-				pconn->cli_comm_, pconn->cli_ser_cmdline_trunc_, pconn->cli_ser_cmdline_len_);
+				pconn->cli_ser_partha_machine_id_, pone->cli_ser_comm_, pone->cli_ser_partha_machine_id_, pconn->ser_, pone->ser_conn_hash_, pone->ser_sock_inode_, 
+				pone->close_cli_bytes_sent_, pone->close_cli_bytes_rcvd_, pone->tusec_start_, pconn->cli_comm_, pconn->cli_ser_cmdline_trunc_, pconn->cli_ser_cmdline_len_);
 
 			binfo = true;
 		}
@@ -4124,23 +4135,36 @@ bool SHCONN_HANDLER::madhava_tcp_close(const std::shared_ptr<MADHAVA_INFO> & mad
 	
 	RCU_DEFER_OFFLINE		deferlock;
 
-	int				nconndel = 0;
+	int				nconnupd = 0;
 	auto				pone = ponestart;
 	bool				bret;
+	
+	auto lamtcpc = [&](SHTCP_CONN *ptcp, void *arg1, void *arg2) -> CB_RET_E
+	{	
+		auto			*ptmp = (const comm::MS_TCP_CONN_CLOSE *)arg1;
+
+		if (ptmp) {
+			ptcp->close_cli_bytes_sent_ = ptmp->close_cli_bytes_sent_;
+			ptcp->close_cli_bytes_rcvd_ = ptmp->close_cli_bytes_rcvd_;
+		}
+
+		return CB_OK;
+	};	
+
 	
 	for (int i = 0; i < nconns; ++i, ++pone) {
 		uint32_t		chash = pone->tup_.get_hash();
 
-		bret = glob_tcp_conn_tbl_.delete_single_elem(pone->tup_, chash);
+		bret = glob_tcp_conn_tbl_.lookup_single_elem(pone->tup_, chash, lamtcpc, (void *)pone);
 
-		nconndel += int(bret);
+		nconnupd += int(bret);
 	}	
 
 	deferlock.offline_now();
 
-	if (nconndel > 0 || gdebugexecn > 0) {
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_CYAN, "Madhava %s:%hu TCP Conn Close Notify : Deleted %d conns\n", 
-			pmadhava->listener_port_.get_domain(), pmadhava->listener_port_.get_port(), nconndel);
+	if (nconnupd > 0 || gdebugexecn > 0) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_CYAN, "Madhava %s:%hu TCP Conn Close Notify : Updated %d conns for closure\n", 
+			pmadhava->listener_port_.get_domain(), pmadhava->listener_port_.get_port(), nconnupd);
 	}
 
 	return true;
@@ -4199,6 +4223,7 @@ bool SHCONN_HANDLER::handle_madhava_nat_notify(comm::NAT_TCP_NOTIFY * pone, int 
 		brets = glob_tcp_conn_tbl_.lookup_single_elem(pone->nat_tup_, shash, lamtcps);
 
 		if (!pconnser) {
+			// By this time the server side conn should already have been updated
 			glob_tcp_conn_tbl_.delete_elem_locked(pconncli);
 			continue;
 		}	
@@ -4212,7 +4237,8 @@ bool SHCONN_HANDLER::handle_madhava_nat_notify(comm::NAT_TCP_NOTIFY * pone, int 
 			auto 		& clivec = cit->second;
 
 			clivec.emplace_back(PAIR_IP_PORT(pconncli->cli_, pconncli->ser_), pconnser->ser_glob_id_, madhava_id_ser, pconnser->ser_related_listen_id_, 
-				pconnser->ser_nat_ser_, pconncli->cli_task_aggr_id_, pconncli->cli_ser_partha_machine_id_, pconnser->cli_ser_partha_machine_id_, 
+				pconnser->ser_nat_ser_, pconncli->cli_task_aggr_id_, pconncli->cli_related_listen_id_, pconncli->cli_ser_partha_machine_id_, pconncli->cli_comm_,
+				pconnser->cli_ser_partha_machine_id_, pconncli->close_cli_bytes_sent_, pconncli->close_cli_bytes_rcvd_, pconncli->tusec_start_,
 				pconnser->cli_ser_cluster_hash_ != pconncli->cli_ser_cluster_hash_, pconnser->ser_comm_, 
 				pconnser->cli_ser_cmdline_trunc_, pconnser->cli_ser_cmdline_len_);
 
@@ -4220,7 +4246,8 @@ bool SHCONN_HANDLER::handle_madhava_nat_notify(comm::NAT_TCP_NOTIFY * pone, int 
 			auto 		& servec = sit->second;
 
 			servec.emplace_back(pconnser->ser_glob_id_, madhava_id_cli, pconncli->cli_task_aggr_id_, pconncli->cli_related_listen_id_, 
-				pconncli->cli_ser_partha_machine_id_, pconnser->cli_ser_partha_machine_id_, pone->orig_tup_.ser_, pconnser->ser_conn_hash_, pconnser->ser_sock_inode_, 
+				pconncli->cli_ser_partha_machine_id_, pconnser->ser_comm_, pconnser->cli_ser_partha_machine_id_, pone->orig_tup_.ser_, 
+				pconnser->ser_conn_hash_, pconnser->ser_sock_inode_, pconnser->close_cli_bytes_sent_, pconnser->close_cli_bytes_rcvd_, pconnser->tusec_start_,
 				pconncli->cli_comm_, pconncli->cli_ser_cmdline_trunc_, pconncli->cli_ser_cmdline_len_);
 
 			nresolved++;
@@ -5773,7 +5800,7 @@ void SHCONN_HANDLER::cleanup_tcp_conn_table() noexcept
 		
 		auto twalk = [&, tcutoffusec](SHTCP_CONN *ptcp, void *arg) -> CB_RET_E
 		{
-			if (ptcp->tusec_start_ < tcutoffusec) {
+			if (ptcp->tusec_shstart_ < tcutoffusec) {
 				ndel++;
 				return CB_DELETE_ELEM;
 			}
