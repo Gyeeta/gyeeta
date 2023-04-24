@@ -91,9 +91,9 @@ accessing the Live Demo Web server can be obtained from the link :
 
 ![Service State Monitor](https://gyeeta.io/img/servicemon.png)
 
-![Process Network Flow Dashboard](https://gyeeta.io/img/servicemon.png/img/procflow.png)
+![Process Network Flow Dashboard](https://gyeeta.io/img/procflow.png)
 
-![Process States](https://gyeeta.io/img/servicemon.png/img/procstate1.png)
+![Process States](https://gyeeta.io/img/procstate1.png)
 
 
 ## Github Repositories for other Gyeeta Components
