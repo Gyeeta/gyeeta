@@ -207,7 +207,7 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 		tcurr = time(nullptr); 
 		tnxt = (tcurr / 30) * 30;
 
-		schedshrhigh->add_schedule(60'230 + 3000 + 30'000 - (tcurr - tnxt) * 1000, 30'000, 0, "Cleanup the TCP Conn Table", 
+		schedshrhigh->add_schedule(60'230 + 3000 + 30'000 - (tcurr - tnxt) * 1000, 30'000, 0, "Cleanup the TCP Conn Table and Partha Unknown conns", 
 		[this] { 
 			cleanup_tcp_conn_table();
 		});
@@ -6001,14 +6001,17 @@ bool MCONN_HANDLER::handle_partha_active_conns(const std::shared_ptr<PARTHA_INFO
 	auto [nactlist, nactcli] = insert_active_conns(prawpartha, tcur, pconn, nitems, pendptr, dbpool);
 
 	// Add records from previously closed conns
-	if ((tnewcur >= prawpartha->tdbconnlistensec_ + 10) && (GY_READ_ONCE(prawpartha->tconnlistensec_) >= prawpartha->tdbconnlistensec_) && 
-		(!prawpartha->connlistenmap_.empty() || !prawpartha->connclientmap_.empty())) {
-		
-		auto p = insert_close_conn_records(prawpartha, tcur, pthrpoolarr, dbpool);
+	if (tnewcur >= prawpartha->tdbconnlistensec_ + 10) {
+		prawpartha->handle_unknown_conns(multiple_madhava_active());
 
-		ncloselist 	= p.first;
-		nclosecli 	= p.second;
-	}	
+		if ((GY_READ_ONCE(prawpartha->tconnlistensec_) >= prawpartha->tdbconnlistensec_) && (!prawpartha->connlistenmap_.empty() || !prawpartha->connclientmap_.empty())) {
+			
+			auto 		p = insert_close_conn_records(prawpartha, tcur, pthrpoolarr, dbpool);
+
+			ncloselist 	= p.first;
+			nclosecli 	= p.second;
+		}	
+	}
 
 	prawpartha->tlast_active_insert_ = tcur;
 
@@ -7371,7 +7374,8 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 							connpeer = (is_resolved || !newconn);
 
 							if (newconn) {
-								auto 			[cit, cret] = cunknown.cliunsermap_.try_emplace(pone->cli_task_aggr_id_);
+								auto 			[cit, cret] = cunknown.cliunsermap_.try_emplace(pone->cli_task_aggr_id_, 
+															pone->cli_comm_, !!pone->cli_related_listen_id_);
 								auto 			& clione = cit->second;
 
 								clione.bytes_sent_ 	+= pone->bytes_sent_;
@@ -7396,7 +7400,7 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 							connpeer = (is_resolved || !newconn);
 
 							if (newconn) {
-								auto 			[cit, cret] = cunknown.serunclimap_.try_emplace(pone->ser_glob_id_);
+								auto 			[cit, cret] = cunknown.serunclimap_.try_emplace(pone->ser_glob_id_, pone->ser_comm_);
 								auto 			& clione = cit->second;
 
 								clione.bytes_sent_ 	+= pone->bytes_sent_;
@@ -8851,6 +8855,90 @@ void MCONN_HANDLER::cleanup_tcp_conn_table() noexcept
 		);	
 	);
 }	
+
+void MCONN_HANDLER::PARTHA_INFO::handle_unknown_conns(bool is_multi_madhava) noexcept
+{
+	try {
+		SCOPE_GY_MUTEX			scopelock(connlistenmutex_);
+
+		int				shyoff = is_multi_madhava ? 40 : 20;
+		int				nc = 0, nl = 0;
+		time_t				tcurr = time(nullptr);
+		const auto			[tstart, slot] = get_unknown_slot(tcurr - shyoff);
+		time_t				tminstart = tstart - 30;
+
+		for (uint8_t i = 0; i < MAX_UNKNOWN_MAPS; ++i) {
+			auto			& curr = unknownmaps_[i];
+
+			if (curr.tstartunknown_ < tminstart) {
+				curr.reset_locked(0L);
+				continue;
+			}	
+			
+			if (curr.tstartunknown_ > tstart) {
+				break;
+			}	
+				
+			if (curr.serunclimap_.empty() && curr.cliunsermap_.empty()) {
+				continue;
+			}	
+
+			for (const auto & [ cliid, clione ] : curr.cliunsermap_) {
+				if (!(connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && connclientmap_.size() < MAX_CLOSE_CONN_ELEM - 1)) {
+					break;
+				}
+
+				auto 			[it, sret] = connclientmap_.try_emplace(cliid, 
+										clione.cli_ser_comm_, clione.cli_listener_proc_, connpeerarena_);
+				auto 			& listmap = it->second.listmap_;
+
+				auto 			[cit, cret] = listmap.try_emplace(0ul);
+				auto 			& listone = cit->second;
+
+				listone.bytes_sent_ 	+= clione.bytes_sent_;
+				listone.bytes_received_	+= clione.bytes_received_;
+				listone.nconns_		+= clione.nconns_;
+				
+				nc 			+= clione.nconns_;
+			}	
+
+			for (const auto & [ serid, serone ] : curr.serunclimap_) {
+				if (!(connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && connlistenmap_.size() < MAX_CLOSE_CONN_ELEM - 1)) {
+					break;
+				}
+
+				auto 			[it, sret] = connlistenmap_.try_emplace(serid, serone.cli_ser_comm_, connpeerarena_);
+				auto 			& climap = it->second.climap_;
+
+				auto 			[cit, cret] = climap.try_emplace(0ul);
+				auto 			& clione = cit->second;
+
+				clione.bytes_sent_ 	+= serone.bytes_sent_;
+				clione.bytes_received_	+= serone.bytes_received_;
+				clione.nconns_		+= serone.nconns_;
+				
+				nl 			+= serone.nconns_;
+			}	
+
+			curr.reset_locked(0L);
+
+		}
+
+		if (nc + nl > 0) {
+			tconnlistensec_ = tcurr;
+		
+			DEBUGEXECN(10, 
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Partha %s : Handled %d Closed Client Conns and %d Closed Listener Conns for active conns\n",
+					hostname_, nc, nl);
+			);	
+		}
+	}
+	GY_CATCH_EXCEPTION(
+		DEBUGEXECN(1,
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while cleaning the Partha %s Unknown closed conns : %s\n", hostname_, GY_GET_EXCEPT_STRING);
+		);	
+	);
+}
 
 bool MCONN_HANDLER::send_partha_reset_stats(PARTHA_INFO *prawpartha)
 {

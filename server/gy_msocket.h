@@ -172,13 +172,15 @@ static constexpr size_t			MAX_CLOSE_CONN_ELEM		{256};
 
 struct CONN_PEER_ONE
 {
-	char				comm_[TASK_COMM_LEN];
+	char				comm_[TASK_COMM_LEN]		{};
 	GY_MACHINE_ID 			remote_machine_id_;
-	uint64_t			remote_madhava_id_;
+	uint64_t			remote_madhava_id_		{0};
 	uint64_t			bytes_sent_			{0};
 	uint64_t			bytes_received_			{0};
 	uint32_t			nconns_				{0};
 	bool				cli_listener_proc_		{false};
+
+	CONN_PEER_ONE() noexcept 	= default;
 
 	CONN_PEER_ONE(const char *comm, GY_MACHINE_ID remote_machine_id, uint64_t remote_madhava_id) noexcept
 		: remote_machine_id_(remote_machine_id), remote_madhava_id_(remote_madhava_id)
@@ -265,40 +267,14 @@ struct CONN_PEER_UNKNOWN
 	uint64_t			bytes_sent_			{0};
 	uint64_t			bytes_received_			{0};
 	uint32_t			nconns_				{0};
+	bool				cli_listener_proc_		{false};
+	char				cli_ser_comm_[TASK_COMM_LEN]	{};
 
-	comm::ACTIVE_CONN_STATS get_active_conn(uint64_t listener_glob_id, uint64_t cli_aggr_task_id, const char *ser_comm, const GY_MACHINE_ID & svc_machine_id_) const noexcept
+	CONN_PEER_UNKNOWN(const char *comm, bool cli_listener_proc = false) noexcept
+		: cli_listener_proc_(cli_listener_proc)
 	{
-		comm::ACTIVE_CONN_STATS		aconn;
-
-		aconn.listener_glob_id_		= listener_glob_id;
-		aconn.cli_aggr_task_id_		= cli_aggr_task_id;
-		std::memcpy(aconn.ser_comm_, ser_comm, sizeof(aconn.ser_comm_));
-		aconn.bytes_sent_		= bytes_sent_;
-		aconn.bytes_received_		= bytes_received_;
-		aconn.active_conns_		= nconns_;
-		aconn.cli_listener_proc_	= false;
-		aconn.is_remote_listen_		= false;
-		aconn.is_remote_cli_		= true;
-
-		return aconn;
+		GY_STRNCPY(cli_ser_comm_, comm, sizeof(cli_ser_comm_));
 	}	
-
-	comm::ACTIVE_CONN_STATS get_remote_conn(uint64_t cli_aggr_task_id, const char *cli_comm, bool cli_listener_proc) const noexcept
-	{
-		comm::ACTIVE_CONN_STATS		aconn;
-
-		aconn.cli_aggr_task_id_		= cli_aggr_task_id;
-		std::memcpy(aconn.cli_comm_, cli_comm, sizeof(aconn.cli_comm_));
-		aconn.bytes_sent_		= bytes_sent_;
-		aconn.bytes_received_		= bytes_received_;
-		aconn.active_conns_		= nconns_;
-		aconn.cli_listener_proc_	= cli_listener_proc;
-		aconn.is_remote_listen_		= true;
-		aconn.is_remote_cli_		= false;
-
-		return aconn;
-	}	
-	
 };	
 
 using ConnUnknownMap			= INLINE_STACK_HASH_MAP<uint64_t, CONN_PEER_UNKNOWN, gy_align_up_2(uint64_t(MAX_CLOSE_CONN_ELEM * 0.67) * (sizeof(CONN_PEER_UNKNOWN) + 8 + 8), 16), 

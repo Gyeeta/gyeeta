@@ -850,6 +850,13 @@ public :
 		time_t				tstartunknown_			{0};
 		ConnUnknownMap			serunclimap_;
 		ConnUnknownMap			cliunsermap_;
+
+		void reset_locked(time_t tstart) noexcept
+		{
+			tstartunknown_ = tstart;
+			serunclimap_.clear();
+			cliunsermap_.clear();
+		}	
 	};
 
 	class RESOL_LISTENER_ONE
@@ -1118,9 +1125,7 @@ public :
 			auto				& curr = unknownmaps_[slot];
 
 			if (reset_old && curr.tstartunknown_ < tstart) {
-				curr.tstartunknown_ = tstart;
-				curr.serunclimap_.clear();
-				curr.cliunsermap_.clear();
+				curr.reset_locked(tstart);
 			}	
 
 			return curr;
@@ -1137,6 +1142,8 @@ public :
 
 			return nullptr;
 		}	
+
+		void handle_unknown_conns(bool is_multi_madhava) noexcept;
 
 		char * print_string(STR_WR_BUF & strbuf) const noexcept
 		{
