@@ -1285,14 +1285,8 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 	 * flow evaluations (> 15 sec and < 30 sec) durations...
 	 */
 
-	if (maxcore >= 16 && maxmem >= GY_UP_GB(64 - 1)) {
-		max_partha_allowed_	= 500;
-	}	
-	else if (maxcore >= 12 && maxmem >= GY_UP_GB(32 - 1)) {
+	if (maxcore >= 16 && maxmem >= GY_UP_GB(32 - 1)) {
 		max_partha_allowed_	= 400;
-	}	
-	else if (maxcore >= 8 && maxmem >= GY_UP_GB(32 - 1)) {
-		max_partha_allowed_	= 300;
 	}	
 	else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
 		max_partha_allowed_	= 200;
@@ -8791,6 +8785,7 @@ void MCONN_HANDLER::cleanup_tcp_conn_table() noexcept
 							sizeof(comm::COMM_HEADER) + sizeof(comm::EVENT_NOTIFY));
 		const uint64_t			tcutoffusec = get_usec_time() - 30 * GY_USEC_PER_SEC;
 		size_t				ntotal, nsent = 0;
+		int				nclosed = 0, nclosesent = 0;
 
 		auto sendcb = [&](void *palloc, size_t sz, FREE_FPTR free_fp, size_t nelems) -> bool
 		{
@@ -8815,6 +8810,10 @@ void MCONN_HANDLER::cleanup_tcp_conn_table() noexcept
 
 						ptcp->set_notify_elem(pone);
 						
+						if (ptcp->is_conn_closed()) {
+							nclosesent++;
+						}
+
 						scache.set_buffer_sz(sendcb, sizeof(MS_TCP_CONN_NOTIFY), false /* force_flush */);
 					}
 				}
@@ -8828,6 +8827,10 @@ void MCONN_HANDLER::cleanup_tcp_conn_table() noexcept
 				return CB_DELETE_ELEM;
 			}
 			else {
+				if (ptcp->is_conn_closed()) {
+					nclosed++;
+				}
+
 				return CB_OK;
 			}	
 		};	
@@ -8838,8 +8841,8 @@ void MCONN_HANDLER::cleanup_tcp_conn_table() noexcept
 			scache.flush_cache(sendcb);
 		}
 
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN_ITALIC, "Global Unresolved TCP Connections %s = %lu : Total Remaining count = %lu\n",
-			pconn1 ? "sent to Shyama" : "Deleted", nsent, ntotal - nsent);
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN_ITALIC, "Global Unresolved TCP Connections %s = %lu : Total Remaining count = %lu : Closed Conns sent %d : Closed Conns remaining %d\n",
+			pconn1 ? "sent to Shyama" : "Deleted", nsent, ntotal - nsent, nclosesent, nclosed);
 		
 	}
 	GY_CATCH_EXCEPTION(

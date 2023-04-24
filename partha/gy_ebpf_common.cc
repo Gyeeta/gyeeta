@@ -16,11 +16,13 @@ namespace gyeeta {
  */
 void RESP_SAMPLING::set_resp_sampling_pct(uint8_t resp_sampling_pct) noexcept
 {
-	if (resp_sampling_pct > 0 && resp_sampling_pct < 100) {
-		resp_sampling_pct = gy_align_up(resp_sampling_pct, 10);
-	}	
-	else {
-		resp_sampling_pct = 100;
+	if (resp_sampling_pct > 0) {
+		if (resp_sampling_pct < 100) {
+			resp_sampling_pct = gy_align_up(resp_sampling_pct, 10);
+		}	
+		else {
+			resp_sampling_pct = 100;
+		}	
 	}	
 
 	static_assert(MAX_RESP_SAMPLING_SLOTS == 10, "Max Resp Sampling Slots needs to be set as 10");

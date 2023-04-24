@@ -689,7 +689,7 @@ SA_SETTINGS_C::SA_SETTINGS_C(char *pjson)
 		GY_STRNCPY(webserver_url, aiter->value.GetString(), sizeof(webserver_url));
 	}
 	else {
-		GY_THROW_EXCEPTION("Invalid Shyama Config : Mandatory Config option \'webserver_url\' not found or of invalid type in config json");
+		GY_STRNCPY(webserver_url, "http://localhost:10039", sizeof(webserver_url));
 	}	
 
 	if ((0 != std::memcmp(webserver_url, "http://", 7)) && (0 != std::memcmp(webserver_url, "https://", 8))) {

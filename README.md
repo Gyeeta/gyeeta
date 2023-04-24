@@ -67,7 +67,7 @@ components.
 
 | OS Distribution | Supported Versions |
 | :-------------: | :-------------: |
-| Ubuntu | 16 & higher |
+| Ubuntu | 18 & higher |
 | Debian | 9 & higher |
 | RHEL, CentOS, Rocky Linux, Oracle Linux | 8 & higher |
 | Amazon Linux 2023 | All Versions |
@@ -87,12 +87,20 @@ accessing the Live Demo Web server can be obtained from the link :
 
 [Live Demo Server](https://gyeeta.io/docs/livedemo)
 
-## Main Github Repositories for different Gyeeta Components
+## Snapshots of Gyeeta Web UI
 
-- [Partha Host Agent, Shyama Central Server and Madhava Intermediate Servers](https://github.com/gyeeta/gyeeta)
-- [Node Webserver](https://github.com/gyeeta/nodewebserver)
-- [Frontend React WebUI](https://github.com/gyeeta/frontend)
-- [Alert Agent](https://github.com/gyeeta/alertaction)
+![Service State Monitor](https://gyeeta.io/img/servicemon.png)
+
+![Process Network Flow Dashboard](https://gyeeta.io/img/servicemon.png/img/procflow.png)
+
+![Process States](https://gyeeta.io/img/servicemon.png/img/procstate1.png)
+
+
+## Github Repositories for other Gyeeta Components
+
+- [nodewebserver - Node Webserver](https://github.com/gyeeta/nodewebserver)
+- [frontend - Frontend React WebUI](https://github.com/gyeeta/frontend)
+- [alertaction - Alert Agent](https://github.com/gyeeta/alertaction)
 
 ## Info on this Repository
 
