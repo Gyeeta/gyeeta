@@ -52,7 +52,7 @@ fi
 
 CAPBND=`capsh --decode=$( cat /proc/self/status | grep CapBnd | awk -F: '{print $2}' | awk '{print $1}' )`
 
-for i in cap_chown cap_dac_override cap_dac_read_search cap_fowner cap_fsetid cap_ipc_lock cap_kill cap_mac_admin cap_mknod cap_sys_chroot cap_sys_resource cap_setpcap cap_sys_ptrace cap_sys_admin cap_net_admin cap_net_raw cap_sys_module; do 
+for i in cap_chown cap_dac_override cap_dac_read_search cap_fowner cap_fsetid cap_ipc_lock cap_kill cap_mac_admin cap_mknod cap_sys_chroot cap_sys_resource cap_setpcap cap_sys_ptrace cap_sys_admin cap_net_admin cap_net_raw cap_sys_module cap_setuid; do 
 	if [ `echo "$CAPBND" | grep -c $i` -eq 0 ]; then 
 		echo -e "\n\nERROR : Partha Container started without required Capabilities ($i). Please start the container with --priviliged flag (For Kubernetes use securityContext: privileged: true).\n\n"
 		exit 1

@@ -897,6 +897,9 @@ static int partha_cmd_proc(CHILD_PROC *pchildproc) noexcept
 {
 	do {
 		try {
+			// Set as root
+			(void)seteuid(0);
+
 			ASYNC_FUNC_HDLR::init_singleton();
 			
 			GY_SCHEDULER::init_singletons(false);
@@ -968,16 +971,16 @@ int PARTHA_C::verify_caps_kernhdr(bool is_bpf_core, bool trybcc)
 {
 	constexpr const char	*capstring[] = 				{"CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_FSETID", "CAP_IPC_LOCK", "CAP_KILL",
 											"CAP_MAC_ADMIN", "CAP_MKNOD", "CAP_SYS_CHROOT", "CAP_SYS_RESOURCE", "CAP_SETPCAP",
-											"CAP_SYS_PTRACE", "CAP_SYS_ADMIN", "CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_SYS_MODULE"};
+											"CAP_SYS_PTRACE", "CAP_SYS_ADMIN", "CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_SYS_MODULE", "CAP_SETUID"};
 	constexpr cap_value_t	caparr[GY_ARRAY_SIZE(capstring)] = 	{CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER,CAP_FSETID, CAP_IPC_LOCK, CAP_KILL,
 											CAP_MAC_ADMIN, CAP_MKNOD, CAP_SYS_CHROOT, CAP_SYS_RESOURCE, CAP_SETPCAP,
-											CAP_SYS_PTRACE, CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_MODULE};
+											CAP_SYS_PTRACE, CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_MODULE, CAP_SETUID};
 
 	for (size_t i = 0; i < GY_ARRAY_SIZE(capstring); ++i) {
 		if (false == proc_cap_.is_cap_set(caparr[i])) {
 			ERRORPRINT("Required File Capabilities for partha not set : Please set the following capabilities : "
 					"CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER,CAP_FSETID, CAP_IPC_LOCK, CAP_KILL, CAP_MAC_ADMIN, CAP_MKNOD, "
-					"CAP_SYS_CHROOT, CAP_SYS_RESOURCE, CAP_SETPCAP, CAP_SYS_PTRACE, CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_MODULE\n");
+					"CAP_SYS_CHROOT, CAP_SYS_RESOURCE, CAP_SETPCAP, CAP_SYS_PTRACE, CAP_SYS_ADMIN, CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_MODULE, CAP_SETUID\n");
 
 			GY_THROW_EXCEPTION("partha required file capability %s not found : Priviliges missing", capstring[i]);
 		}	
@@ -1039,8 +1042,18 @@ void PARTHA_C::check_task_stats() noexcept
 			bret = string_to_number(tbuf, val);
 
 			if (bret && val == 0) {
-				
-				fdv = ::open("/proc/sys/kernel/task_delayacct", O_WRONLY);
+				uid_t			olduid = geteuid();
+
+				if (olduid != 0) {
+					
+					ret = seteuid(0);
+
+					if (ret) {
+						PERRORPRINTCOLOR(GY_COLOR_RED, "Failed to set effective uid for Task Delays setting");
+					}	
+				}
+
+				fdv = ::open("/proc/sys/kernel/task_delayacct", O_RDWR);
 				if (fdv >= 0) {
 					ret = ::write(fdv, "1\n", 2);
 					if (ret < 0) {
@@ -1050,11 +1063,14 @@ void PARTHA_C::check_task_stats() noexcept
 						INFOPRINT("Task Delays not enabled by default. Enabling Task Delays for newer processes as per config param %d\n", 
 							psettings_->enable_task_delays);
 					}	
+
+					::close(fdv);
 				}
+				else {
+					PERRORPRINTCOLOR(GY_COLOR_RED, "Failed to open Task Delays file for setting delays");
+				}	
 
-				::close(fdv);
-
-				if (psettings_->enable_task_delays > 1) {
+				if (fdv > 0 && psettings_->enable_task_delays > 1) {
 					constexpr const char	strsys[] = "\nkernel.task_delayacct = 1\n";
 
 					fdv = ::open("/proc/1/root/etc/sysctl.conf", O_RDWR);
@@ -1239,8 +1255,6 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 	// Spawn the multi process buffer handler
 	MULTI_COMM_SINGLETON::init_singleton();
 
-	check_task_stats();
-
 	INFOPRINT("Spawning the partha monitor \'parmon\' and command handler processes ...\n"); 
 
 	if (!nolog) {
@@ -1280,6 +1294,18 @@ PARTHA_C::PARTHA_C(int argc, char **argv, bool nolog, const char *logdir, const 
 
 		_exit(EXIT_FAILURE);
 	}
+
+	COMM_MSG_C			troot;
+	
+	troot.func_ = [](uint64_t arg1, uint64_t arg2, uint64_t arg3, const uint8_t *poptbuf, size_t opt_bufsize)
+	{
+		// Set all system init
+		PARTHA_C::get_singleton()->check_task_stats();
+		return 0;
+	};	
+
+	ret = COMM_MSG_C::send_msg_locked(pcmd_child_->get_socket(), pcmd_child_->get_mutex(), troot, nullptr, false /* is_nonblock */); 
+	assert (ret == 0);
 
 	// Exec this after the child processes have been spawned
 	init_all_singletons();
