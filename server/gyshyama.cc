@@ -697,7 +697,7 @@ SA_SETTINGS_C::SA_SETTINGS_C(char *pjson)
 				"Please specify the complete URL as in http://webserver.local:10039 or https://webserver.local:8443", webserver_url);
 	}	
 	else {
-		auto			escurl = gy_escape_json<8192>(webserver_url, aiter->value.GetStringLength(), false);
+		auto			escurl = gy_escape_json<8192>(webserver_url, strlen(webserver_url), false);
 
 		esc_webserver_url.assign(escurl.data(), escurl.size());
 	}
