@@ -20,7 +20,7 @@ uint32_t		gmin_node_version 	= get_version_from_string("0.2.0", 3);
  * 
  *	Version		Date		Description
  *
- *	0.4.0		TODO		TODO		
+ *	0.4.0		Apr 27, 2023	Handling short lived connections and Delay settings
  *	0.3.1		Mar 24, 2023	Service Capture redundancy changes
  *	0.3.0		Mar 15, 2023	Svc Cluster Group enhancements
  *	0.2.0		Jan 10, 2023	BPF CO-RE support and more Host metrics
