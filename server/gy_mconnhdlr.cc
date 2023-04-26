@@ -7017,6 +7017,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 		pone->cli_ser_machine_id_ = plistener->partha_machine_id_;
 		pone->ser_related_listen_id_ = plistener->related_listen_id_;
 		pone->ser_madhava_id_ = gmadhava_id_;
+		std::memcpy(pone->ser_comm_, plistener->comm_, sizeof(pone->ser_comm_));
 
 		if (!conn_closed) {
 
@@ -7199,8 +7200,8 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_p
 		pone->cli_ser_machine_id_ = pclihost->machine_id_;
 		pone->cli_related_listen_id_ = cli_related_listen_id;
 		pone->cli_madhava_id_ = gmadhava_id_;
-
-
+		std::memcpy(pone->cli_comm_, cli_comm, sizeof(pone->cli_comm_));
+		
 		if (!conn_closed) {
 			auto 			[it, success] = parclimap.try_emplace(std::move(cli_shr_host), parclivecarena);
 			auto 			& parclivec = it->second;
@@ -7289,7 +7290,7 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 	bool				conn_closed, tcupdated = false;
 	auto				& cunknown = prawpartha->get_curr_unknown_locked(tsec_start, true /* reset_old */);
 	
-	if (prawpartha->tconnlistensec_ < (int64_t)tsec_start - 60) {
+	if (prawpartha->tconnlistensec_ < (int64_t)tsec_start - 90) {
 		prawpartha->connlistenmap_.clear();
 		prawpartha->connclientmap_.clear();
 		prawpartha->connpeerarena_.reset();
@@ -8861,21 +8862,22 @@ void MCONN_HANDLER::PARTHA_INFO::handle_unknown_conns(bool is_multi_madhava) noe
 	try {
 		SCOPE_GY_MUTEX			scopelock(connlistenmutex_);
 
-		int				shyoff = is_multi_madhava ? 40 : 20;
-		int				nc = 0, nl = 0;
+		int				shyoff = is_multi_madhava ? 70 : 40;
+		int				nc = 0, nl = 0, ni = 0;
 		time_t				tcurr = time(nullptr);
 		const auto			[tstart, slot] = get_unknown_slot(tcurr - shyoff);
-		time_t				tminstart = tstart - 30;
+		time_t				tminstart = tstart - 60;
 
 		for (uint8_t i = 0; i < MAX_UNKNOWN_MAPS; ++i) {
 			auto			& curr = unknownmaps_[i];
 
 			if (curr.tstartunknown_ < tminstart) {
+				ni++;
 				curr.reset_locked(0L);
 				continue;
 			}	
 			
-			if (curr.tstartunknown_ > tstart) {
+			if (curr.tstartunknown_ >= tstart) {
 				break;
 			}	
 				
@@ -8924,12 +8926,14 @@ void MCONN_HANDLER::PARTHA_INFO::handle_unknown_conns(bool is_multi_madhava) noe
 
 		}
 
-		if (nc + nl > 0) {
-			tconnlistensec_ = tcurr;
+		if (nc + nl + ni > 0) {
+			if (nc + nl > 0) {
+				tconnlistensec_ = tcurr;
+			}
 		
-			DEBUGEXECN(10, 
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Partha %s : Handled %d Closed Client Conns and %d Closed Listener Conns for active conns\n",
-					hostname_, nc, nl);
+			DEBUGEXECN(1, 
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Partha %s : Handled Unresolved %d Closed Client Conns and %d Closed Listener Conns for active conns : Ignored %d slots\n",
+					hostname_, nc, nl, ni);
 			);	
 		}
 	}
