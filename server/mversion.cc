@@ -6,7 +6,7 @@
 namespace gyeeta {
 namespace madhava {
 
-const char *		gversion = "0.4.0";
+const char *		gversion = "0.4.1";
 
 const char		gcopyright[] = "Copyright 2023 - present by Exact Solutions, Inc.";
 
@@ -20,6 +20,7 @@ uint32_t		gmin_node_version 	= get_version_from_string("0.2.0", 3);
  * 
  *	Version		Date		Description
  *
+ *	0.4.1		
  *	0.4.0		Apr 27, 2023	Handling short lived connections and Delay settings
  *	0.3.1		Mar 24, 2023	Service Capture redundancy changes
  *	0.3.0		Mar 15, 2023	Svc Cluster Group enhancements
