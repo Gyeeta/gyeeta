@@ -1232,6 +1232,7 @@ QUERY_OPTIONS::get_custom_aggr_columns(SUBSYS_CLASS_E subsys, const JSON_DB_MAPP
 				pcolarr[npostcol].numtype	= NUM_INT64;
 
 				dbinnerarr[nincol].dbexpr 	= "count(*)::bigint as inrecs";
+				dbinnerarr[nincol].dbfieldtype 	= "bigint";
 				dbouterarr[noutcol].dbexpr 	= "sum(inrecs)::bigint as inrecs";
 
 				is_inrecs 			= true;
