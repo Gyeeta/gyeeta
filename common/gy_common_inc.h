@@ -11837,6 +11837,9 @@ public :
 			if (fd_ < 0) {
 				savederrno_ = errno;
 			}	
+		}
+		else {
+			output_fd = -1;
 		}	
 	}
 

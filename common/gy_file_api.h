@@ -131,6 +131,8 @@ char * 		read_file_to_alloc_buffer(const char *pfilename, size_t *preadsize, siz
 // Specify read_syscall_till_err as false in case reads can be less than max_readlen and a single read call is sufficient
 ssize_t 	read_file_to_buffer(const char *pfilename, void *buf, size_t max_readlen, int dir_fd = -1, bool read_syscall_till_err = true) noexcept; 
 
+bool		write_string_to_file(const char *pinput, size_t szin, const char *outfilename, int flags = O_CREAT | O_WRONLY, mode_t mode = 0640) noexcept;
+
 void 		gy_host_to_nw_bo(void *pd, void *ps, int size, int is_little_endian) noexcept;
 void 		gy_nw_to_host_bo(void *pd, void *ps, int size, int is_little_endian) noexcept;
 

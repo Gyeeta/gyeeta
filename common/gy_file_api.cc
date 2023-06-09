@@ -3079,6 +3079,26 @@ try1 :
 	return bytes;
 }	
 
+bool write_string_to_file(const char *pinput, size_t szin, const char *outfilename, int flags, mode_t mode) noexcept
+{
+	int			ofd, olderrno;
+	ssize_t			sret;
+	SCOPE_FD		sfd(outfilename, flags | O_WRONLY, ofd, mode);
+
+	if (ofd < 0) {
+		return false;
+	}	
+
+	sret = gy_writebuffer(ofd, pinput, szin);
+
+	if (sret != (ssize_t)szin) {
+		return false;
+	}
+
+	return true;
+}
+
+
 std::string & string_delete_char(std::string & str, char c)
 {
 	str.erase(std::remove(str.begin(), str.end(), c), str.end());

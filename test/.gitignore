@@ -55,6 +55,7 @@ test_bufcache
 test_pg1
 test_postgres_qry
 test_postgres_insert
+test_postgres_exec
 test_filterparse
 test_re2
 test_tinyregex
