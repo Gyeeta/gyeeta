@@ -5,6 +5,11 @@ if [ -z "$1" ]; then
 	exit 1
 fi	
 
+if [ ! -d ./install/partha ]; then
+	echo -e "\n\nERROR : Could not find ./install/partha dir. Please run from gyeeta install dir...\n"
+	exit 1
+fi
+
 set -x 
 
 ODIR="$1"

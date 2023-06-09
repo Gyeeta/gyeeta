@@ -13,7 +13,7 @@ umask 0006
 DNAME=`dirname $0 2> /dev/null`
 
 if [ $? -eq 0 ]; then
-	cd $DNAME
+	cd $DNAME/..
 	CURRDIR=`pwd`
 fi
 
