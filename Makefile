@@ -27,5 +27,5 @@ test:
 	$(MAKE) -C $(PWD)/test ciprof 
 
 tags:	
-	$(shell set -x; rm -f ./tags 2> /dev/null; find `pwd` $(BCCPATH) \( -name \*.c -o -name \*.h -o -name \*.cc -o -name \*.cpp -o -name \*.C -o -name \*.cxx -o -name \*.H -o -name \*.hpp -o -name \*.hh -o -name \*.hxx -o -name \*.py -o -name \*.java -o -name \*.go -o -name \*.lua -o -name \*.rs -o -name \*.swift -o -name \*.php -o -name \*.sh -o -name \*.bash \) -a -type f | ctags -a --sort=yes -L-)
+	$(shell set -x; rm -f ./tags 2> /dev/null; find `pwd` $(BCC_BASE_DIR) $(LIBBPF_DIR) \( -name \*.c -o -name \*.h -o -name \*.cc -o -name \*.cpp -o -name \*.C -o -name \*.cxx -o -name \*.H -o -name \*.hpp -o -name \*.hh -o -name \*.hxx -o -name \*.py -o -name \*.java -o -name \*.go -o -name \*.lua -o -name \*.rs -o -name \*.swift -o -name \*.php -o -name \*.sh -o -name \*.bash \) -a -type f | ctags -a --sort=yes -L-)
 	@echo

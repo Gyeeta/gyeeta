@@ -131,6 +131,16 @@ static void tcpv6_idle_cb() noexcept
 
 bool host_btf_enabled(bool check_module) noexcept;
 
+class GY_EBPF_ISRA
+{
+public :	
+	std::unordered_map<std::string, std::string>	map_isra_;
+
+	GY_EBPF_ISRA();
+
+	const char * get_isra_name(const char *funcname) const noexcept;
+};	
+
 
 } // namespace gyeeta
 

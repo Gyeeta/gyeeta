@@ -144,6 +144,53 @@ bool host_btf_enabled(bool check_module) noexcept
 	return (is_vmlinux && is_mod);
 }	
 
+GY_EBPF_ISRA::GY_EBPF_ISRA()
+{
+	SCOPE_FILE			sf("/proc/kallsyms", "r");
+	FILE 				*pfp = sf.get();
+	char 				*pline = nullptr;
+	size_t 				len = 0;
+	ssize_t				nread;
+	int				n;
+	char				addr[32], type[16], func[256], key[sizeof(func)], *ptmp;
+
+	GY_SCOPE_EXIT {
+		if (pline) free(pline);
+	};
+
+	while ((nread = getline(&pline, &len, pfp)) != -1) {
+		n = sscanf(pline, "%31s %15s %255s", addr, type, func);
+
+		if (n == 3) {
+			ptmp = strstr(func, ".isra");
+			if (ptmp) {
+				std::memcpy(key, func, ptmp - func);
+				key[ptmp - func] = 0;
+
+				map_isra_.try_emplace(key, func);
+			}	
+		}	
+	}
+
+	if (map_isra_.size() > 0) {
+		INFOPRINT("ebpf : Found %lu functions with isra compiler generations\n", map_isra_.size());
+	}	
+
+}	
 	
+const char * GY_EBPF_ISRA::get_isra_name(const char *funcname) const noexcept
+{
+	const auto			it = map_isra_.find(funcname);
+
+	if (it != map_isra_.end()) {
+		return it->second.data();
+	}	
+
+	return nullptr;
+}
+
+
+
+
 } // namespace gyeeta
 

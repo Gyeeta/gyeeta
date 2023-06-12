@@ -96,8 +96,6 @@ GY_BTF_INIT::GY_BTF_INIT(libbpf_print_fn_t printfn)
 
 	LIBBPF_OPTS(bpf_object_open_opts, open_opts);
 	
-	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
-
 	if (printfn == nullptr) {
 		printfn = dflt_print_fn;
 	}	

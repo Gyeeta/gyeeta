@@ -481,6 +481,14 @@ static bool gy_same_string(const char *str1, size_t slen1, const char *str2, siz
 	_onum;											\
 })
 
+// Use to avoid nullptr string
+#define STR_OR_EMPTY(_str)									\
+({												\
+	const char 		*_tstr = (_str), _ostr = (_tstr != nullptr ? _tstr : "");	\
+	_ostr;											\
+})
+
+
 #define	mo_relaxed		std::memory_order_relaxed
 #define	mo_acquire		std::memory_order_acquire
 #define	mo_release		std::memory_order_release

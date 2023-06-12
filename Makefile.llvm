@@ -1,8 +1,7 @@
 
-BCC_BASE_DIR := /opt/lib_install/bcc_llvm/
-BCCPATH = $(BCC_BASE_DIR)/bcc_include
-BCCCLANGPATH = $(BCC_BASE_DIR)/clang_build
-BCCLLVMLIBPATH = $(BCC_BASE_DIR)/llvm_build/install/lib/
+BCC_BASE_DIR := /opt/lib_install/bcc_llvm
+BCCLIBDIR = $(BCC_BASE_DIR)/bcclib/
+LLVMPATH = /usr/lib/llvm-12/
 
 LIBBPF_DIR := /opt/lib_install/libbpf_install/
 

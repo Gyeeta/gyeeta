@@ -260,6 +260,8 @@ void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 {
 	INFOPRINT("Starting eBPF BCC probes...\n");
 
+	std::optional<GY_EBPF_ISRA>		isra;
+
 	auto res1 = gpbpf->attach_kprobe("tcp_v4_connect", "trace_connect_v4_entry", 0ul, BPF_PROBE_ENTRY);
 	if (res1.code() != 0) {
 		GY_THROW_EXCEPTION("Could not attach to kprobe tcp_v4_connect entry : %s", res1.msg().c_str());
@@ -312,7 +314,22 @@ void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 	
 	auto ns_res = gpbpf->attach_kprobe("create_new_namespaces", "trace_create_ns", 0ul, BPF_PROBE_ENTRY);
 	if (ns_res.code() != 0) {
-		ERRORPRINT("Could not attach to kprobe create_new_namespaces entry (Skipping) : %s\n", ns_res.msg().c_str());
+		const char			*pname;
+
+		if (!isra) {
+			isra.emplace();
+		}	
+
+		pname = isra->get_isra_name("create_new_namespaces");
+		if (pname) {
+			WARNPRINT("Could not attach to kprobe create_new_namespaces entry (Trying with the isra version %s)\n", pname);
+			
+			ns_res = gpbpf->attach_kprobe(pname, "trace_create_ns", 0ul, BPF_PROBE_ENTRY);
+		}	
+
+		if (ns_res.code() != 0) {
+			ERRORPRINT("Could not attach to kprobe create_new_namespaces entry (Skipping) : %s\n", ns_res.msg().c_str());
+		}	
 	}
 	
 	EBPF_PERF_CALLBACK(create_ns_data_t, TCP_SOCK_HANDLER, handle_create_ns_event);

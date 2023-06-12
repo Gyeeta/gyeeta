@@ -142,7 +142,8 @@ GY_EBPF_BASE::GY_EBPF_BASE()
 
 void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 {
-	auto			*psched = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_NO_CATCHUP);
+	auto				*psched = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_NO_CATCHUP);
+	std::optional<GY_EBPF_ISRA>	isra;
 
 	INFOPRINT("Starting eBPF BPF CO-RE probes...\n");
 
@@ -176,7 +177,23 @@ void GY_EBPF::start_ebpf_probes(GY_EBPF_BASE *gpbpf)
 	
 	gpbpf->obj_.get()->links.trace_create_ns = bpf_program__attach_kprobe(gpbpf->obj_.get()->progs.trace_create_ns, false, "create_new_namespaces");
 	if (!gpbpf->obj_.get()->links.trace_create_ns) {
-		PERRORPRINT("Could not attach to kprobe create_new_namespaces entry (Skipping)");
+		const char			*pname;
+
+		if (!isra) {
+			isra.emplace();
+		}	
+
+		pname = isra->get_isra_name("create_new_namespaces");
+		if (pname) {
+			WARNPRINT("Could not attach to kprobe create_new_namespaces entry (Trying with the isra version %s)\n", pname);
+			
+			gpbpf->obj_.get()->links.trace_create_ns = bpf_program__attach_kprobe(gpbpf->obj_.get()->progs.trace_create_ns, false, pname);
+
+		}	
+
+		if (!gpbpf->obj_.get()->links.trace_create_ns) {
+			PERRORPRINT("Could not attach to kprobe create_new_namespaces entry (Skipping kprobe..)");
+		}	
 	}
 
 	EBPF_PERF_CALLBACK(create_ns_data_t, TCP_SOCK_HANDLER, handle_create_ns_event);
