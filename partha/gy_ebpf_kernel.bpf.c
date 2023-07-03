@@ -111,12 +111,31 @@ char LICENSE[] SEC("license") = "GPL";
 
 
 SEC("kprobe/tcp_v4_connect")
-int BPF_KPROBE(trace_connect_v4_entry, struct sock *skp)
+int BPF_KPROBE(trace_connect_v4_entry, struct sock *sk)
 {
 	u64 			pid = bpf_get_current_pid_tgid();
 
 	// stash the sock ptr for lookup on return
-	bpf_map_update_elem(&connectsock, &pid, &skp, 0);
+	bpf_map_update_elem(&connectsock, &pid, &sk, 0);
+
+	return 0;
+}
+
+static int do_trace_connect_v4_return(int ret, struct sock *sk, u64 pid)
+{
+	struct ipv4_tuple_t 	t = {};
+
+	if (!read_ipv4_tuple(&t, sk)) {
+		return 0;
+	}
+
+	struct pid_comm_t 	p = {};
+
+	p.pid_tid 		= pid;
+
+	bpf_get_current_comm(&p.comm, sizeof(p.comm));
+
+	bpf_map_update_elem(&tuplepid_ipv4, &t, &p, 0);
 
 	return 0;
 }
@@ -142,23 +161,23 @@ int BPF_KRETPROBE(trace_connect_v4_return, int ret)
 	}
 
 	// pull in details
-	struct sock 		*skp = *skpp;
-	struct ipv4_tuple_t 	t = {};
+	struct sock 		*sk = *skpp;
 
-	if (!read_ipv4_tuple(&t, skp)) {
+	return do_trace_connect_v4_return(ret, sk, pid);
+}
+
+
+SEC("fexit/tcp_v4_connect")
+int BPF_PROG(fexit_trace_connect_v4_return, struct sock *sk, struct sockaddr *uaddr, int addr_len, int ret)
+{
+	u64 			pid = bpf_get_current_pid_tgid();
+
+	if (!sk) {
 		return 0;
 	}
 
-	struct pid_comm_t 	p = {};
-
-	p.pid_tid 		= pid;
-
-	bpf_get_current_comm(&p.comm, sizeof(p.comm));
-
-	bpf_map_update_elem(&tuplepid_ipv4, &t, &p, 0);
-
-	return 0;
-}
+	return do_trace_connect_v4_return(ret, sk, pid);
+}	
 
 SEC("kprobe/tcp_v6_connect")
 int BPF_KPROBE(trace_connect_v6_entry, struct sock *sk)
@@ -171,29 +190,12 @@ int BPF_KPROBE(trace_connect_v6_entry, struct sock *sk)
 	return 0;
 }
 
-SEC("kretprobe/tcp_v6_connect")
-int BPF_KRETPROBE(trace_connect_v6_return, int ret)
+
+static int do_trace_connect_v6_return(int ret, struct sock *sk, u64 pid)
 {
-	u64 			pid = bpf_get_current_pid_tgid();
-
-	struct sock 		**skpp;
-
-	skpp = bpf_map_lookup_elem(&connectsock_ipv6, &pid);
-	if (skpp == NULL) {
-		return 0;       // missed entry
-	}
-
-	bpf_map_delete_elem(&connectsock_ipv6, &pid);
-
-	if (ret != 0) {
-		return 0;
-	}
-
-	// pull in details
-	struct sock 		*skp = *skpp;
 	struct ipv6_tuple_t 	t = {};
 
-	if (!read_ipv6_tuple(&t, skp)) {
+	if (!read_ipv6_tuple(&t, sk)) {
 		return 0;
 	}
 
@@ -227,8 +229,44 @@ int BPF_KRETPROBE(trace_connect_v6_return, int ret)
 	return 0;
 }
 
-SEC("kprobe/tcp_set_state")
-int BPF_KPROBE(trace_tcp_set_state_entry, struct sock *skp, int state)
+SEC("kretprobe/tcp_v6_connect")
+int BPF_KRETPROBE(trace_connect_v6_return, int ret)
+{
+	u64 			pid = bpf_get_current_pid_tgid();
+
+	struct sock 		**skpp;
+
+	skpp = bpf_map_lookup_elem(&connectsock_ipv6, &pid);
+	if (skpp == NULL) {
+		return 0;       // missed entry
+	}
+
+	bpf_map_delete_elem(&connectsock_ipv6, &pid);
+
+	if (ret != 0) {
+		return 0;
+	}
+
+	// pull in details
+	struct sock 		*sk = *skpp;
+
+	return do_trace_connect_v6_return(ret, sk, pid);
+}
+
+
+SEC("fexit/tcp_v6_connect")
+int BPF_PROG(fexit_trace_connect_v6_return, struct sock *sk, struct sockaddr *uaddr, int addr_len, int ret)
+{
+	u64 			pid = bpf_get_current_pid_tgid();
+
+	if (!sk) {
+		return 0;
+	}
+
+	return do_trace_connect_v6_return(ret, sk, pid);
+}
+
+static int do_trace_tcp_set_state_entry(void *ctx, struct sock *sk, int state)
 {
 	if (state != TCP_ESTABLISHED && state != TCP_CLOSE) {
 		return 0;
@@ -239,20 +277,20 @@ int BPF_KPROBE(trace_tcp_set_state_entry, struct sock *skp, int state)
 
 	u8 			oldstate;
 	
-	oldstate = BPF_CORE_READ(skp, __sk_common.skc_state);
+	oldstate = BPF_CORE_READ(sk, __sk_common.skc_state);
 
 	if (oldstate == TCP_SYN_RECV || oldstate == TCP_NEW_SYN_RECV) {
 		return 0;
 	}
 
-	family = BPF_CORE_READ(skp, __sk_common.skc_family);
+	family = BPF_CORE_READ(sk, __sk_common.skc_family);
 
 	if (family == AF_INET) {
 		ipver = 4;
 		
 		struct ipv4_tuple_t 	t = {};
 
-		if (!read_ipv4_tuple(&t, skp)) {
+		if (!read_ipv4_tuple(&t, sk)) {
 			return 0;
 		}
 
@@ -295,7 +333,7 @@ int BPF_KPROBE(trace_tcp_set_state_entry, struct sock *skp, int state)
 
 		struct ipv6_tuple_t 	t = {};
 
-		if (!read_ipv6_tuple(&t, skp)) {
+		if (!read_ipv6_tuple(&t, sk)) {
 			return 0;
 		}
 
@@ -371,11 +409,22 @@ sendipv6 :
 	return 0;
 }
 
-SEC("kprobe/tcp_close")
-int BPF_KPROBE(trace_close_entry, struct sock *skp)
+SEC("kprobe/tcp_set_state")
+int BPF_KPROBE(trace_tcp_set_state_entry, struct sock *sk, int state)
+{
+	return do_trace_tcp_set_state_entry(ctx, sk, state);
+}
+
+SEC("fentry/tcp_set_state")
+int BPF_PROG(fentry_trace_tcp_set_state_entry, struct sock *sk, int state)
+{
+	return do_trace_tcp_set_state_entry(ctx, sk, state);
+}
+
+static int do_trace_close_entry(void *ctx, struct sock *sk)
 {
 	u64 			pid = bpf_get_current_pid_tgid();
-	u8 			oldstate = BPF_CORE_READ(skp, __sk_common.skc_state);
+	u8 			oldstate = BPF_CORE_READ(sk, __sk_common.skc_state);
 
 	// Don't generate close events for connections that were never
 	// established in the first place.
@@ -386,19 +435,19 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 	u8 			ipver = 0;
 	u16			family = 0;
 
-	family = BPF_CORE_READ(skp, __sk_common.skc_family); 
+	family = BPF_CORE_READ(sk, __sk_common.skc_family); 
 
 	if (family == AF_INET) {
 		ipver = 4;
 
 		struct ipv4_tuple_t 	t = {};
 
-		if (!read_ipv4_tuple(&t, skp)) {
+		if (!read_ipv4_tuple(&t, sk)) {
 			bpf_map_delete_elem(&tuplepid_ipv4, &t);
 			return 0;
 		}
 
-		struct tcp_sock		*ptcp = (struct tcp_sock *)skp;
+		struct tcp_sock		*ptcp = (struct tcp_sock *)sk;
 
 		struct tcp_ipv4_event_t evt4 = {};
 
@@ -406,7 +455,7 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 		evt4.bytes_received 	= BPF_CORE_READ(ptcp, bytes_received);
 		evt4.bytes_acked	= BPF_CORE_READ(ptcp, bytes_acked);
 
-		if (BPF_CORE_READ(skp, sk_max_ack_backlog) > 0) {
+		if (BPF_CORE_READ(sk, sk_max_ack_backlog) > 0) {
 			evt4.type 	= TCP_EVENT_TYPE_CLOSE_SER;
 		}
 		else {
@@ -431,7 +480,7 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 
 		struct ipv6_tuple_t 	t = {};
 
-		if (!read_ipv6_tuple(&t, skp)) {
+		if (!read_ipv6_tuple(&t, sk)) {
 			bpf_map_delete_elem(&tuplepid_ipv6, &t);
 			return 0;
 		}
@@ -450,7 +499,7 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 			t4.dport	= t.dport;
 			t4.netns	= t.netns;
 
-			struct tcp_sock		*ptcp = (struct tcp_sock *)skp;
+			struct tcp_sock		*ptcp = (struct tcp_sock *)sk;
 
 			struct tcp_ipv4_event_t evt4 = {};
 
@@ -458,7 +507,7 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 			evt4.bytes_received 	= BPF_CORE_READ(ptcp, bytes_received);
 			evt4.bytes_acked	= BPF_CORE_READ(ptcp, bytes_acked);
 
-			if (BPF_CORE_READ(skp, sk_max_ack_backlog) > 0) {
+			if (BPF_CORE_READ(sk, sk_max_ack_backlog) > 0) {
 				evt4.type 	= TCP_EVENT_TYPE_CLOSE_SER;
 			}
 			else {
@@ -482,7 +531,7 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 			return 0;
 		}	
 
-		struct tcp_sock		*ptcp = (struct tcp_sock *)skp;
+		struct tcp_sock		*ptcp = (struct tcp_sock *)sk;
 
 		struct tcp_ipv6_event_t evt6 = {};
 
@@ -490,7 +539,7 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 		evt6.bytes_received 	= BPF_CORE_READ(ptcp, bytes_received);
 		evt6.bytes_acked	= BPF_CORE_READ(ptcp, bytes_acked);
 
-		if (BPF_CORE_READ(skp, sk_max_ack_backlog) > 0) {
+		if (BPF_CORE_READ(sk, sk_max_ack_backlog) > 0) {
 			evt6.type 	= TCP_EVENT_TYPE_CLOSE_SER;
 		}
 		else {
@@ -514,8 +563,19 @@ int BPF_KPROBE(trace_close_entry, struct sock *skp)
 	return 0;
 }
 
-SEC("kretprobe/inet_csk_accept")
-int BPF_KRETPROBE(trace_accept_return, struct sock *newsk)
+SEC("kprobe/tcp_close")
+int BPF_KPROBE(trace_close_entry, struct sock *sk)
+{
+	return do_trace_close_entry(ctx, sk);
+}
+
+SEC("fentry/tcp_close")
+int BPF_PROG(fentry_trace_close_entry, struct sock *sk)
+{
+	return do_trace_close_entry(ctx, sk);
+}
+
+static int do_trace_accept_return(void *ctx, struct sock *newsk)
 {
 	u64 			pid = bpf_get_current_pid_tgid();
 
@@ -628,6 +688,20 @@ int BPF_KRETPROBE(trace_accept_return, struct sock *newsk)
 	return 0;
 }
 
+SEC("kretprobe/inet_csk_accept")
+int BPF_KRETPROBE(trace_accept_return, struct sock *newsk)
+{
+	return do_trace_accept_return(ctx, newsk);
+}	
+
+
+SEC("fexit/inet_csk_accept")
+int BPF_PROG(fexit_trace_accept_return, struct sock *sk, int flags, int *err, bool kern, struct sock *newsk)
+{
+	return do_trace_accept_return(ctx, newsk);
+}	
+
+
 SEC("kprobe/create_new_namespaces")
 int BPF_KPROBE(trace_create_ns, u64 flags)
 {
@@ -695,9 +769,9 @@ int BPF_KPROBE(trace_inet_listen, struct socket *sock, int backlog)
 	return 0;
 }	
 
-static int do_trace_ipv4_xmit(void *ctx, struct sock *skp)
+static int do_trace_ipv4_xmit(void *ctx, struct sock *sk)
 {
-	struct tcp_sock			*ptcp = (struct tcp_sock *)skp;
+	struct tcp_sock			*ptcp = (struct tcp_sock *)sk;
 	u64				bytes_received = 0;
 	u32				sk_max_ack_backlog = 0, lrcvtime = 0, lsndtime = 0, rcv_tstamp = 0;
 
@@ -709,12 +783,12 @@ static int do_trace_ipv4_xmit(void *ctx, struct sock *skp)
 	/*
 	 * Only process xmits of listened sockets
 	 */
-	BPF_CORE_READ_INTO(&sk_max_ack_backlog, skp, sk_max_ack_backlog);
+	BPF_CORE_READ_INTO(&sk_max_ack_backlog, sk, sk_max_ack_backlog);
 	if (sk_max_ack_backlog == 0) {
 		return 0;
 	}	
 
-	if (!check_family(skp, AF_INET)) {
+	if (!check_family(sk, AF_INET)) {
 		return 0;
 	}	
 
@@ -744,7 +818,7 @@ static int do_trace_ipv4_xmit(void *ctx, struct sock *skp)
 
 	struct tcp_ipv4_resp_event_t evt4 = {};
 
-	if (!read_ipv4_tuple(&evt4.tup, skp)) {
+	if (!read_ipv4_tuple(&evt4.tup, sk)) {
 		return 0;
 	}
 
@@ -757,21 +831,21 @@ static int do_trace_ipv4_xmit(void *ctx, struct sock *skp)
 }
 
 SEC("kprobe/__ip_queue_xmit")
-int BPF_KPROBE(trace_ipv4_xmit, struct sock *skp)
+int BPF_KPROBE(trace_ipv4_xmit, struct sock *sk)
 {
-	return do_trace_ipv4_xmit(ctx, skp);
+	return do_trace_ipv4_xmit(ctx, sk);
 }	
 
 SEC("fentry/__ip_queue_xmit")
-int BPF_PROG(fentry_trace_ipv4_xmit, struct sock *skp)
+int BPF_PROG(fentry_trace_ipv4_xmit, struct sock *sk)
 {
-	return do_trace_ipv4_xmit(ctx, skp);
+	return do_trace_ipv4_xmit(ctx, sk);
 }	
 
 
-static int do_trace_ipv6_xmit(void *ctx, struct sock *skp)
+static int do_trace_ipv6_xmit(void *ctx, struct sock *sk)
 {
-	struct tcp_sock			*ptcp = (struct tcp_sock *)skp;
+	struct tcp_sock			*ptcp = (struct tcp_sock *)sk;
 	u64				bytes_received = 0;
 	u32				sk_max_ack_backlog = 0, lrcvtime = 0, lsndtime = 0, rcv_tstamp = 0;
 
@@ -783,12 +857,12 @@ static int do_trace_ipv6_xmit(void *ctx, struct sock *skp)
 	/*
 	 * Only process xmits of listened sockets
 	 */
-	BPF_CORE_READ_INTO(&sk_max_ack_backlog, skp, sk_max_ack_backlog);
+	BPF_CORE_READ_INTO(&sk_max_ack_backlog, sk, sk_max_ack_backlog);
 	if (sk_max_ack_backlog == 0) {
 		return 0;
 	}	
 
-	if (!check_family(skp, AF_INET6)) {
+	if (!check_family(sk, AF_INET6)) {
 		return 0;
 	}	
 
@@ -818,7 +892,7 @@ static int do_trace_ipv6_xmit(void *ctx, struct sock *skp)
 
 	struct tcp_ipv6_resp_event_t evt6 = {};
 
-	if (!read_ipv6_tuple(&evt6.tup, skp)) {
+	if (!read_ipv6_tuple(&evt6.tup, sk)) {
 		return 0;
 	}
 
@@ -829,7 +903,7 @@ static int do_trace_ipv6_xmit(void *ctx, struct sock *skp)
 		u8				*pipbuf = (u8 *)&evt6.tup.saddr, *pipbuf2 = (u8 *)&evt6.tup.daddr;
 		struct tcp_ipv4_resp_event_t 	evt4 = {};
 
-		read_ipv4_tuple(&evt4.tup, skp);
+		read_ipv4_tuple(&evt4.tup, sk);
 
 		__builtin_memcpy(&evt4.tup.saddr, pipbuf + 12, 4);
 		__builtin_memcpy(&evt4.tup.daddr, pipbuf2 + 12, 4);
@@ -851,15 +925,15 @@ static int do_trace_ipv6_xmit(void *ctx, struct sock *skp)
 }
 
 SEC("kprobe/inet6_csk_xmit")
-int BPF_KPROBE(trace_ipv6_xmit, struct sock *skp)
+int BPF_KPROBE(trace_ipv6_xmit, struct sock *sk)
 {
-	return do_trace_ipv6_xmit(ctx, skp);
+	return do_trace_ipv6_xmit(ctx, sk);
 }	
 
 SEC("fentry/inet6_csk_xmit")
-int BPF_PROG(fentry_trace_ipv6_xmit, struct sock *skp)
+int BPF_PROG(fentry_trace_ipv6_xmit, struct sock *sk)
 {
-	return do_trace_ipv6_xmit(ctx, skp);
+	return do_trace_ipv6_xmit(ctx, sk);
 }	
 
 

@@ -127,10 +127,22 @@ GY_EBPF_BASE::GY_EBPF_BASE()
 			GY_THROW_SYS_EXCEPTION("Failed to attach fentry bpf probe for inet6_csk_xmit");
 		}	
 
+		bpf_program__set_autoload(obj_.get()->progs.trace_connect_v4_entry, false);
+		bpf_program__set_autoload(obj_.get()->progs.trace_connect_v4_return, false);
+		bpf_program__set_autoload(obj_.get()->progs.trace_connect_v6_entry, false);
+		bpf_program__set_autoload(obj_.get()->progs.trace_connect_v6_return, false);
+		bpf_program__set_autoload(obj_.get()->progs.trace_tcp_set_state_entry, false);
+		bpf_program__set_autoload(obj_.get()->progs.trace_close_entry, false);
+		bpf_program__set_autoload(obj_.get()->progs.trace_accept_return, false);
 		bpf_program__set_autoload(obj_.get()->progs.trace_ipv4_xmit, false);
 		bpf_program__set_autoload(obj_.get()->progs.trace_ipv6_xmit, false);
 	} 
 	else {
+		bpf_program__set_autoload(obj_.get()->progs.fexit_trace_connect_v4_return, false);
+		bpf_program__set_autoload(obj_.get()->progs.fexit_trace_connect_v6_return, false);
+		bpf_program__set_autoload(obj_.get()->progs.fentry_trace_tcp_set_state_entry, false);
+		bpf_program__set_autoload(obj_.get()->progs.fentry_trace_close_entry, false);
+		bpf_program__set_autoload(obj_.get()->progs.fexit_trace_accept_return, false);
 		bpf_program__set_autoload(obj_.get()->progs.fentry_trace_ipv4_xmit, false);
 		bpf_program__set_autoload(obj_.get()->progs.fentry_trace_ipv6_xmit, false);
 	}
