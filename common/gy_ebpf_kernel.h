@@ -15,10 +15,11 @@ namespace gyeeta {
 
 #endif				// __cplusplus && __GLIBCXX__
 
-typedef uint8_t 		u8;
-typedef uint16_t 		u16;
-typedef uint32_t 		u32;
-typedef uint64_t 		u64;
+#ifndef				BCC_SEC 
+
+#include			"gy_ebpf_bpf_common.h"
+
+#endif
 
 enum {
 	TCP_EVENT_TYPE_CONNECT	= 1,
@@ -65,24 +66,6 @@ struct tcp_ipv6_event_t
 	u16 			dport;
 	u8 			ipver;
 	u8 			type;
-};
-
-struct ipv4_tuple_t 
-{
-	u32 			saddr;
-	u32 			daddr;
-	u32 			netns;
-	u16 			sport;
-	u16 			dport;
-};
-
-struct ipv6_tuple_t 
-{
-	unsigned __int128 	saddr;
-	unsigned __int128 	daddr;
-	u32 			netns;
-	u16 			sport;
-	u16 			dport;
 };
 
 struct pid_comm_t 

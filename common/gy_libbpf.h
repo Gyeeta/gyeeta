@@ -161,10 +161,15 @@ public :
 
 	int poll(int timeout_ms, bool *pis_more_data = nullptr) const noexcept
 	{
-		return ring_buffer__poll_more(pbufpool_, timeout_ms, pis_more_data);
+		/*
+		 * We do not use the pis_more_data as unlike perf pool, only a single epoll fd is polled. 
+		 */
+		if (pis_more_data) *pis_more_data = false;
+
+		return ring_buffer__poll(pbufpool_, timeout_ms);
 	}	
 
-	// For compatability with bcc
+	// For compatability with perf buffer pool
 	int poll(int timeout_ms, bool *pis_more_data, pid_t unused) const noexcept
 	{
 		return this->poll(timeout_ms, pis_more_data);

@@ -8,11 +8,6 @@
 
 #include		"tcpresponse_bpf.h"
 
-#ifndef 		AF_INET
-#define 		AF_INET		2	/* Internet IP Protocol 	*/
-#define 		AF_INET6	10	/* IP version 6			*/
-#endif
-
 struct {
 	__uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
 	__uint(key_size, sizeof(u32));
@@ -33,76 +28,6 @@ struct {
 } config_resp SEC(".maps");
 
 char LICENSE[] SEC("license") = "GPL";
-
-static int read_ipv4_tuple(struct ipv4_tuple_t *tuple, struct sock *skp)
-{
-	u32 			net_ns_inum = 0, saddr, daddr;
-	struct inet_sock 	*sockp;
-	u16 			sport, dport;
-
-	saddr = BPF_CORE_READ(skp, __sk_common.skc_rcv_saddr);
-	daddr = BPF_CORE_READ(skp, __sk_common.skc_daddr);
-
-	sockp = (struct inet_sock *)skp;
-
-	BPF_CORE_READ_INTO(&sport, sockp, inet_sport);
-	BPF_CORE_READ_INTO(&dport, skp, __sk_common.skc_dport);
-
-	if (bpf_core_field_exists(skp->__sk_common.skc_net)) {
-		BPF_CORE_READ_INTO(&net_ns_inum, skp, __sk_common.skc_net.net, ns.inum);
-	}
-
-	tuple->saddr = saddr;
-	tuple->daddr = daddr;
-	tuple->sport = sport;
-	tuple->dport = dport;
-	tuple->netns = net_ns_inum;
-	
-	// if addresses or ports are 0, ignore
-	if (saddr == 0 || daddr == 0 || sport == 0 || dport == 0) {
-		return 0;
-	}
-
-	return 1;
-}
-
-static int read_ipv6_tuple(struct ipv6_tuple_t *tuple, struct sock *skp)
-{
-	u32 			net_ns_inum = 0;
-	struct inet_sock 	*sockp = (struct inet_sock *)skp;
-	u16 			sport;
-	u16 			dport;
-
-	BPF_CORE_READ_INTO(&sport, sockp, inet_sport);
-	BPF_CORE_READ_INTO(&dport, skp, __sk_common.skc_dport);
-
-	if (bpf_core_field_exists(skp->__sk_common.skc_net)) {
-		BPF_CORE_READ_INTO(&net_ns_inum, skp, __sk_common.skc_net.net, ns.inum);
-	}
-
-	BPF_CORE_READ_INTO(&tuple->saddr, skp, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
-	BPF_CORE_READ_INTO(&tuple->daddr, skp, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
-
-	tuple->sport = sport;
-	tuple->dport = dport;
-	tuple->netns = net_ns_inum;
-
-	// if addresses or ports are 0, ignore
-	if (tuple->saddr == 0 || tuple->daddr == 0 || sport == 0 || dport == 0) {
-		return 0;
-	}
-
-	return 1;
-}
-
-static inline bool check_family(struct sock *sk, u16 expected_family) 
-{
-	u16 			family;
-	
-	BPF_CORE_READ_INTO(&family, sk, __sk_common.skc_family);
-
-	return (family == expected_family);
-}
 
 static int do_trace_ipv4_xmit(void *ctx, struct sock *skp)
 {
