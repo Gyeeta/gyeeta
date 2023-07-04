@@ -21,6 +21,11 @@
 #define 		CLONE_NEWIPC		0x08000000	/* New ipc namespace */
 #define 		CLONE_NEWPID		0x20000000	/* New pid namespace */
 #define 		CLONE_NEWNET		0x40000000	/* New network namespace */
+
+#endif
+
+#ifndef 		CLONE_NEWCGROUP
+
 #define 		CLONE_NEWCGROUP		0x02000000	/* New cgroup namespace */
 
 #endif
