@@ -30,12 +30,13 @@ namespace gyeeta {
  * calls.
  * 
  * For logging as well as extra processing, use the CUSTOM_* macros passing a non-zero _cust_type to enable the
- * custom handler calls.
+ * custom handler calls. The _cust_type needs to be non-zero for the custom handler to be called. Interpretation of 
+ * _cust_type values is left upto the user's callback function.
  * 
  * Users can specify different custom handler per call by directly using the send_print_msg() specifying the 
  * callback handler with optional args and non-zero cust_type_
  *
- * XXX The format specifier for all macro calls needs to be a string literal or else will not compile
+ * XXX The format specifier for all macro calls needs to be a string literal or else will not compile. 
  *
  * Max print message size for offload prints is limited to ~ 8KB. Larger messages will be truncated.
  *
@@ -53,7 +54,12 @@ namespace gyeeta {
 			MY_CLASS_C	*pthis = static_cast<MY_CLASS_C *>(arg1);
 
 			if (pelem->cust_type_ > 1) {
-				pthis->send_remote("Received Log Msg [%s.%06lu] : %s\n", time_buf, pelem->tv_.tv_usec, printbuf);
+				char			tbuf[1024];
+				int			n;
+
+				n = GY_SAFE_SNPRINTF(tbuf, sizeof(tbuf) - 1, "Received Log Msg [%s.%06lu] : %s\n", time_buf, pelem->tv_.tv_usec, printbuf);
+
+				pthis->send_remote(tbuf, n);
 			}	
 		}, this, nullptr);
 	

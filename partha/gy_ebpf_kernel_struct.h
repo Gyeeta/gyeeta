@@ -43,6 +43,21 @@ struct ipv6_tuple_t
 	u16 			dport;
 };
 
+#if				defined (__clang__) && defined (__BPF__)
+
+// TCP Flags 
+
+#define				GY_TH_FIN		0x01
+#define				GY_TH_SYN		0x02
+#define				GY_TH_RST		0x04
+#define				GY_TH_PUSH		0x08
+#define				GY_TH_ACK		0x10
+#define				GY_TH_URG		0x20
+#define				GY_TH_ECE		0x40
+#define				GY_TH_CWR		0x80
+
+#endif
+
 #if				defined (__clang__) && defined (__BPF__) && !defined (__BCC__)
 
 static int read_ipv4_tuple(struct ipv4_tuple_t *tuple, struct sock *skp)

@@ -121,7 +121,7 @@ int BPF_KPROBE(trace_connect_v4_entry, struct sock *sk)
 	u64 			pid = bpf_get_current_pid_tgid();
 
 	// stash the sock ptr for lookup on return
-	bpf_map_update_elem(&connectsock, &pid, &sk, 0);
+	bpf_map_update_elem(&connectsock, &pid, &sk, BPF_ANY);
 
 	return 0;
 }
@@ -140,7 +140,7 @@ static int do_trace_connect_v4_return(int ret, struct sock *sk, u64 pid)
 
 	bpf_get_current_comm(&p.comm, sizeof(p.comm));
 
-	bpf_map_update_elem(&tuplepid_ipv4, &t, &p, 0);
+	bpf_map_update_elem(&tuplepid_ipv4, &t, &p, BPF_ANY);
 
 	return 0;
 }
@@ -190,7 +190,7 @@ int BPF_KPROBE(trace_connect_v6_entry, struct sock *sk)
 	u64 			pid = bpf_get_current_pid_tgid();
 
 	// stash the sock ptr for lookup on return
-	bpf_map_update_elem(&connectsock_ipv6, &pid, &sk, 0);
+	bpf_map_update_elem(&connectsock_ipv6, &pid, &sk, BPF_ANY);
 
 	return 0;
 }
@@ -224,12 +224,12 @@ static int do_trace_connect_v6_return(int ret, struct sock *sk, u64 pid)
 		t4.dport	= t.dport;
 		t4.netns	= t.netns;
 
-		bpf_map_update_elem(&tuplepid_ipv4, &t4, &p, 0);
+		bpf_map_update_elem(&tuplepid_ipv4, &t4, &p, BPF_ANY);
 
 		return 0;
 	}	
 
-	bpf_map_update_elem(&tuplepid_ipv6, &t, &p, 0);
+	bpf_map_update_elem(&tuplepid_ipv6, &t, &p, BPF_ANY);
 
 	return 0;
 }

@@ -308,8 +308,7 @@ int main(int argc, char **argv)
 
 		auto nsproxy_res = gpbpf->attach_kprobe("create_new_namespaces", "trace_create_ns", 0ul, BPF_PROBE_ENTRY);
 		if (nsproxy_res.code() != 0) {
-			ERRORPRINT("Could not attach to kprobe create_new_namespaces entry : %s\n", nsproxy_res.msg().c_str());
-			return -1;
+			WARNPRINT("Could not attach to kprobe create_new_namespaces entry : %s\n", nsproxy_res.msg().c_str());
 		}
 		
 		auto open_nsproc = gpbpf->open_perf_buffer("nsproxy_event", print_nsproxy_event, nullptr, nullptr, 8);

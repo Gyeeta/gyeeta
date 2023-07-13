@@ -537,7 +537,7 @@ static constexpr T gy_align_down(T nelem, U nalign) noexcept
 {
 	static_assert(std::is_integral<U>::value, "Integral data type required.");
 
-	return ((nelem / nalign) * nalign);
+	return ((nelem / NUM_OR_1(nalign)) * nalign);
 }
 
 template <typename T, typename U = T>
@@ -564,7 +564,7 @@ static constexpr uint64_t gy_align_up_2(uint64_t nsize, uint64_t nalign) noexcep
 [[gnu::const]] 
 static constexpr uint64_t gy_align_down_2(uint64_t nsize, uint64_t nalign) noexcept
 {
-	assert(true == gy_is_power_of_2(nalign));
+	assert(true == gy_is_power_of_2(nalign) && nalign != 0);
 
 	return nsize & ~(nalign - 1);
 }
@@ -1828,6 +1828,104 @@ static inline uint64_t get_nsec_bootclock() noexcept
 	return ts_.tv_sec * GY_NSEC_PER_SEC + ts_.tv_nsec;
 }	
 
+#define GY_USEC_CONVERT(_sec, _usec)								\
+({												\
+	uint64_t	_totusec = (_sec) * gyeeta::GY_USEC_PER_SEC + (_usec);			\
+	_totusec;										\
+})
+
+#define GY_NSEC_CONVERT(_sec, _nsec)								\
+({												\
+	uint64_t	_totnsec = (_sec) * gyeeta::GY_NSEC_PER_SEC + (_nsec);			\
+	_totnsec;										\
+})
+
+#define GY_USEC_TO_TIMEVAL(_usecin)								\
+({												\
+	uint64_t	_usec = (_usecin);							\
+	struct timeval	_tv = { (time_t)((_usec) / gyeeta::GY_USEC_PER_SEC), 			\
+				int64_t((uint64_t)((_usec) % gyeeta::GY_USEC_PER_SEC)) };	\
+	_tv;											\
+})	
+
+#define GY_USEC_TO_TIMESPEC(_usecin)								\
+({												\
+	uint64_t	_usec = (_usecin);							\
+	struct timespec	_ts = { (time_t)((_usec) / gyeeta::GY_USEC_PER_SEC), 			\
+					int64_t((_usec) % gyeeta::GY_USEC_PER_SEC) * 1000ul };	\
+	_ts;											\
+})	
+
+#define GY_NSEC_TO_TIMESPEC(_nsecin)								\
+({												\
+	uint64_t	_nsec = (_nsecin);							\
+	struct timespec	_ts = { (time_t)((_nsec) / gyeeta::GY_NSEC_PER_SEC), 			\
+					int64_t((_nsec) % gyeeta::GY_NSEC_PER_SEC) };		\
+	_ts;											\
+})	
+
+static inline struct timespec timeval_to_timespec(const struct timeval tv) noexcept
+{
+	return {tv.tv_sec, tv.tv_usec * 1000};
+}	
+
+static inline struct timeval timespec_to_timeval(const struct timespec ts) noexcept
+{
+	return {ts.tv_sec, ts.tv_nsec / 1000};
+}	
+
+
+/*
+ * Compare 2 struct timevals. Returns -1 if second < first, 1 if second > first and 0 if same
+ */ 
+#define GY_TIMEVAL_CMP(_first, _sec)									\
+({													\
+	int	_res = 1; 										\
+													\
+	if ((_sec)->tv_sec < ((_first)->tv_sec)) {							\
+		_res = -1;										\
+	}												\
+	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_usec < ((_first)->tv_usec))) {	\
+		_res = -1;										\
+	}												\
+	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_usec == ((_first)->tv_usec))) {	\
+		_res = 0;										\
+	}												\
+	_res;												\
+})
+
+/*
+ * Compare 2 struct timespecs. Returns -1 if second < first, 1 if second > first and 0 if same
+ */ 
+#define GY_TIMESPEC_CMP(_first, _sec)									\
+({													\
+	int	_res = 1; 										\
+													\
+	if ((_sec)->tv_sec < ((_first)->tv_sec)) {							\
+		_res = -1;										\
+	}												\
+	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_nsec < ((_first)->tv_nsec))) {	\
+		_res = -1;										\
+	}												\
+	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_nsec == ((_first)->tv_nsec))) {	\
+		_res = 0;										\
+	}												\
+	_res;												\
+})
+
+// Returns diff of 2 timeval in usecs iff _currpkt > _prevpkt, else returns 0
+#define GY_TV_DIFF(_currpkt, _prevpkt)								\
+({												\
+	uint64_t		_currus, _prevus, _resultus;					\
+												\
+	_currus = GY_USEC_CONVERT((_currpkt)->tv_sec, (_currpkt)->tv_usec);			\
+	_prevus = GY_USEC_CONVERT((_prevpkt)->tv_sec, (_prevpkt)->tv_usec);			\
+												\
+	(_resultus) = _currus > _prevus ? _currus - _prevus : 0ul;				\
+	_resultus;										\
+})
+
+
 // msec_to_add is truncated to 30 years
 static inline void add_to_timespec(struct timespec & ts, uint64_t msec_to_add) noexcept
 {
@@ -1996,16 +2094,101 @@ static inline uint64_t get_host_uptime_nsec() noexcept
 }	
 
 
-static int gy_nanosleep(time_t tv_sec, int64_t tv_nsec) noexcept
+/*
+ * Class to get the Real Time from a Clock time without the need to repeatedly call get_nsec_time() 
+ */
+class GY_CLOCK_TO_TIME
 {
-	struct timespec		ts {tv_sec, tv_nsec};
+public :
+	GY_CLOCK_TO_TIME() noexcept	= default;
+
+	uint64_t get_time_ns(uint64_t clockns) const noexcept
+	{
+		return start_timens_ + clockns - start_clockns_;
+	}	
+
+	uint64_t get_time_us(uint64_t clockus) const noexcept
+	{
+		return start_timens_/1000 + clockus - start_clockns_/1000;
+	}	
+
+	uint64_t get_time_ms(uint64_t clockms) const noexcept
+	{
+		return start_timens_/GY_NSEC_PER_MSEC + clockms - start_clockns_/GY_NSEC_PER_MSEC;
+	}	
+
+	time_t get_time_t(uint64_t clocksec) const noexcept
+	{
+		return start_timens_/GY_NSEC_PER_SEC + clocksec - start_clockns_/GY_NSEC_PER_SEC;
+	}	
+
+	struct timespec get_timespec(uint64_t clockns) const noexcept
+	{
+		return GY_NSEC_TO_TIMESPEC(get_time_ns(clockns));
+	}	
+
+	struct timeval get_timeval(uint64_t clockus) const noexcept
+	{
+		return GY_USEC_TO_TIMEVAL(get_time_us(clockus));
+	}	
+
+	const uint64_t			start_clockns_		{ get_nsec_clock() };
+	const uint64_t			start_timens_		{ get_nsec_time() };
+};	
+
+/*
+ * Class to get the Clock Time from a Real Time without the need to repeatedly call get_nsec_clock() 
+ */
+class GY_TIME_TO_CLOCK
+{
+public :
+	GY_TIME_TO_CLOCK() noexcept	= default;
+
+	uint64_t get_clock_ns(uint64_t timens) const noexcept
+	{
+		return start_clockns_ + timens - start_timens_;
+	}	
+
+	uint64_t get_clock_ns(struct timespec ts) const noexcept
+	{
+		return get_clock_ns(ts.tv_sec * GY_NSEC_PER_SEC + ts.tv_nsec);
+	}	
+
+	uint64_t get_clock_us(uint64_t timeus) const noexcept
+	{
+		return start_clockns_/1000 + timeus - start_timens_/1000;
+	}	
+
+	uint64_t get_clock_us(struct timeval tv) const noexcept
+	{
+		return get_clock_us(tv.tv_sec * GY_USEC_PER_SEC + tv.tv_usec);
+	}	
+
+	uint64_t get_clock_ms(uint64_t timems) const noexcept
+	{
+		return start_clockns_/GY_NSEC_PER_MSEC + timems - start_timens_/GY_NSEC_PER_MSEC;
+	}	
+
+	uint64_t get_clock_sec(time_t tsec) const noexcept
+	{
+		return start_clockns_/GY_NSEC_PER_SEC + (uint64_t)tsec - start_timens_/GY_NSEC_PER_SEC;
+	}	
+
+	const uint64_t			start_timens_		{ get_nsec_time() };
+	const uint64_t			start_clockns_		{ get_nsec_clock() };
+};	
+
+
+static int gy_nanosleep(int64_t sec, int64_t nsec) noexcept
+{
+	struct timespec		ts { sec, nsec };
 
 	return clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, nullptr);
 }
 
-static int gy_nanosleep(int64_t tv_nsec) noexcept
+static int gy_nanosleep(int64_t nsec) noexcept
 {
-	return gy_nanosleep(tv_nsec / GY_NSEC_PER_SEC, tv_nsec % GY_NSEC_PER_SEC);
+	return gy_nanosleep(nsec / GY_NSEC_PER_SEC, nsec % GY_NSEC_PER_SEC);
 }
 	
 static int gy_msecsleep(int64_t msec) noexcept
@@ -2016,17 +2199,17 @@ static int gy_msecsleep(int64_t msec) noexcept
 }
 	
 // nanosleep with extra checks for input params and EINTR
-static int gy_nanosleep_safe(time_t tv_sec, int64_t tv_nsec) noexcept
+static int gy_nanosleep_safe(int64_t sec, int64_t nsec) noexcept
 {
 	struct timespec 	tsleep;
 	int			ret;
 
-	assert((unsigned)tv_nsec < GY_NSEC_PER_SEC);
+	assert((unsigned)nsec < GY_NSEC_PER_SEC);
 
 	clock_gettime(CLOCK_MONOTONIC, &tsleep);
 
-	tsleep.tv_sec += tv_sec;
-	tsleep.tv_nsec += tv_nsec;
+	tsleep.tv_sec += sec;
+	tsleep.tv_nsec += nsec;
 
 	if ((uint64_t)tsleep.tv_nsec >= GY_NSEC_PER_SEC) {
 		tsleep.tv_sec++;
@@ -2056,14 +2239,15 @@ struct SCOPE_NANOSLEEP
 	bool			is_reset_		{false};
 	bool			restart_on_eintr_;
 
-	SCOPE_NANOSLEEP(time_t sleep_tv_sec, int64_t sleep_tv_nsec = 0, bool restart_on_eintr = false) noexcept : restart_on_eintr_(restart_on_eintr)
+	SCOPE_NANOSLEEP(time_t sleep_sec, int64_t sleep_nsec = 0, bool restart_on_eintr = false) noexcept 
+		: restart_on_eintr_(restart_on_eintr)
 	{
-		assert((uint64_t)sleep_tv_nsec < GY_NSEC_PER_SEC);
+		assert((uint64_t)sleep_nsec < GY_NSEC_PER_SEC);
 
 		clock_gettime(CLOCK_MONOTONIC, &tsleep_);
 
-		tsleep_.tv_sec += sleep_tv_sec;
-		tsleep_.tv_nsec += sleep_tv_nsec;
+		tsleep_.tv_sec += sleep_sec;
+		tsleep_.tv_nsec += sleep_nsec;
 
 		if ((uint64_t)tsleep_.tv_nsec >= GY_NSEC_PER_SEC) {
 			tsleep_.tv_sec++;
@@ -3309,103 +3493,6 @@ static uint32_t get_time_slot_of_day(time_t tcurr, uint32_t slotsec) noexcept
 	return get_time_slot_of_day(tcurr, slotsec, tdaystart);
 }	 	
 
-#define GY_USEC_CONVERT(_sec, _usec)								\
-({												\
-	uint64_t	_totusec = (_sec) * gyeeta::GY_USEC_PER_SEC + (_usec);			\
-	_totusec;										\
-})
-
-#define GY_NSEC_CONVERT(_sec, _nsec)								\
-({												\
-	uint64_t	_totnsec = (_sec) * gyeeta::GY_NSEC_PER_SEC + (_nsec);			\
-	_totnsec;										\
-})
-
-#define GY_USEC_TO_TIMEVAL(_usecin)								\
-({												\
-	uint64_t	_usec = (_usecin);							\
-	struct timeval	_tv = { (time_t)((_usec) / gyeeta::GY_USEC_PER_SEC), 			\
-				long((uint64_t)((_usec) % gyeeta::GY_USEC_PER_SEC)) };		\
-	_tv;											\
-})	
-
-#define GY_USEC_TO_TIMESPEC(_usecin)								\
-({												\
-	uint64_t	_usec = (_usecin);							\
-	struct timespec	_ts= { (time_t)((_usec) / gyeeta::GY_USEC_PER_SEC), 			\
-				(uint64_t)((_usec) % gyeeta::GY_USEC_PER_SEC) * 1000ul };	\
-	_ts;											\
-})	
-
-#define GY_NSEC_TO_TIMESPEC(_nsecin)								\
-({												\
-	uint64_t	_nsec = (_nsecin);							\
-	struct timespec	_ts= { (time_t)((_nsec) / gyeeta::GY_NSEC_PER_SEC), 			\
-				(uint64_t)((_nsec) % gyeeta::GY_NSEC_PER_SEC) };		\
-	_ts;											\
-})	
-
-static inline struct timespec timeval_to_timespec(const struct timeval tv) noexcept
-{
-	return {tv.tv_sec, tv.tv_usec * 1000};
-}	
-
-static inline struct timeval timespec_to_timeval(const struct timespec ts) noexcept
-{
-	return {ts.tv_sec, ts.tv_nsec / 1000};
-}	
-
-
-/*
- * Compare 2 struct timevals. Returns -1 if second < first, 1 if second > first and 0 if same
- */ 
-#define GY_TIMEVAL_CMP(_first, _sec)									\
-({													\
-	int	_res = 1; 										\
-													\
-	if ((_sec)->tv_sec < ((_first)->tv_sec)) {							\
-		_res = -1;										\
-	}												\
-	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_usec < ((_first)->tv_usec))) {	\
-		_res = -1;										\
-	}												\
-	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_usec == ((_first)->tv_usec))) {	\
-		_res = 0;										\
-	}												\
-	_res;												\
-})
-
-/*
- * Compare 2 struct timespecs. Returns -1 if second < first, 1 if second > first and 0 if same
- */ 
-#define GY_TIMESPEC_CMP(_first, _sec)									\
-({													\
-	int	_res = 1; 										\
-													\
-	if ((_sec)->tv_sec < ((_first)->tv_sec)) {							\
-		_res = -1;										\
-	}												\
-	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_nsec < ((_first)->tv_nsec))) {	\
-		_res = -1;										\
-	}												\
-	else if (((_sec)->tv_sec == ((_first)->tv_sec)) && ((_sec)->tv_nsec == ((_first)->tv_nsec))) {	\
-		_res = 0;										\
-	}												\
-	_res;												\
-})
-
-// Returns diff of 2 timeval in usecs iff _currpkt > _prevpkt, else returns 0
-#define GY_TV_DIFF(_currpkt, _prevpkt)								\
-({												\
-	uint64_t		_currus, _prevus, _resultus;					\
-												\
-	_currus = GY_USEC_CONVERT((_currpkt)->tv_sec, (_currpkt)->tv_usec);			\
-	_prevus = GY_USEC_CONVERT((_prevpkt)->tv_sec, (_prevpkt)->tv_usec);			\
-												\
-	(_resultus) = _currus > _prevus ? _currus - _prevus : 0ul;				\
-	_resultus;										\
-})
-
 
 #define GY_SWAP_16(_x)		__bswap_16((_x))		
 #define GY_SWAP_32(_x)		__bswap_32((_x))		
@@ -4534,6 +4621,47 @@ static void * gy_safe_memset(T * pt) noexcept
 	std::memset(_pfirst, 0, _sz);															\
 	_first_member_data;																\
 })
+
+class SCOPE_LOCK_FILE
+{
+public :
+	SCOPE_LOCK_FILE(FILE *pfile) noexcept
+		: pfile_(pfile), tounlock_(FSETLOCKING_INTERNAL == __fsetlocking(pfile, FSETLOCKING_QUERY))
+	{
+		if (tounlock_) {
+			flockfile(pfile);
+		}	
+	}
+
+	~SCOPE_LOCK_FILE() noexcept
+	{
+		if (tounlock_) {
+			funlockfile(pfile_);
+		}	
+	}	
+
+	SCOPE_LOCK_FILE(SCOPE_LOCK_FILE && other) noexcept
+		: pfile_(std::exchange(other.pfile_, nullptr)), tounlock_(std::exchange(other.tounlock_, false))
+	{}	
+
+	SCOPE_LOCK_FILE & operator= (SCOPE_LOCK_FILE && other) noexcept
+	{
+		if (this != &other) {
+			this->~SCOPE_LOCK_FILE();
+
+			new (this) SCOPE_LOCK_FILE(std::move(other));
+		}
+
+		return *this;
+	}	
+
+	SCOPE_LOCK_FILE(const SCOPE_LOCK_FILE &) 		= delete;
+
+	SCOPE_LOCK_FILE & operator= (const SCOPE_LOCK_FILE &)	= delete;
+
+	FILE				* pfile_;
+	bool				tounlock_;
+};	
 
 
 /*
@@ -5961,6 +6089,40 @@ static void copy_iovec_to_buf(const struct iovec * const piov, const int niovin,
 
 	bytes_copied 	= bufsz - navail;
 	pending_bytes	= bytes_left;
+}	
+
+static size_t gy_fwrite_iov(FILE *pfile, const struct iovec *piov, int niov, size_t *pbytes_pending = nullptr) noexcept
+{
+	SCOPE_LOCK_FILE			slock(pfile);
+
+	size_t				twr = 0, nwr;	
+
+	if (pbytes_pending) {
+		*pbytes_pending = 0;
+	}
+
+	for (int i = 0; i < niov; ++i) {
+		if (piov[i].iov_len > 0) {
+			nwr = fwrite_unlocked(piov[i].iov_base, 1, piov[i].iov_len, pfile);
+
+			if (nwr != piov[i].iov_len) {
+				if (nwr > 0) {
+					twr += nwr;
+				}	
+
+				if (pbytes_pending) {
+					*pbytes_pending = iovec_bytes(piov, niov) - twr;
+				}	
+
+				break;
+			}	
+			else {
+				twr += nwr;
+			}	
+		}
+	}	
+
+	return twr;
 }	
 
 /*
@@ -9164,6 +9326,31 @@ static const char *gy_print_ipaddr(int af, const void *src, char *pdstbuf, ssize
 	}
 }	
 
+union IP_UNION {
+	unsigned __int128		v6_;
+	uint32_t			v4_;
+};
+
+struct IPv4_v6
+{
+ 	IP_UNION			addr_;
+	bool				is_v6_;
+
+	IPv4_v6(IP_UNION addr, bool is_v6) noexcept
+		: addr_(addr), is_v6_(is_v6)
+	{}
+
+	bool is_ipv4() const noexcept
+	{
+		return !is_v6_;
+	}	
+
+	bool is_ipv6() const noexcept
+	{
+		return is_v6_;
+	}	
+};	
+
 /*
  * IPv4/IPv6 storage class. 
  * Packed with alignment 8 to save up on 8 bytes. Uses 24 bytes per IP
@@ -9282,6 +9469,16 @@ public :
 	{ 
 		set_ip(ipstring);
 	}
+
+	GY_IP_ADDR(IPv4_v6 ip) noexcept
+	{
+		if (ip.is_ipv4()) {
+			set_ip(ip.addr_.v4_);
+		}	
+		else {
+			set_ip(ip.addr_.v6_);
+		}	
+	}	
 
 	~GY_IP_ADDR() noexcept					= default;
 	

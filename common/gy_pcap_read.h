@@ -10,73 +10,73 @@
 
 namespace gyeeta {
 
+static constexpr int		GY_TCPDUMP_MAGIC  = 0xa1b2c3d4;
+static constexpr int		GY_PCAP_VERSION_MAJOR = 2;
+static constexpr int		GY_PCAP_VERSION_MINOR = 4;
+
+struct PCAP_FILE_HEADER 
+{
+	uint32_t 		magic;
+	uint16_t 		version_major;
+	uint16_t 		version_minor;
+	int 			thiszone;	/* gmt to local correction */
+	uint32_t 		sigfigs;	/* accuracy of timestamps */
+	uint32_t 		snaplen;	/* max length saved portion of each pkt */
+	uint32_t 		linktype;	/* data link type (LINKTYPE_*) */
+
+} __attribute__((packed));
+
+/*
+ * This is a timeval as stored in disk in a dumpfile.
+ * It has to use the same types everywhere, independent of the actual
+ * `struct timeval'
+ */
+struct PCAP_TIMEVAL 
+{
+	int			tv_sec;		/* seconds */
+	int			tv_usec;	/* microseconds */
+} __attribute__((packed));
+
+struct PCAP_REC_HEADER 
+{
+	PCAP_TIMEVAL		ts;		/* time stamp */
+	uint32_t		caplen;		/* length of portion present */
+	uint32_t		len;		/* length this packet (off wire) */
+
+} __attribute__((packed));
+
+
 class PCAP_READER
 {
 public :	
-
-	struct PCAP_FILE_HEADER 
-	{
-		uint32_t 		magic;
-		uint16_t 		version_major;
-		uint16_t 		version_minor;
-		int 			thiszone;	/* gmt to local correction */
-		uint32_t 		sigfigs;	/* accuracy of timestamps */
-		uint32_t 		snaplen;	/* max length saved portion of each pkt */
-		uint32_t 		linktype;	/* data link type (LINKTYPE_*) */
-
-	} __attribute__((packed));
-
-	/*
-	 * This is a timeval as stored in disk in a dumpfile.
-	 * It has to use the same types everywhere, independent of the actual
-	 * `struct timeval'
-	 */
-	struct PCAP_TIMEVAL 
-	{
-		int			tv_sec;		/* seconds */
-		int			tv_usec;	/* microseconds */
-	} __attribute__((packed));
-
-	struct PCAP_REC_HEADER 
-	{
-		PCAP_TIMEVAL		ts;		/* time stamp */
-		uint32_t		caplen;		/* length of portion present */
-		uint32_t		len;		/* length this packet (off wire) */
-
-	} __attribute__((packed));
-
 	enum {
 		HDR_NOT_SWAPPED,
 		HDR_SWAPPED,
 		HDR_MAYBE_SWAPPED
 	};
 
-	static constexpr int		GY_TCPDUMP_MAGIC  = 0xa1b2c3d4;
-	static constexpr int		GY_PCAP_VERSION_MAJOR = 2;
+	char				filepath_[512] 			{};
+	FILE				*pfp_pcap_ 			{nullptr};
+	int				snaplen_ 			{0};
+	int				linktype_ 			{0};
+	int				tzoff_ 				{0};		
+	int				offset_ 			{0};		/* offset for proper alignment */
 
-	char				filepath_[512] {};
-	FILE				*pfp_pcap_ {nullptr};
-	int				snaplen_ {0};
-	int				linktype_ {0};
-	int				tzoff_ {0};		
-	int				offset_ {0};		/* offset for proper alignment */
+	bool				use_unlocked_ 			{false};
+	uint8_t				*palloc_buf_ 			{nullptr};
+	uint8_t				*preadbuf_ 			{nullptr};
 
-	bool				use_unlocked_ {false};
-	uint8_t				*palloc_buf_ {nullptr};
-	uint8_t				*preadbuf_ {nullptr};
+	uint32_t			alignlen_ 			{0};
 
-	static const uint32_t		max_buffer_size_ = 256 * 1024; 
+	int64_t				npkts_read_ 			{0};
+	int64_t				nbytes_read_ 			{0};
 
-	uint32_t			alignlen_ {0};
+	bool				hdr_swapped_ 			{false};
+	int				length_swapped_ 		{0};
 
-	int64_t				npkts_read_ {0};
-	int64_t				nbytes_read_ {0};
+	PCAP_FILE_HEADER		pcap_header_			{};
 
-	bool				hdr_swapped_ {0};
-	int				length_swapped_ {0};
-
-	PCAP_FILE_HEADER		pcap_header_;
-
+	static constexpr uint32_t	max_buffer_size_ 		{256 * 1024}; 
 	
 	explicit PCAP_READER(const char *pfilename, bool use_unlocked_io = true);
 	

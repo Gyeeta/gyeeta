@@ -94,13 +94,13 @@ static int do_trace_ipv4_xmit(void *ctx, struct sock *skp)
 	return 0;
 }
 
-SEC("kprobe/__ip_queue_xmit")
+SEC("kprobe")
 int BPF_KPROBE(trace_ipv4_xmit, struct sock *skp)
 {
 	return do_trace_ipv4_xmit(ctx, skp);
 }	
 
-SEC("fentry/__ip_queue_xmit")
+SEC("fentry")
 int BPF_PROG(fentry_trace_ipv4_xmit, struct sock *skp)
 {
 	return do_trace_ipv4_xmit(ctx, skp);
@@ -172,13 +172,13 @@ static int do_trace_ipv6_xmit(void *ctx, struct sock *skp)
 	return 0;
 }
 
-SEC("kprobe/inet6_csk_xmit")
+SEC("kprobe")
 int BPF_KPROBE(trace_ipv6_xmit, struct sock *skp)
 {
 	return do_trace_ipv6_xmit(ctx, skp);
 }	
 
-SEC("fentry/inet6_csk_xmit")
+SEC("fentry")
 int BPF_PROG(fentry_trace_ipv6_xmit, struct sock *skp)
 {
 	return do_trace_ipv6_xmit(ctx, skp);

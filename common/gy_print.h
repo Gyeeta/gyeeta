@@ -230,6 +230,9 @@ do {												\
 ({												\
 	int			_ret;								\
 	constexpr size_t	szbuf = gyeeta::GY_CONST_STRLEN("[%s]:" format);		\
+												\
+	static_assert(szbuf < 1024, "format specifier length too large : Limit to 1024 bytes");	\
+												\
 	char			_fmtbuf[szbuf + 8];						\
 	char 			_stimebuf[50];							\
 												\
@@ -247,6 +250,9 @@ do {												\
 ({												\
 	int			_ret;								\
 	constexpr size_t	szbuf = gyeeta::GY_CONST_STRLEN(_color format);			\
+												\
+	static_assert(szbuf < 1024, "format specifier length too large : Limit to 1024 bytes");	\
+												\
 	char			_fmtbuf[szbuf + 8];						\
 												\
 	COLOR_SHIFT_NEWLINE(_color format, szbuf + 1, _fmtbuf);					\

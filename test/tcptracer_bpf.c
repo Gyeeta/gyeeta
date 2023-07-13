@@ -54,7 +54,7 @@ static int read_ipv4_tuple(struct ipv4_tuple_t *tuple, struct sock *skp)
 	tuple->netns = net_ns_inum;
 	
 	// if addresses or ports are 0, ignore
-	if (gy_unlikely(saddr == 0 || daddr == 0 || sport == 0 || dport == 0)) {
+	if (saddr == 0 || daddr == 0 || sport == 0 || dport == 0) {
 		return 0;
 	}
 
@@ -83,7 +83,7 @@ static int read_ipv6_tuple(struct ipv6_tuple_t *tuple, struct sock *skp)
 	tuple->netns = net_ns_inum;
 
 	// if addresses or ports are 0, ignore
-	if (gy_unlikely(saddr == 0 || daddr == 0 || sport == 0 || dport == 0)) {
+	if (saddr == 0 || daddr == 0 || sport == 0 || dport == 0) {
 		return 0;
 	}
 
@@ -207,7 +207,7 @@ int trace_connect_v6_return(struct pt_regs *ctx)
 	bool is_src_ipv4_mapped = is_ipv4_mapped_ipv6(t.saddr);
 	bool is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(t.daddr);
 
-	if (gy_unlikely(is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
+	if ((is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
 		struct ipv4_tuple_t		t4;
 		u8				*pipbuf = (u8 *)&t.saddr, *pipbuf2 = (u8 *)&t.daddr;
 
@@ -302,7 +302,7 @@ int trace_tcp_set_state_entry(struct pt_regs *ctx, struct sock *skp, int state)
 			bool is_src_ipv4_mapped = is_ipv4_mapped_ipv6(t.saddr);
 			bool is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(t.daddr);
 
-			if (gy_unlikely(is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
+			if ((is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
 				struct ipv4_tuple_t		t4;
 				u8				*pipbuf = (u8 *)&t.saddr, *pipbuf2 = (u8 *)&t.daddr;
 
@@ -425,7 +425,7 @@ int trace_close_entry(struct pt_regs *ctx, struct sock *skp)
 		bool is_src_ipv4_mapped = is_ipv4_mapped_ipv6(t.saddr);
 		bool is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(t.daddr);
 
-		if (gy_unlikely(is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
+		if ((is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
 			struct ipv4_tuple_t		t4;
 			u8				*pipbuf = (u8 *)&t.saddr, *pipbuf2 = (u8 *)&t.daddr;
 
@@ -573,7 +573,7 @@ int trace_accept_return(struct pt_regs *ctx)
 		bool is_src_ipv4_mapped = is_ipv4_mapped_ipv6(evt6.saddr);
 		bool is_dest_ipv4_mapped = is_ipv4_mapped_ipv6(evt6.daddr);
 
-		if (gy_unlikely(is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
+		if ((is_src_ipv4_mapped || is_dest_ipv4_mapped)) {
 			struct ipv4_tuple_t		t4;
 			u8				*pipbuf = (u8 *)&evt6.saddr, *pipbuf2 = (u8 *)&evt6.daddr;
 

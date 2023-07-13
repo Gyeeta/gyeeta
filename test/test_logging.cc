@@ -21,9 +21,9 @@ int handle_signal(int signo)
 
 int test_init_prints()
 {
-	int		ret;
+	int				ret;
 
-	const char * 	pextraprint = "Extra Offload Print------------";
+	const char 			*pextraprint = "Extra Offload Print------------";
 
 	IRPRINT("\n\n---------------Starting Initial Tests...-------------------\n\n");
 	INFOPRINT("Normal INFOPRINT without color : Current time is %ld\n", time(nullptr));
@@ -35,7 +35,7 @@ int test_init_prints()
 
 	WARNPRINT("Normal WARNPRINT without color : Current time is %ld\n", time(nullptr));
 	WARNPRINTCOLOR(GY_COLOR_GREEN, "WARNPRINT with color : Current time is %ld\n", time(nullptr));
-
+	
 	ERRORPRINT("Normal ERRORPRINT without color : Ignore this error : Current time is %ld\n", time(nullptr));
 	ERRORPRINTCOLOR(GY_COLOR_GREEN, "ERRORPRINT with color : Ignore this error : Current time is %ld\n", time(nullptr));
 

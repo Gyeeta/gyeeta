@@ -20,7 +20,7 @@ BINARIES := tcptracer tcpresponse tcpresponse_libbpf test_caps test_ipaddr test_
 		test_timezone test_taskstats test_quantiles test_histogram test_utf8 test_sys_stats test_tcp_client test_tcp_server test_str_rd_buf \
 		test_rcu_list test_multi_proc_comm test_listener test_gy_pool test_strncpy test_sso_string test2_rcu_hashtable	\
 		test_rapidjson test_bufcache test_pg1 test_postgres_qry test_postgres_insert test_postgres_exec test_filterparse test_re2 test_tinyregex \
-		test_in_clause test_criterion1 test_options test_boolparse test_boost_rolling_sum test_libcurl test_cloud_metadata
+		test_in_clause test_criterion1 test_options test_boolparse test_boost_rolling_sum test_libcurl test_cloud_metadata test_pcap_writer
 
 .PHONY: all libpath clean distclean install ci
 

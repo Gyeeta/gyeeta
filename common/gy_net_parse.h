@@ -32,6 +32,18 @@ struct GY_ETHERNET_HDR
 	uint16_t 		ether_type; 		
 };
 
+/*
+ * TCP Flags
+ */
+const uint8_t			GY_TH_FIN	= 0x01;
+const uint8_t			GY_TH_SYN	= 0x02;
+const uint8_t			GY_TH_RST	= 0x04;
+const uint8_t			GY_TH_PUSH	= 0x08;
+const uint8_t			GY_TH_ACK	= 0x10;
+const uint8_t			GY_TH_URG	= 0x20;
+const uint8_t			GY_TH_ECE	= 0x40;
+const uint8_t			GY_TH_CWR	= 0x80;
+
 struct GY_TCP_HDR 
 {
 	uint16_t		source;
@@ -86,6 +98,42 @@ struct GY_TCP_HDR
 		else {
 			urg_ptr = 0;
 		}	
+	}	
+
+	void set_flags(uint8_t flags) noexcept
+	{
+		if (flags & GY_TH_ACK) {
+			ack = 1;
+		}	
+
+		if (flags & GY_TH_SYN) {
+			syn = 1;
+		}	
+
+		if (flags & GY_TH_FIN) {
+			fin = 1;
+		}	
+
+		if (flags & GY_TH_RST) {
+			rst = 1;
+		}	
+
+		if (flags & GY_TH_PUSH) {
+			psh = 1;
+		}	
+
+		if (flags & GY_TH_URG) {
+			urg = 1;
+		}	
+
+		if (flags & GY_TH_ECE) {
+			ece = 1;
+		}	
+
+		if (flags & GY_TH_CWR) {
+			cwr = 1;
+		}	
+
 	}	
 
 	uint32_t next_expected_src_seq(uint32_t data_len) const noexcept

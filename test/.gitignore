@@ -66,3 +66,4 @@ test_boolparse
 test_boost_rolling_sum
 test_libcurl
 test_cloud_metadata
+test_pcap_writer

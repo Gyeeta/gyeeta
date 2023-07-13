@@ -238,7 +238,7 @@ public :
 	{
 		int			ret;
 
-		if (fentry_can_attach("inet6_csk_xmit", nullptr)) {
+		if (false && fentry_can_attach("inet6_csk_xmit", nullptr)) {
 
 			ret = bpf_program__set_attach_target(obj_.get()->progs.fentry_trace_ipv4_xmit, 0, "__ip_queue_xmit");
 
@@ -259,6 +259,22 @@ public :
 			bpf_program__set_autoload(obj_.get()->progs.trace_ipv6_xmit, false);
 		} 
 		else {
+
+			ret = bpf_program__set_attach_target(obj_.get()->progs.trace_ipv4_xmit, 0, "__ip_queue_xmit");
+
+			if (ret) {
+				ret = bpf_program__set_attach_target(obj_.get()->progs.trace_ipv4_xmit, 0, "ip_queue_xmit");
+				
+				if (ret) {
+					GY_THROW_SYS_EXCEPTION("Failed to attach kprobe bpf probe for __ip_queue_xmit");
+				}	
+			}
+
+			ret = bpf_program__set_attach_target(obj_.get()->progs.trace_ipv6_xmit, 0, "inet6_csk_xmit");
+			if (ret) {
+				GY_THROW_SYS_EXCEPTION("Failed to attach kprobe bpf probe for inet6_csk_xmit");
+			}	
+
 			bpf_program__set_autoload(obj_.get()->progs.fentry_trace_ipv4_xmit, false);
 			bpf_program__set_autoload(obj_.get()->progs.fentry_trace_ipv6_xmit, false);
 		}
