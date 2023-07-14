@@ -17,8 +17,8 @@
 
 using namespace			gyeeta;
 
-int64_t				gpkts = 0;
 GY_CLOCK_TO_TIME		clktime;
+std::atomic<int>		gsig_rcvd(0);
 
 void handle_data(void *pcb_cookie, void *pdata, int data_size)
 {
@@ -30,30 +30,29 @@ void handle_data(void *pcb_cookie, void *pdata, int data_size)
 		return;
 	}
 	
-	if (data_size != pevent->len + sizeof(*pevent)) {
+	if ((uint32_t)data_size != pevent->len + sizeof(*pevent)) {
 		ERRORPRINT("Invalid ring buffer callback size seen %d : expected size %lu\n", data_size, sizeof(tcaphdr_t) + pevent->len);
 		return;
 	}
 	
-	struct timeval			tv = clktime.get_timeval(pevent->ts_ns/1000);
-	GY_IP_ADDR			seraddr(IPv4_v6(pevent->tuple.seraddr, pevent->tuple.ipver == 6));	
 	bool				bret;
 
 	if (pevent->is_inbound) {
 		bret = pwriter->write_tcp_pkt(clktime.get_timeval(pevent->ts_ns/1000), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr, pevent->tuple.ipver == 6)), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr, pevent->tuple.ipver == 6)), 
+					GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr.cli6addr, pevent->tuple.cliaddr.cli4addr, pevent->tuple.ipver == 6)), 
+					GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr.ser6addr, pevent->tuple.seraddr.ser4addr, pevent->tuple.ipver == 6)), 
 					pevent->tuple.cliport, pevent->tuple.serport,
-					pevent->nxt_cli_seq - pevent->len - pevent->npadbytes, pevent->nxt_ser_seq, 
-					pevent->tcp_flags, pevent + 1, pevent->len - pevent->npadbytes);
+					pevent->get_src_seq_start(), pevent->nxt_ser_seq, 
+					pevent->tcp_flags, pevent + 1, pevent->get_act_payload_len());
 	}
 	else {
+		// Outbound
 		bret = pwriter->write_tcp_pkt(clktime.get_timeval(pevent->ts_ns/1000), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr, pevent->tuple.ipver == 6)), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr, pevent->tuple.ipver == 6)), 
+					GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr.ser6addr, pevent->tuple.seraddr.ser4addr, pevent->tuple.ipver == 6)), 
+					GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr.cli6addr, pevent->tuple.cliaddr.cli4addr, pevent->tuple.ipver == 6)), 
 					pevent->tuple.serport, pevent->tuple.cliport,
-					pevent->nxt_ser_seq - pevent->len - pevent->npadbytes, pevent->nxt_cli_seq, 
-					pevent->tcp_flags, pevent + 1, pevent->len - pevent->npadbytes);
+					pevent->get_src_seq_start(), pevent->nxt_cli_seq, 
+					pevent->tcp_flags, pevent + 1, pevent->get_act_payload_len());
 		
 	}
 
@@ -66,11 +65,11 @@ void handle_data(void *pcb_cookie, void *pdata, int data_size)
 class TNETCAP
 {
 public :
-	using TNETCAP_OBJ			= GY_LIBBPF_OBJ<test_netcap_ebpf>;
+	using TNETCAP_OBJ			= GY_LIBBPF_OBJ<test_netcap_ebpf_bpf>;
 	
-	TNETCAP_OBJ()				= default;
+	TNETCAP()				= default;
 
-	~TNETCAP_OBJ() noexcept			= default;
+	~TNETCAP() noexcept			= default;
 
 	void start_collection(void *pwriter)
 	{
@@ -82,7 +81,11 @@ public :
 
 	int poll(int timeout_ms) noexcept
 	{
-		return obj_.poll(timeout_ms);
+		if (pdatapool_) {
+			return pdatapool_->poll(timeout_ms);
+		}
+
+		return -1;
 	}	
 
 	void update_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto, bool to_pause)
@@ -160,17 +163,17 @@ public:
 
 	void add_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
 	{
-		cap_.set_listener(ipaddr, port, netns, proto, false);
+		cap_.update_listener(ipaddr, port, netns, proto, false);
 	}	
 
 	void pause_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
 	{
-		cap_.set_listener(ipaddr, port, netns, proto, true);
+		cap_.update_listener(ipaddr, port, netns, proto, true);
 	}
 
 	void resume_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
 	{
-		cap_.set_listener(ipaddr, port, netns, proto, false);
+		cap_.update_listener(ipaddr, port, netns, proto, false);
 	}
 
 	void delete_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
@@ -181,6 +184,16 @@ public:
 
 	TNETCAP					cap_;
 };	
+
+
+int handle_signal(int signo)
+{
+	alarm(5);
+
+	gsig_rcvd.store(signo);
+
+	return signo;
+}	
 
 
 
@@ -198,6 +211,7 @@ void * netcap_thr(void *parg)
 
 	return (void *)0;
 }	
+MAKE_PTHREAD_FUNC_WRAPPER(netcap_thr);
 
 
 void *debug_thread(void *arg)
@@ -223,7 +237,7 @@ int main(int argc, char *argv[])
 
 		if (argc < 5) {
 			IRPRINT("\nUsage : %s <Output pcap path> <Listener IP to capture> <Listener Port> <Listener NetNS inode> <Listener 2 IP> ...\n"
-					"\tFor e.g. %s /tmp/test1.pcap 0.0.0.0 10040 4026531840 192.168.0.1 10037 4026531840\n\n", argv[0]);
+					"\tFor e.g. %s /tmp/test1.pcap 0.0.0.0 10040 4026531840 192.168.0.1 10037 4026531840\n\n", argv[0], argv[0]);
 			return 1;
 		}	
 		
@@ -252,8 +266,6 @@ int main(int argc, char *argv[])
 
 		GY_SIGNAL_HANDLER::get_singleton()->ignore_signal(SIGHUP);
 
-		gstarttimens = get_nsec_clock();
-
 		GY_PCAP_WRITER		wrpcap(argv[1]);
 		pthread_t		dbgtid, thrid;
 
@@ -278,7 +290,7 @@ int main(int argc, char *argv[])
 		gy_nanosleep(1, 0);
 
 		for (int i = 1; i + 2 < argc; i += 3) {
-			phdlr->add_listener(GY_IP_ADDR(argv[i]), string_to_number(argv[i + 1]), string_to_number(argv[i + 2]));
+			phdlr->add_listener(GY_IP_ADDR(argv[i]), string_to_number<uint16_t>(argv[i + 1]), string_to_number<uint32_t>(argv[i + 2]), TCAP_PROTO_UNKNOWN);
 		}	
 
 		pthread_join(thrid, nullptr);

@@ -42,21 +42,6 @@ struct tlistenstat
 	bool				pausecap;				
 };	
 
-
-struct tiov_iter_arg
-{
-	struct taddr_tuple		tuple;
-	struct iovec			iov;
-	size_t 				iov_offset;
-	uint16_t			nr_segs;
-	u8 				iter_type;
-	bool 				user_backed;
-
-	u16				proto;
-	u8				isssl;
-	u8				isany;
-};	
-
 struct taddr_tuple
 {
 	union {
@@ -76,6 +61,35 @@ struct taddr_tuple
 	u8 				ipver;
 };
 
+enum gy_iter_type
+{
+	GY_ITER_IOVEC,
+	GY_ITER_KVEC,
+	GY_ITER_BVEC,
+	GY_ITER_PIPE,
+	GY_ITER_XARRAY,
+	GY_ITER_DISCARD,
+	GY_ITER_UBUF,	
+};	
+
+struct tiov_iter_arg
+{
+	struct taddr_tuple		tuple;
+	struct iovec			iov1;
+	union {
+		const struct iovec		*piov;
+		const struct kvec 		*pkvec;		
+	} pvec;	
+	size_t 				iov_offset;
+	uint16_t			nr_segs;
+	u8 				iter_type;
+	bool 				user_backed;
+
+	u16				proto;
+	u8				isssl;
+	u8				isany;
+};	
+
 struct tcaphdr_t 
 {
 	u64 				ts_ns;
@@ -87,10 +101,30 @@ struct tcaphdr_t
 	bool				is_inbound;
 	u8				tcp_flags;
 	u8				npadbytes;
+
+#ifdef	__cplusplus
+	
+	uint32_t get_src_seq_start() const noexcept
+	{
+		if (is_inbound) {
+			return nxt_cli_seq - get_act_payload_len();
+		}	
+		else {
+			return nxt_ser_seq - get_act_payload_len();
+		}	
+	}	
+
+	uint32_t get_act_payload_len() const noexcept
+	{
+		return len - npadbytes;
+	}	
+#endif
+
 };
 
-#define					TMAX_ONE_PAYLOAD_LEN		(16 * 1024 - sizeof(tcaphdr_t) - 64)
+#define					TMAX_ONE_PAYLOAD_LEN		(16 * 1024 - sizeof(struct tcaphdr_t) - 64)
 #define					TMAX_TOTAL_PAYLOAD_LEN		(TMAX_ONE_PAYLOAD_LEN * 5)
+#define					TMAX_IOVEC_SEGS			32
 
 
 #endif

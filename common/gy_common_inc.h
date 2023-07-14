@@ -9340,6 +9340,17 @@ struct IPv4_v6
 		: addr_(addr), is_v6_(is_v6)
 	{}
 
+	IPv4_v6(unsigned __int128 v6addr, uint32_t v4addr, bool is_v6) noexcept
+		: is_v6_(is_v6)
+	{
+		if (is_v6) {
+			addr_.v6_ 	= v6addr;
+		}	
+		else {
+			addr_.v4_	= v4addr;
+		}	
+	}
+
 	bool is_ipv4() const noexcept
 	{
 		return !is_v6_;

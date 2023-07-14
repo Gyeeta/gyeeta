@@ -20,7 +20,8 @@ BINARIES := tcptracer tcpresponse tcpresponse_libbpf test_caps test_ipaddr test_
 		test_timezone test_taskstats test_quantiles test_histogram test_utf8 test_sys_stats test_tcp_client test_tcp_server test_str_rd_buf \
 		test_rcu_list test_multi_proc_comm test_listener test_gy_pool test_strncpy test_sso_string test2_rcu_hashtable	\
 		test_rapidjson test_bufcache test_pg1 test_postgres_qry test_postgres_insert test_postgres_exec test_filterparse test_re2 test_tinyregex \
-		test_in_clause test_criterion1 test_options test_boolparse test_boost_rolling_sum test_libcurl test_cloud_metadata test_pcap_writer
+		test_in_clause test_criterion1 test_options test_boolparse test_boost_rolling_sum test_libcurl test_cloud_metadata test_pcap_writer \
+		test_netcap_ebpf
 
 .PHONY: all libpath clean distclean install ci
 
@@ -29,11 +30,18 @@ all: gitignores $(BINARIES)
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<	
 
-tcpresponse_libbpf.o: tcpresponse_libbpf.cc 
+tcpresponse_libbpf.o: tcpresponse_libbpf.cc tcpresponse_libbpf.bpf.c
 	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -Wno-unused-function -c tcpresponse_libbpf.bpf.c -o ./tcpresponse_libbpf.bpf.o
 	$(LLVM_STRIP) -g ./tcpresponse_libbpf.bpf.o
 	$(BPFTOOL) gen skeleton ./tcpresponse_libbpf.bpf.o > ./tcpresponse_libbpf.skel.h
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+test_netcap_ebpf.o: test_netcap_ebpf.cc test_netcap_ebpf.bpf.c
+	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -Wno-unused-function -c test_netcap_ebpf.bpf.c -o ./test_netcap_ebpf.bpf.o
+	$(LLVM_STRIP) -g ./test_netcap_ebpf.bpf.o
+	$(BPFTOOL) gen skeleton ./test_netcap_ebpf.bpf.o > ./test_netcap_ebpf.skel.h
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<
+
 
 
 gitignores:
@@ -46,6 +54,9 @@ tcpresponse: tcpresponse.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MA
 	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(BCCLIBS) $(LDLIBS) -o $@
 
 tcpresponse_libbpf: tcpresponse_libbpf.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MAKE_DIR)/common/libgycommon.a
+	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(LIBBPFLIBS) $(LDLIBS) -o $@
+
+test_netcap_ebpf: test_netcap_ebpf.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(LIBBPFLIBS) $(LDLIBS) -o $@
 
 test_caps: test_caps.o $(INC_MAKE_DIR)/common/libgycommon.a
