@@ -7,36 +7,6 @@
 
 using namespace gyeeta;
 
-namespace gyeeta {
-
-int						gdebugexecn = 10;	
-bool						guse_utc_time = false, gunbuffered_stdout = false;
-size_t		 				gpgsz_local_;
-uint32_t 					gclktck_local_;
-
-thread_local 	GY_THR_LOCAL			gthrdata_local_;
-thread_local 	pid_t				gtid_local_ = -1, gtid_startpid_;
-
-uint64_t					gproc_start_usec, gproc_start_clock, gproc_start_boot;
-pid_t						gproc_start_pid, gproc_curr_pid;
-
-GY_TIMEZONE* GY_TIMEZONE::get_singleton() noexcept	
-{
-	return nullptr;
-}	
-
-int gy_no_mutex_lock(GY_MUTEX * pmutex) noexcept
-{
-	return 0;
-}	
-
-int no_mutex_lock(pthread_mutex_t * pmutex) noexcept
-{
-	return 0;
-}	
-
-}
-
 void * operator new(size_t count)
 {
 	auto ptr = std::malloc(count);

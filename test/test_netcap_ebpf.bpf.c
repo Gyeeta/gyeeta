@@ -199,59 +199,127 @@ static struct tlistenstat * lookup_listener(struct tlistenkey *pkey)
 	return pstat;
 }	
 
-static uint32_t read_iov_data(uint8_t *pdeststart, uint32_t nbytes, struct tiov_iter_arg *parg, size_t init_iov_offset, bool user_backed)
+static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is_inbound, uint32_t startsrcseq, uint32_t nxt_dst_seq)
 {
-	uint32_t			nrd = 0;
-	int				err;
+	uint64_t				ts_ns = bpf_ktime_get_ns(), pid = bpf_get_current_pid_tgid();
+	uint32_t				npend = maxbytes, offset = 0;
+	int					err = 0;
+	uint16_t				niov = 0;
+	const uint16_t				maxiov = parg->nr_segs;
+	const bool				user_backed = parg->user_backed;
 
-	for (uint16_t n = 0; n < parg->nr_segs && n < TMAX_IOVEC_SEGS && nrd < nbytes; ++n) {
-		
-		struct iovec			iov;
-
-		if (parg->nr_segs == 1 && parg->pvec.piov == &parg->iov1) {
-			__builtin_memcpy(&iov, &parg->iov1, sizeof(iov));
-		}
-		else {
-			err = bpf_probe_read(&iov, sizeof(iov), parg->pvec.piov + n);
-		}
-
-		if (err) {
-			break;
-		}	
-		
-		uint8_t				*pdest = pdeststart + nrd;
-		const void			*psrc = (const uint8_t *)iov.iov_base + init_iov_offset;
-		int				ilen = iov.iov_len - init_iov_offset;
-		
-		init_iov_offset = 0;
-
-		if (ilen < 0) {
-			break;
-		}
-		else if (ilen == 0) {
-			continue;
-		}	
-		
-		if ((uint32_t)ilen + nrd > nbytes) {
-			ilen = nbytes - nrd;
-		}
-
-		if (user_backed) {
-			err = bpf_core_read_user(pdest, ilen, psrc);
-		}
-		else {
-			err = bpf_core_read(pdest, ilen, psrc);
-		}	
-
-		if (err) {
-			break;
-		}	
-		
-		nrd += ilen;
+	if (!maxbytes || !parg) {
+		return true;
 	}	
 
-	return nrd;
-}	
+	bpf_printk("read_iov_data input #maxbytes : %u, server port : %u, iter_type : %u\n", maxbytes, parg->tuple.serport, (uint32_t)parg->iter_type);
+
+	for (int i = 0; i < 1 && (int)npend > 0 && niov < 128 && niov < maxiov; ++i) {
+
+		struct iovec			iov;
+
+		if (parg->iter_type == GY_ITER_UBUF) {
+			iov.iov_base		= parg->iov1.iov_base;
+			iov.iov_len		= parg->iov1.iov_len;
+
+			err			= 0;
+		}
+		else {
+			err = bpf_probe_read(&iov, sizeof(iov), parg->pvec.piov + niov);
+		}
+
+		// bpf_printk("read_iov_data IOV data is base %p len %d err %d\n", iov.iov_base, (int)iov.iov_len, err);
+
+		if (err) {
+			break;
+		}	
+
+		if (offset > iov.iov_len) {
+			break;
+		}	
+		if ((iov.iov_len == 0) || (offset == iov.iov_len)) {
+			niov++;
+			offset = 0;
+
+			continue;
+		}	
+
+		struct tcaphdr_t		*phdr;
+
+		const uint8_t			*psrc = (const uint8_t *)iov.iov_base + offset;
+		uint32_t			len = iov.iov_len - offset;
+
+		if (len > npend) {
+			len = npend;
+		}	
+
+		uint32_t			ringsz = 0, nbytes = len;
+
+		
+		if (nbytes > TMAX_ONE_RING_SZ - sizeof(*phdr)) {
+			nbytes = TMAX_ONE_RING_SZ - sizeof(*phdr);
+			offset += nbytes; 
+		}	
+		else {
+			offset = 0;
+			niov++;
+		}	
+
+		ringsz = nbytes + sizeof(*phdr);
+		
+		if (ringsz < 511) {
+			ringsz = 512;
+		}	
+		else {
+			ringsz = TMAX_ONE_RING_SZ;
+		}	
+
+		const uint16_t			npad = (uint16_t)(ringsz - sizeof(*phdr) - nbytes);
+
+		uint8_t				*pring = bpf_ringbuf_reserve(&capring, ringsz, 0);
+
+		if (!pring) {
+			break;
+		}	
+
+		startsrcseq			+= nbytes;
+		
+		phdr 				= (struct tcaphdr_t *)pring;
+
+		phdr->ts_ns			= ts_ns;
+
+		__builtin_memcpy(&phdr->tuple, &parg->tuple, sizeof(phdr->tuple));
+
+		phdr->len			= ringsz - sizeof(*phdr);
+		phdr->pid			= pid >> 32;
+		phdr->nxt_cli_seq		= is_inbound ? startsrcseq : nxt_dst_seq;
+		phdr->nxt_ser_seq		= is_inbound ? nxt_dst_seq : startsrcseq;
+		phdr->is_inbound		= is_inbound;
+		phdr->tcp_flags			= GY_TH_ACK;
+		phdr->npadbytes			= npad;
+
+		if (true || user_backed) {
+			err = bpf_core_read_user(pring + sizeof(*phdr), nbytes, psrc);
+		}
+		else {
+			err = bpf_core_read(pring + sizeof(*phdr), nbytes, psrc);
+		}	
+
+		if (err) {
+			bpf_printk("ERROR read_iov_data read failed err = %d : nbytes %u, user_backed %d\n", err, nbytes, (int)user_backed);
+			bpf_ringbuf_discard(pring, 0);
+			break;
+		}	
+
+		bpf_ringbuf_submit(pring, 0);
+
+		bpf_printk("SUCCESS read_iov_data read nbytes %u, user_backed %d\n", nbytes, (int)user_backed);
+
+		npend				-= nbytes;
+	}	
+
+	return npend == 0;
+}
 
 static int do_trace_close_entry(void *ctx, struct sock *sk)
 {
@@ -480,6 +548,10 @@ static int do_stash_entry_args(struct sock *sk, struct msghdr *msg, bool is_inbo
 		}	
 	}	
 
+	if (iarg.nr_segs == 0) {
+		iarg.nr_segs 		= 1;
+	}	
+
 	__builtin_memcpy(&iarg.tuple, &tuple, sizeof(tuple));
 
 	iarg.iter_type			= iter_type;
@@ -515,17 +587,13 @@ static int do_tcp_sendmsg_exit(struct sock *sk, struct msghdr *msg, int ret)
 	}	
 	
 	struct tcp_sock			*ptcp = (struct tcp_sock *)sk;
-	struct tcaphdr_t		*phdr;
-	u64				ts_ns = bpf_ktime_get_ns(), bytes_received;
+	u64				bytes_received;
 
 	size_t				tbytes = ret, maxbytes = tbytes > TMAX_TOTAL_PAYLOAD_LEN ? TMAX_TOTAL_PAYLOAD_LEN : tbytes;
-	ssize_t				npend = maxbytes;
 
 	uint32_t			actendseq = BPF_CORE_READ(ptcp, write_seq), startseq = actendseq - tbytes;
-	uint32_t			nxt_cli_seq = BPF_CORE_READ(ptcp, rcv_nxt), nret;
+	uint32_t			nxt_cli_seq = BPF_CORE_READ(ptcp, rcv_nxt);
 	
-	const uint8_t			niter = maxbytes / TMAX_ONE_PAYLOAD_LEN + 1;
-
 	BPF_CORE_READ_INTO(&bytes_received, ptcp, bytes_received);
 	if (bytes_received == 0) {
 		u64				bytes_sent;
@@ -542,7 +610,7 @@ static int do_tcp_sendmsg_exit(struct sock *sk, struct msghdr *msg, int ret)
 				goto done;
 			}	
 			
-			phdr->ts_ns			= ts_ns;
+			phdr->ts_ns			= bpf_ktime_get_ns();
 
 			__builtin_memcpy(&phdr->tuple, &parg->tuple, sizeof(phdr->tuple));
 
@@ -559,50 +627,7 @@ static int do_tcp_sendmsg_exit(struct sock *sk, struct msghdr *msg, int ret)
 		}
 	}
 
-	for (uint8_t i = 0; i < niter && npend > 0; ++i) {
-		const uint32_t			tbytes = sizeof(*phdr) + (uint32_t)(npend < TMAX_ONE_PAYLOAD_LEN ? npend : TMAX_ONE_PAYLOAD_LEN);
-		const uint32_t			ringsz = align_up_2(tbytes, 8);
-		const uint8_t			npad = (uint8_t)(ringsz - tbytes);
-
-		const uint32_t			actbytes = ringsz - sizeof(*phdr) - npad;
-		uint8_t				*pring = bpf_ringbuf_reserve(&capring, ringsz, 0);
-
-		if (!pring) {
-			break;
-		}	
-
-		startseq			+= actbytes;
-		npend				-= actbytes;
-		
-		phdr 				= (struct tcaphdr_t *)pring;
-
-		phdr->ts_ns			= ts_ns;
-
-		__builtin_memcpy(&phdr->tuple, &parg->tuple, sizeof(phdr->tuple));
-
-		phdr->len			= ringsz - sizeof(*phdr);
-		phdr->pid			= pid >> 32;
-		phdr->nxt_cli_seq		= nxt_cli_seq;
-		phdr->nxt_ser_seq		= startseq;
-		phdr->is_inbound		= false;
-		phdr->tcp_flags			= GY_TH_ACK;
-		phdr->npadbytes			= npad;
-
-		nret = read_iov_data(pring + sizeof(*phdr), actbytes, parg, parg->iov_offset, parg->user_backed); 
-		
-		if (nret != actbytes) {
-			bpf_ringbuf_discard(pring, 0);
-			break;
-		}	
-
-		/*
-		for (uint8_t i = 0; i < npad && i < 8; ++i) {
-			*(pring + sizeof(*phdr) + actbytes + i) = 0;
-		}
-		*/
-
-		bpf_ringbuf_submit(pring, 0);
-	}	
+	read_iov_data(parg, maxbytes, false /* is_inbound */, startseq, nxt_cli_seq);
 
 done :
 	bpf_map_delete_elem(&iovargmap, &pid);
@@ -643,17 +668,14 @@ static int do_tcp_recvmsg_exit(struct sock *sk, struct msghdr *msg, int ret)
 	}	
 	
 	struct tcp_sock			*ptcp = (struct tcp_sock *)sk;
-	struct tcaphdr_t		*phdr;
-	u64				ts_ns = bpf_ktime_get_ns(), bytes_sent;
+	u64				bytes_sent;
 
-	size_t				tbytes = ret, maxbytes = tbytes > TMAX_TOTAL_PAYLOAD_LEN ? TMAX_TOTAL_PAYLOAD_LEN : tbytes; 
-	ssize_t				npend = maxbytes;
+	size_t				tbytes = ret;
+	uint32_t			maxbytes = tbytes > TMAX_TOTAL_PAYLOAD_LEN ? TMAX_TOTAL_PAYLOAD_LEN : tbytes; 
 
 	uint32_t			actendseq = BPF_CORE_READ(ptcp, copied_seq), startseq = actendseq - tbytes;
-	uint32_t			nxt_ser_seq = BPF_CORE_READ(ptcp, write_seq), nret;
+	uint32_t			nxt_ser_seq = BPF_CORE_READ(ptcp, write_seq);
 	
-	const uint8_t			niter = maxbytes / TMAX_ONE_PAYLOAD_LEN + 1;
-
 	BPF_CORE_READ_INTO(&bytes_sent, ptcp, bytes_sent);
 	if (bytes_sent == 0) {
 		u64				bytes_received;
@@ -670,7 +692,7 @@ static int do_tcp_recvmsg_exit(struct sock *sk, struct msghdr *msg, int ret)
 				goto done;
 			}	
 			
-			phdr->ts_ns			= ts_ns;
+			phdr->ts_ns			= bpf_ktime_get_ns();
 
 			__builtin_memcpy(&phdr->tuple, &parg->tuple, sizeof(phdr->tuple));
 
@@ -687,50 +709,7 @@ static int do_tcp_recvmsg_exit(struct sock *sk, struct msghdr *msg, int ret)
 		}
 	}
 
-	for (uint8_t i = 0; i < niter && npend > 0; ++i) {
-		const uint32_t			tbytes = sizeof(*phdr) + (uint32_t)(npend < TMAX_ONE_PAYLOAD_LEN ? npend : TMAX_ONE_PAYLOAD_LEN);
-		const uint32_t			ringsz = align_up_2(tbytes, 8);
-		const uint8_t			npad = (uint8_t)(ringsz - tbytes);
-
-		const uint32_t			actbytes = ringsz - sizeof(*phdr) - npad;
-		uint8_t				*pring = bpf_ringbuf_reserve(&capring, ringsz, 0);
-
-		if (!pring) {
-			break;
-		}	
-
-		startseq			+= actbytes;
-		npend				-= actbytes;
-		
-		phdr 				= (struct tcaphdr_t *)pring;
-
-		phdr->ts_ns			= ts_ns;
-
-		__builtin_memcpy(&phdr->tuple, &parg->tuple, sizeof(phdr->tuple));
-
-		phdr->len			= ringsz - sizeof(*phdr);
-		phdr->pid			= pid >> 32;
-		phdr->nxt_cli_seq		= startseq;
-		phdr->nxt_ser_seq		= nxt_ser_seq;
-		phdr->is_inbound		= true;
-		phdr->tcp_flags			= GY_TH_ACK;
-		phdr->npadbytes			= npad;
-
-		nret = read_iov_data(pring + sizeof(*phdr), actbytes, parg, parg->iov_offset, parg->user_backed); 
-		
-		if (nret != actbytes) {
-			bpf_ringbuf_discard(pring, 0);
-			break;
-		}	
-
-		/*
-		for (uint8_t i = 0; i < npad && i < 8; ++i) {
-			*(pring + sizeof(*phdr) + actbytes + i) = 0;
-		}
-		*/
-
-		bpf_ringbuf_submit(pring, 0);
-	}	
+	read_iov_data(parg, maxbytes, true /* is_inbound */, startseq, nxt_ser_seq);
 
 done :
 	bpf_map_delete_elem(&iovargmap, &pid);
@@ -744,4 +723,8 @@ int BPF_PROG(fexit_tcp_recvmsg_exit, struct sock *sk, struct msghdr *msg, size_t
 	return do_tcp_recvmsg_exit(sk, msg, ret);
 }
 
-
+SEC("fexit/tcp_recvmsg")
+int BPF_PROG(fexit_tcp_recvmsg_old_exit, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len, int ret)
+{
+	return do_tcp_recvmsg_exit(sk, msg, ret);
+}

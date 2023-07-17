@@ -113,7 +113,7 @@ test_shared_ptr: test_shared_ptr.o $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^ $(LDLIBS) -o $@
 
 test_prio1: test_prio1.o
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^ $(EXTRALDFLAGS) -o $@
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^ $(EXTRALDFLAGS)  $(LDLIBS) -o $@
 
 test_stack: test_stack.o $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $^  $(LDLIBS) -o $@

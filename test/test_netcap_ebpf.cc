@@ -73,7 +73,13 @@ public :
 
 	void start_collection(void *pwriter)
 	{
+		int				ret;
+	
+
+		bpf_program__set_autoload(obj_.get()->progs.fexit_tcp_recvmsg_exit, false);
+
 		obj_.load_bpf();
+
 		obj_.attach_bpf();
 
 		pdatapool_.emplace("Net cap Pool", bpf_map__fd(obj_.get()->maps.capring), handle_data, pwriter);
@@ -271,7 +277,7 @@ int main(int argc, char *argv[])
 
 		gy_create_thread(&dbgtid, GET_PTHREAD_WRAPPER(debug_thread), nullptr, 64 * 1024, false);
 
-		ret = gy_create_thread(&thrid, GET_PTHREAD_WRAPPER(netcap_thr), &phdlr->cap_, GY_UP_MB(1), false);
+		ret = gy_create_thread(&thrid, GET_PTHREAD_WRAPPER(netcap_thr), &phdlr->cap_, GY_UP_MB(1), true);
 		if (ret) {
 			PERRORPRINT("Could not create netcap handling thread");
 			return -1;
@@ -289,7 +295,7 @@ int main(int argc, char *argv[])
 		 */
 		gy_nanosleep(1, 0);
 
-		for (int i = 1; i + 2 < argc; i += 3) {
+		for (int i = 2; i + 2 < argc; i += 3) {
 			phdlr->add_listener(GY_IP_ADDR(argv[i]), string_to_number<uint16_t>(argv[i + 1]), string_to_number<uint32_t>(argv[i + 2]), TCAP_PROTO_UNKNOWN);
 		}	
 

@@ -31,6 +31,16 @@ GY_TIMEZONE* GY_TIMEZONE::get_singleton() noexcept
 
 }
 
+uint64_t CityHash64(char const*, unsigned long)
+{
+	return 0;
+}
+
+uint32_t CityHash32(char const*, unsigned long)
+{
+	return 0;
+}
+
 void * my_malloc(size_t count)
 {
 	auto ptr = std::malloc(count);

@@ -98,9 +98,9 @@ struct tcaphdr_t
 	u32 				pid;
 	u32				nxt_cli_seq;
 	u32				nxt_ser_seq;
+	u16				npadbytes;
 	bool				is_inbound;
 	u8				tcp_flags;
-	u8				npadbytes;
 
 #ifdef	__cplusplus
 	
@@ -122,8 +122,9 @@ struct tcaphdr_t
 
 };
 
-#define					TMAX_ONE_PAYLOAD_LEN		(16 * 1024 - sizeof(struct tcaphdr_t) - 64)
-#define					TMAX_TOTAL_PAYLOAD_LEN		(TMAX_ONE_PAYLOAD_LEN * 5)
+#define					TMAX_ONE_RING_SZ		1024
+#define					TMAX_ONE_PAYLOAD_LEN		(TMAX_ONE_RING_SZ - sizeof(struct tcaphdr_t))
+#define					TMAX_TOTAL_PAYLOAD_LEN		(80 * 1024 / TMAX_ONE_PAYLOAD_LEN + 1024)
 #define					TMAX_IOVEC_SEGS			32
 
 
