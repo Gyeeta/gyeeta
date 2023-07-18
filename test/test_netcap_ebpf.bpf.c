@@ -202,7 +202,7 @@ static struct tlistenstat * lookup_listener(struct tlistenkey *pkey)
 static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is_inbound, uint32_t startsrcseq, uint32_t nxt_dst_seq)
 {
 	uint64_t				ts_ns = bpf_ktime_get_ns(), pid = bpf_get_current_pid_tgid();
-	uint32_t				npend = maxbytes, offset = 0;
+	uint32_t				npend = maxbytes, offset = parg->iov_offset;
 	int					err = 0;
 	uint16_t				niov = 0;
 	const uint16_t				maxiov = parg->nr_segs;
@@ -298,7 +298,7 @@ static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is
 		phdr->tcp_flags			= GY_TH_ACK;
 		phdr->npadbytes			= npad;
 
-		if (true || user_backed) {
+		if (user_backed) {
 			err = bpf_core_read_user(pring + sizeof(*phdr), nbytes, psrc);
 		}
 		else {
