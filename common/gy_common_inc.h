@@ -721,6 +721,17 @@ public :
 template <typename T = void>
 using UNIQUE_PTR_FREE = std::unique_ptr<T, FUNCTOR_FREE<T>>;
 
+template <typename T, void (*function)(T *)>
+struct GY_FUNC_DELETER 
+{
+	void operator()(T* pointer) const { function(pointer); }
+	typedef std::unique_ptr<T, FunctionDeleter> Pointer;
+};
+
+template <typename T, void (*function)(T *)>
+using FUNC_DELETE_PTR = typename GY_FUNC_DELETER<T, function>::Pointer;
+
+
 /*
  * Valid only for a single expression. 
  * After the expression is over the rvalue may expire resulting in a dangling reference.
