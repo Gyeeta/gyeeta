@@ -13,8 +13,6 @@ typedef 	int (* SIGNAL_CALLBACK_HDLR) (int signo);
 
 class 		GY_MUTEX;
 
-const char * 	gy_dirname(char *path, char **pptr) noexcept;	// User needs to later free pptr
-const char * 	gy_basename(char *path, char **pptr) noexcept;	// User needs to later free pptr
 int 		gy_create_tmpfs(char *dest_dir, uint32_t size_mb, mode_t mode, int is_noatime) noexcept;
 int 		gy_check_dir_mounttype(char *dest_dir, int *pis_tmpfs) noexcept;
 char 		* gy_path_cleanup(char *path, bool kill_dots = true) noexcept; 
@@ -37,10 +35,6 @@ int 		no_mutex_lock(pthread_mutex_t * pmutex) noexcept;
 int		gy_mutex_proc_lock(GY_MUTEX * pmutex) noexcept;
 int		gy_mutex_proc_unlock(GY_MUTEX * pmutex) noexcept;
 int		gy_mutex_proc_trylock(GY_MUTEX * pmutex) noexcept;
-
-/* XXX After call to gy_argv_split(), the return pointer must be freed using gy_argv_free(pointer) instead of free() */
-char ** 	gy_argv_split(const char *poriginput, int *pargc, size_t max_strlen = 32767) noexcept; 
-void 		gy_argv_free(char **argv) noexcept;
 
 int 		gy_fork_system(char *systemcmd, char *pdirchange, int to_wait, pid_t *pchldpid, int prctlsigno, const char *plogpath = nullptr, \
 			uid_t ch_uid = 0, gid_t ch_gid = 0, bool ignore_sighup = true, bool drop_all_cap = true) noexcept;
@@ -297,6 +291,7 @@ static uint32_t gy_cityhash32(const char *s, size_t len) noexcept
 }
 
 #include		"gy_common_inc.h"
+
 
 } // namespace gyeeta	
 

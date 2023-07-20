@@ -1148,13 +1148,14 @@ int truncate_file_wrap_last(char *filename, size_t truncate_if_size_over, size_t
 	return 0;
 }	
 
-
-const char * gy_dirname(char *pathorig, char **pptr) noexcept
+/*
+ * Returns the dirname ptr. Users need to pass a local uninitialized UNIQUE_C_PTR which
+ * will be updated by this func
+ */
+const char * gy_dirname(const char *pathorig, UNIQUE_C_PTR & retuniq) noexcept
 {
 	char 			*path, *pdir, *ptemp, *pendptr, lastc;
 	const char		*pres = "";
-
-	*pptr = nullptr;
 
 	if (!pathorig) return nullptr;
 
@@ -1215,18 +1216,20 @@ const char * gy_dirname(char *pathorig, char **pptr) noexcept
 	}
 
 end_func:
-	// XXX Caller must free path later
 
-	*pptr = path;
+	retuniq.reset(path);
+
 	return pres;
 }
 
-const char * gy_basename(char *pathorig, char **pptr) noexcept
+/*
+ * Returns the basename ptr. Users need to pass a local uninitialized UNIQUE_C_PTR which
+ * will be updated by this func
+ */
+const char * gy_basename(const char *pathorig, UNIQUE_C_PTR & retuniq) noexcept
 {
 	char 		*path, *pdir, *ptemp, *pendptr, lastc;
 	const char 	*pres = "";
-
-	*pptr = nullptr;
 
 	if (!pathorig) return nullptr;
 
@@ -1281,7 +1284,8 @@ const char * gy_basename(char *pathorig, char **pptr) noexcept
 
 end_func :
 
-	*pptr = path;
+	retuniq.reset(path);
+
 	return pres;
 }
 
@@ -1680,19 +1684,21 @@ void gy_argv_free(char **argv) noexcept
 {
 	if (argv) {
 		argv--;
-		free(argv[0]);
-		free(argv);
+		free((void *)argv[0]);
+		free((void *)argv);
 	}
 }
 
 /*
  * Function to split up a single string into argv style buffers.
- * XXX After call to gy_argv_split(), the return pointer must be freed using gy_argv_free(pointer) instead of free().
+ * Use the <return value>.get() to get the char **argv
  */ 
-char ** gy_argv_split(const char *poriginput, int *pargc, size_t max_strlen) noexcept
+FUNC_DELETE_PTR<char *, gy_argv_free> gy_argv_split(const char *poriginput, int & argc, size_t max_strlen) noexcept
 {
 	char		*pinput, **argv, **argv_ret, *ptmp, *pend;
 	int		max_str, was_space;
+
+	argc = 0;
 
 	pinput = strndup(poriginput, max_strlen);
 	if (!pinput) {
@@ -1742,11 +1748,9 @@ char ** gy_argv_split(const char *poriginput, int *pargc, size_t max_strlen) noe
 
 	*argv = nullptr;
 
-	if (pargc) {
-		*pargc = max_str;
-	}
+	argc = max_str;
 
-	return argv_ret;
+	return FUNC_DELETE_PTR<char *, gy_argv_free>(argv_ret);
 }
 
 
@@ -2109,11 +2113,13 @@ int gy_fork_system(char *systemcmd, char *pdirchange, int to_wait, pid_t *pchldp
 			signal(SIGHUP, SIG_IGN);
 		}
 
-		argv = gy_argv_split(systemcmd, &argc);
-		if (argv == nullptr) {
+		auto argptr = gy_argv_split(systemcmd, argc);
+		if (!argptr) {
 			ERRORFDPRINT(STDERR_FILENO, "Failed to parse input fork string, fork child exiting...\n");
 			_exit(1);
 		}
+
+		argv = argptr.get();
 
 		if (plogpath) {
 			fdlog = open(plogpath, O_RDWR | O_CREAT | O_APPEND, 0664);

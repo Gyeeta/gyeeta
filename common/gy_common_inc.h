@@ -685,7 +685,7 @@ static void destruct_dealloc(T *pdata, FREE_FPTR free_fp) noexcept(std::is_nothr
 		pdata->~T();
 
 		if (free_fp) {
-			(*free_fp)(pdata);
+			(*free_fp)((void *)pdata);
 		}	
 	}	
 }	
@@ -703,7 +703,7 @@ static void destruct_dealloc_array(T *pdata_arr, size_t nelems, FREE_FPTR free_f
 		}
 
 		if (free_fp) {
-			(*free_fp)(pdata_arr);
+			(*free_fp)((void *)pdata_arr);
 		}	
 	}	
 }	
@@ -721,15 +721,37 @@ public :
 template <typename T = void>
 using UNIQUE_PTR_FREE = std::unique_ptr<T, FUNCTOR_FREE<T>>;
 
-template <typename T, void (*function)(T *)>
+using UNIQUE_C_PTR = UNIQUE_PTR_FREE<const char>;
+
+template <typename T, void(*FreeFunc)(T *) noexcept>
 struct GY_FUNC_DELETER 
 {
-	void operator()(T* pointer) const { function(pointer); }
-	typedef std::unique_ptr<T, FunctionDeleter> Pointer;
+	void operator()(T * pdata) const noexcept
+	{ 
+		FreeFunc(pdata); 
+	}
 };
 
-template <typename T, void (*function)(T *)>
-using FUNC_DELETE_PTR = typename GY_FUNC_DELETER<T, function>::Pointer;
+template <typename T = void, void (*function)(T *) noexcept = std::free>
+using FUNC_DELETE_PTR = std::unique_ptr<T, GY_FUNC_DELETER<T, function>>;
+
+/*
+ * Returns the dirname ptr. Users need to pass a local uninitialized UNIQUE_C_PTR which
+ * will be updated by this func
+ */
+const char * gy_dirname(const char *pathorig, UNIQUE_C_PTR & retuniq) noexcept;
+
+/*
+ * Returns the basename ptr. Users need to pass a local uninitialized UNIQUE_C_PTR which
+ * will be updated by this func
+ */
+const char * gy_basename(const char *path, UNIQUE_C_PTR & retuniq) noexcept;
+
+void gy_argv_free(char **argv) noexcept;
+/*
+ * Use the <return value>.get() to get the char **argv
+ */
+FUNC_DELETE_PTR<char *, gy_argv_free> gy_argv_split(const char *poriginput, int & argc, size_t max_strlen = 32767) noexcept; 
 
 
 /*
