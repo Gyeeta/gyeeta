@@ -655,7 +655,7 @@ static void *realloc_or_throw(void *ptr, size_t size)
 
 // Custom new with default params and aligned alloc as per alignment of T
 template <typename T, std::enable_if_t<std::is_default_constructible<T>::value, int> = 0>
-static T * malloc_default_construct()
+T * malloc_default_construct()
 {
 	T		*pdata;
 
@@ -666,7 +666,7 @@ static T * malloc_default_construct()
 
 // Custom new [] with default params and aligned alloc as per alignment of T
 template <typename T, std::enable_if_t<std::is_default_constructible<T>::value, int> = 0>
-static T * malloc_array_default_construct(size_t nelems)
+T * malloc_array_default_construct(size_t nelems)
 {
 	T		*pdata;
 
@@ -679,7 +679,7 @@ static T * malloc_array_default_construct(size_t nelems)
 
 // Custom delete 
 template <typename T>
-static void destruct_dealloc(T *pdata, FREE_FPTR free_fp) noexcept(std::is_nothrow_destructible<T>::value)
+void destruct_dealloc(T *pdata, FREE_FPTR free_fp) noexcept(std::is_nothrow_destructible<T>::value)
 {
 	if (pdata) {
 		pdata->~T();
@@ -692,7 +692,7 @@ static void destruct_dealloc(T *pdata, FREE_FPTR free_fp) noexcept(std::is_nothr
 
 // Custom delete [] 
 template <typename T>
-static void destruct_dealloc_array(T *pdata_arr, size_t nelems, FREE_FPTR free_fp) noexcept(std::is_nothrow_destructible<T>::value)
+void destruct_dealloc_array(T *pdata_arr, size_t nelems, FREE_FPTR free_fp) noexcept(std::is_nothrow_destructible<T>::value)
 {
 	if (pdata_arr) {
 		
@@ -721,8 +721,6 @@ public :
 template <typename T = void>
 using UNIQUE_PTR_FREE = std::unique_ptr<T, FUNCTOR_FREE<T>>;
 
-using UNIQUE_C_PTR = UNIQUE_PTR_FREE<const char>;
-
 template <typename T, void(*FreeFunc)(T *) noexcept>
 struct GY_FUNC_DELETER 
 {
@@ -732,8 +730,16 @@ struct GY_FUNC_DELETER
 	}
 };
 
-template <typename T = void, void (*function)(T *) noexcept = std::free>
+template <typename T>
+void gy_call_free(T *pdata) noexcept
+{
+	::free((void *)pdata);
+}	
+
+template <typename T, void (*function)(T *) noexcept>
 using FUNC_DELETE_PTR = std::unique_ptr<T, GY_FUNC_DELETER<T, function>>;
+
+using UNIQUE_C_PTR = FUNC_DELETE_PTR<char, gy_call_free<char>>;
 
 /*
  * Returns the dirname ptr. Users need to pass a local uninitialized UNIQUE_C_PTR which
@@ -1061,7 +1067,7 @@ static constexpr std::make_unsigned_t<T> gy_diff_counter_safe(const T newstat, c
  * int64_t newval = atomic_oper_locked(atomicvar, mulcb);
  */
 template <typename FCB, typename T, typename AtomicT = std::atomic<T>>
-static T atomic_oper_locked(AtomicT & acnt, FCB & fcb) noexcept(noexcept(fcb((T)1)))
+T atomic_oper_locked(AtomicT & acnt, FCB & fcb) noexcept(noexcept(fcb((T)1)))
 {
 	T			expectedval, newval;
 
@@ -1075,7 +1081,7 @@ static T atomic_oper_locked(AtomicT & acnt, FCB & fcb) noexcept(noexcept(fcb((T)
 
 // Atomic decrement to min 0 using cmpxchg
 template <typename T, typename AtomicT = std::atomic<T>>
-static T atomic_sub_locked_chked(AtomicT & acnt, T subval) noexcept
+T atomic_sub_locked_chked(AtomicT & acnt, T subval) noexcept
 {
 	auto lam1 = [subval](T oldval) noexcept ->T
 	{
@@ -3847,7 +3853,7 @@ static int sscanf_large_str(char *inputstr, size_t max_len_to_check, const char 
  * Use this function for const input strings which could potentially be much larger than max_len_to_check
  */
 template <size_t max_len_to_check>
-static int sscanf_large_str(const char *inputstr, const char *format, ...) noexcept
+int sscanf_large_str(const char *inputstr, const char *format, ...) noexcept
 {
 	static_assert(max_len_to_check <= 512, "Use sscanf() directly");
 
@@ -3905,7 +3911,7 @@ static CHAR_BUF<32> number_to_string(uint16_t num, const char * fmt = "%hu") noe
 
 template <size_t sz_ = 128>
 [[gnu::format (printf, 1, 2)]] 
-static CHAR_BUF<sz_> gy_to_charbuf(const char *fmt, ...) noexcept
+CHAR_BUF<sz_> gy_to_charbuf(const char *fmt, ...) noexcept
 {
 	CHAR_BUF<sz_>		cbuf;
 	va_list 		va;
@@ -4269,7 +4275,7 @@ static inline bool string_to_number(const char *pstr, long double &result, char 
 
 // Will return T(0) in case of error and set *piserror = true
 template <typename T>
-static T string_to_number(const char *pstr, int base = 0, bool *piserror = nullptr) noexcept
+T string_to_number(const char *pstr, int base = 0, bool *piserror = nullptr) noexcept
 {
 	T			res;
 	bool			bret;
@@ -4360,7 +4366,7 @@ std::pair<const char *, size_t> get_trim_str(const char *str, size_t origlen) no
  * Will return copied string in a CHAR_BUF<> without the trailing newline if nonewline (only last \n removed)
  */
 template <size_t szbuf = 512>
-static CHAR_BUF<szbuf> copy_str_buf(const char *pmsg, bool nonewline = false) noexcept
+CHAR_BUF<szbuf> copy_str_buf(const char *pmsg, bool nonewline = false) noexcept
 {
 	CHAR_BUF<szbuf>		ebuf;
 	size_t			slen;	
@@ -4410,7 +4416,7 @@ static CHAR_BUF<szbuf> copy_str_buf(const char *pmsg, bool nonewline = false) no
 })	
 	
 template <class T>
-static inline void error_if_polymorphic(const char *perrormsg)
+void error_if_polymorphic(const char *perrormsg)
 {
 	static_assert(!std::is_polymorphic<T>::value, "This cannot be used on a polymorphic class");
 }	
@@ -4637,7 +4643,7 @@ public :
  *
  */ 
 template <typename T>
-static void * gy_safe_memset(T * pt) noexcept
+void * gy_safe_memset(T * pt) noexcept
 {
 	static_assert(std::is_trivially_copyable<T>::value, "ERROR : Cannot memset this class/struct : Use GY_MEMBER_MEMSET() instead");
 	return std::memset((void *)pt, 0, sizeof(T)); 
@@ -6687,7 +6693,7 @@ do {													\
 typedef void * (* PTHREAD_FUNC_PTR) (void *);
 
 template <typename T>
-static inline std::pair<T *, void *> * alloc_thread_args(T *pclass, void *parg)
+std::pair<T *, void *> * alloc_thread_args(T *pclass, void *parg)
 {
 	return new (std::nothrow) std::pair<T *, void *>(pclass, parg);
 }
@@ -7376,7 +7382,7 @@ public :
 
 template <size_t sz_ = 128>
 [[gnu::format (printf, 1, 2)]] 
-static STR_ARRAY<sz_> gy_to_strarray(const char *fmt, ...) noexcept
+STR_ARRAY<sz_> gy_to_strarray(const char *fmt, ...) noexcept
 {
 	STR_ARRAY<sz_>		cbuf;
 	va_list 		va;
@@ -12228,14 +12234,14 @@ struct SHARED_PTR_HASH
 
 
 template <typename T, typename U>
-static bool weak_shared_equal(const std::weak_ptr<T> &t, const std::shared_ptr<U> &u)
+bool weak_shared_equal(const std::weak_ptr<T> &t, const std::shared_ptr<U> &u)
 {
 	return !t.owner_before(u) && !u.owner_before(t);
 }
 
 
 template <typename T, typename U>
-static bool weak_ptr_equal(const std::weak_ptr<T> &t, const std::weak_ptr<U> &u)
+bool weak_ptr_equal(const std::weak_ptr<T> &t, const std::weak_ptr<U> &u)
 {
 	return !t.owner_before(u) && !u.owner_before(t);
 }	
