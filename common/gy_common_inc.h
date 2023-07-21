@@ -7,8 +7,8 @@
 #define 		_GNU_SOURCE
 #endif
 
-#if (__cplusplus < 201400L)
-#	error 		"This header requires C++17. Limited support for C++14 available. Please compile with -std=c++17 or -std=c++14"
+#if (__cplusplus < 201700L)
+#	error 		"This header requires C++17. Please compile with -std=c++17"
 #endif
 
 #if (!defined(__GNUC__) || (__GNUC__ < 7))
@@ -468,12 +468,6 @@ static bool gy_same_string(const char *str1, size_t slen1, const char *str2, siz
 }	
 
 
-#if (__cplusplus >= 201700L)
-#	define IF_CONSTEXPR		if constexpr 
-#else
-#	define IF_CONSTEXPR		if
-#endif
-
 // Use to avoid Divide by zero 
 #define NUM_OR_1(_num)										\
 ({												\
@@ -889,7 +883,7 @@ static constexpr inline void array_shift_right(T *parr, size_t narray_size, size
 		return;
 	}
 
-	IF_CONSTEXPR (false == std::is_trivially_copy_assignable<T>::value) {
+	if constexpr (false == std::is_trivially_copy_assignable<T>::value) {
 
 		for (ssize_t i = narray_size - 1; i >= nshiftmin; --i) {
 			parr[i]	= std::move(parr[i - nshiftmin]);
@@ -916,7 +910,7 @@ static constexpr inline void array_shift_left(T *parr, size_t narray_size, size_
 		return;
 	}
 
-	IF_CONSTEXPR (false == std::is_trivially_copy_assignable<T>::value) {
+	if constexpr (false == std::is_trivially_copy_assignable<T>::value) {
 
 		for (ssize_t i = nshiftmin; i < (ssize_t)narray_size; ++i) {
 			parr[i - nshiftmin] = std::move(parr[i]);
@@ -939,7 +933,7 @@ static constexpr inline void array_shift_copy_left(T *parr, size_t narray_size, 
 {
 	ssize_t		ncopy = std::min<ssize_t>(nnew, narray_size);
 
-	IF_CONSTEXPR (false == std::is_trivially_copy_assignable<T>::value) {
+	if constexpr (false == std::is_trivially_copy_assignable<T>::value) {
 
 		for (ssize_t i = ncopy; i < (ssize_t)narray_size; ++i) {
 			parr[i - ncopy] = std::move(parr[i]);
@@ -962,7 +956,7 @@ static constexpr inline void array_shift_move_left(T *parr, size_t narray_size, 
 {
 	ssize_t		ncopy = std::min<ssize_t>(nnew, narray_size);
 
-	IF_CONSTEXPR (false == std::is_trivially_copy_assignable<T>::value) {
+	if constexpr (false == std::is_trivially_copy_assignable<T>::value) {
 
 		for (ssize_t i = ncopy; i < (ssize_t)narray_size; ++i) {
 			parr[i - ncopy] = std::move(parr[i]);
@@ -984,7 +978,7 @@ static constexpr inline void array_shift_copy_right(T *parr, size_t narray_size,
 {
 	ssize_t		ncopy = std::min<ssize_t>(nnew, narray_size);
 
-	IF_CONSTEXPR (false == std::is_trivially_copy_assignable<T>::value) {
+	if constexpr (false == std::is_trivially_copy_assignable<T>::value) {
 
 		for (ssize_t i = narray_size - 1; i >= ncopy; --i) {
 			parr[i]	= std::move(parr[i - ncopy]);
@@ -1008,7 +1002,7 @@ static constexpr inline void array_shift_move_right(T *parr, size_t narray_size,
 {
 	ssize_t		ncopy = std::min<ssize_t>(nnew, narray_size);
 
-	IF_CONSTEXPR (false == std::is_trivially_copy_assignable<T>::value) {
+	if constexpr (false == std::is_trivially_copy_assignable<T>::value) {
 
 		for (ssize_t i = narray_size - 1; i >= ncopy; --i) {
 			parr[i]	= std::move(parr[i - ncopy]);
@@ -1127,17 +1121,16 @@ class GY_JHASHER
 {
 public :
 	static_assert(sizeof(T) < 512, "Please use a different Hashing algorithm for larger structs");
-#if (__cplusplus >= 201700L)
+
 	static_assert(std::has_unique_object_representations_v<T> || ignore_uniq_obj_trait, "Padded structs cannot be hashed using this class");
-#endif	
 
 	template <typename F = T, std::enable_if_t<sizeof(F) <= 32 && sizeof(F) == gy_align_up_2(sizeof(F), 4) && alignof(F) >= 4, int> = 0>
 	uint64_t operator()(const T key) const noexcept
 	{
-		IF_CONSTEXPR(sizeof(key) == 4) {
+		if constexpr(sizeof(key) == 4) {
 			return jhash_1word(static_cast<uint32_t>(key), 0xceedfead);
 		}
-		else IF_CONSTEXPR(sizeof(key) == 8) {
+		else if constexpr(sizeof(key) == 8) {
 			uint64_t		ukey = (uint64_t)(uintptr_t)(key);
 
 			return jhash_2words(ukey & 0xFFFFFFFF, ukey >> 32, 0xceedfead);
@@ -1157,7 +1150,7 @@ public :
 
 		std::memcpy(tbuf, &key, sizeof(T));
 
-		IF_CONSTEXPR(sizeof(tbuf) == 4) {
+		if constexpr(sizeof(tbuf) == 4) {
 			return jhash_1word(reinterpret_cast<const uint32_t *>(tbuf), 0xceedfead);
 		}
 
@@ -1202,12 +1195,10 @@ public :
 		setbuf(pmsg, szstr);
 	}
 
-#if (__cplusplus >= 201700L)
 	CHAR_BUF(std::string_view v) noexcept
 	{
 		setbuf(v.data(), v.size());
 	}
-#endif
 
 	// Adds ... mark for truncated strings over 16 bytes long
 	CHAR_BUF(const char * pmsg, size_t szstr, bool add_truncation_mark) noexcept
@@ -1228,7 +1219,7 @@ public :
 	template <size_t l2, size_t alignb>
 	CHAR_BUF(const CHAR_BUF <l2, alignb> & other) noexcept
 	{
-		IF_CONSTEXPR (l2 <= 512) {
+		if constexpr (l2 <= 512) {
 			setbuf(other.get(), l2 - 1);
 		}
 		else {
@@ -1240,7 +1231,7 @@ public :
 	CHAR_BUF & operator= (const CHAR_BUF <l2, alignb> & other) noexcept
 	{
 		if (this != &other) {
-			IF_CONSTEXPR (l2 <= 512) {
+			if constexpr (l2 <= 512) {
 				setbuf(other.get(), l2 - 1);
 			}
 			else {
@@ -1254,7 +1245,7 @@ public :
 	template <size_t l2, size_t alignb>
 	CHAR_BUF(CHAR_BUF <l2, alignb> && other) noexcept
 	{
-		IF_CONSTEXPR (l2 <= 512) {
+		if constexpr (l2 <= 512) {
 			setbuf(other.get(), l2 - 1);
 		}
 		else {
@@ -1268,7 +1259,7 @@ public :
 	CHAR_BUF & operator= (CHAR_BUF <l2, alignb> && other) noexcept
 	{
 		if (this != &other) {
-			IF_CONSTEXPR (l2 <= 512) {
+			if constexpr (l2 <= 512) {
 				setbuf(other.get(), l2 - 1);
 			}
 			else {
@@ -4280,7 +4271,7 @@ T string_to_number(const char *pstr, int base = 0, bool *piserror = nullptr) noe
 	T			res;
 	bool			bret;
 
-	IF_CONSTEXPR(std::is_integral<T>::value) {
+	if constexpr(std::is_integral<T>::value) {
 		bret = string_to_number(pstr, res, nullptr, base);
 	}
 	else {
@@ -4302,7 +4293,6 @@ T string_to_number(const char *pstr, int base = 0, bool *piserror = nullptr) noe
 	return res;
 }	
 
-#if (__cplusplus >= 201700L)
 static inline std::optional<int> char_to_number(char c) noexcept
 {
 	if (!(c >= '0' && c <= '9')) {
@@ -4311,7 +4301,6 @@ static inline std::optional<int> char_to_number(char c) noexcept
 
 	return c - '0';
 }	
-#endif
 
 // Get length of string after rtrim (only space/tab chars)
 static size_t get_rtrim_len(const char *str, size_t origlen) noexcept
@@ -4372,7 +4361,7 @@ CHAR_BUF<szbuf> copy_str_buf(const char *pmsg, bool nonewline = false) noexcept
 	size_t			slen;	
 	
 	if (pmsg && *pmsg) {
-		IF_CONSTEXPR(szbuf <= 512) {
+		if constexpr(szbuf <= 512) {
 			slen = strnlen(pmsg, sizeof(ebuf) - 1);
 		}
 		else {
@@ -7322,12 +7311,10 @@ public :
 		return szarr - 1;
 	}	
 
-#if (__cplusplus >= 201700L)
 	std::string_view get_view() const noexcept
 	{
 		return std::string_view(get(), length());
 	}
-#endif
 
 	template <uint32_t newsz>
 	bool operator== (const STR_ARRAY <newsz> & rhs) const noexcept
@@ -7351,11 +7338,7 @@ public :
 
 	friend std::ostream & operator<< (std::ostream & stream, const STR_ARRAY & str) 
 	{
-#if (__cplusplus >= 201700L)
 		return stream << str.get_view();
-#else		
-		return stream << str.get();
-#endif		
 	}
 };
 
@@ -8317,12 +8300,10 @@ public :
 		return append(p.first, p.second);
 	}
 
-#if (__cplusplus >= 201700L)
 	char * append(std::string_view v) noexcept
 	{
 		return append(v.data(), v.size());
 	}
-#endif
 
 	char *append(uint32_t num) noexcept
 	{
@@ -8544,12 +8525,10 @@ public :
 		return '\0';
 	}
 
-#if (__cplusplus >= 201700L)
 	std::string_view get_view() const noexcept
 	{
 		return std::string_view(data(), size());
 	}
-#endif
 
 	/*
 	 * Can be used to change the last char updated. Use case is of a loop and then breaking out of loop
@@ -9072,12 +9051,10 @@ public :
 		return strset(strbuf.buffer(), strbuf.length());
 	}	
 
-#if (__cplusplus >= 201700L)
 	const char * assign(std::string_view v)
 	{
 		return strset(v.data(), v.size());
 	}
-#endif
 
 	/*
 	 * Use only for string literals as no runtime strlen done...
@@ -9189,12 +9166,10 @@ public :
 		return append(str, std::strlen(str));
 	}
 
-#if (__cplusplus >= 201700L)
 	const char * append(std::string_view v)
 	{
 		return append(v.data(), v.size());
 	}
-#endif
 
 	/*
 	 * Truncate to length len
@@ -9305,12 +9280,10 @@ public :
 		return c_str();
 	}
 
-#if (__cplusplus >= 201700L)
 	std::string_view get_view() const noexcept
 	{
 		return std::string_view(data(), size());
 	}
-#endif
 
 	template <size_t l2>
 	bool operator< (const SSO_STRING <l2> & other) const noexcept
@@ -9337,11 +9310,7 @@ public :
 
 	friend std::ostream & operator<< (std::ostream & stream, const SSO_STRING & str)
 	{
-#if (__cplusplus >= 201700L)
 		return stream << str.get_view();
-#else		
-		return stream << str.data();
-#endif		
 	}
 };	
 

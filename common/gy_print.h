@@ -212,7 +212,7 @@ do {												\
 	constexpr bool		_is_nl = gyeeta::is_str_last_char(_str, '\n');			\
 	constexpr size_t	_resetlen = gyeeta::GY_CONST_STRLEN(GY_COLOR_RESET);		\
 												\
-	IF_CONSTEXPR (_is_nl) {									\
+	if constexpr (_is_nl) {									\
 		std::memcpy(_strnew, _str, _N - 2);						\
 		std::memcpy(_strnew + _N - 2, GY_COLOR_RESET, _resetlen);			\
 		_strnew[_N - 2 + _resetlen] = '\n';						\
