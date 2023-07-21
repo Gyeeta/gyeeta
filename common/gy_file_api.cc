@@ -442,12 +442,12 @@ ssize_t gy_get_proc_cpus_allowed(pid_t pid) noexcept
 	}	
 }
 
-void gy_host_to_nw_bo(void *pd, void *ps, int size, int is_little_endian) noexcept
+void gy_host_to_nw_bo(void *pd, void *ps, size_t size, bool is_little_endian) noexcept
 {
 	char 		*pdest = (char *)pd;
 	char 		*psrc = (char *)ps;
 	unsigned char 	ctemp[128];
-	int i;
+	int 		i;
 
 	if (size == 2) {
 		*(short *)pdest = htons(*(short *)psrc);
@@ -456,9 +456,9 @@ void gy_host_to_nw_bo(void *pd, void *ps, int size, int is_little_endian) noexce
 		*(int *)pdest = htonl(*(int *)psrc);
 	}
 	else {
-		if (is_little_endian == 0) {
+		if (!is_little_endian) {
 			if (pdest != psrc) {
-				for (i = 0; i < size; i++) {
+				for (i = 0; i < (int)size; i++) {
 					*(pdest + i) = *(psrc + i);
 				}
 			}
@@ -470,14 +470,14 @@ void gy_host_to_nw_bo(void *pd, void *ps, int size, int is_little_endian) noexce
 				psrc = (char *)ctemp;
 			}
 
-			for (i = 0; i < size; i++) {
+			for (i = 0; i < (int)size; i++) {
 				*(pdest + i) = *(psrc + size - 1 - i);
 			}
 		}
 	}
 }
 
-void gy_nw_to_host_bo(void *pd, void *ps, int size, int is_little_endian) noexcept
+void gy_nw_to_host_bo(void *pd, void *ps, size_t size, bool is_little_endian) noexcept
 {
 	char 		*pdest = (char *)pd;
 	char 		*psrc = (char *)ps;
@@ -491,9 +491,9 @@ void gy_nw_to_host_bo(void *pd, void *ps, int size, int is_little_endian) noexce
 		*(int *)pdest = ntohl(*(int *)psrc);
 	}
 	else {
-		if (is_little_endian == 0) {
+		if (!is_little_endian) {
 			if (pdest != psrc) {
-				for (i = 0; i < size; i++) {
+				for (i = 0; i < (int)size; i++) {
 					*(pdest + i) = *(psrc + i);
 				}
 			}
@@ -505,7 +505,7 @@ void gy_nw_to_host_bo(void *pd, void *ps, int size, int is_little_endian) noexce
 				psrc = (char *)ctemp;
 			}
 
-			for (i = 0; i < size; i++) {
+			for (i = 0; i < (int)size; i++) {
 				*(pdest + i) = *(psrc + size - 1 - i);
 			}
 		}

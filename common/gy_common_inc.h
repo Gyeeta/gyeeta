@@ -9334,7 +9334,8 @@ static const char *gy_print_ipaddr(int af, const void *src, char *pdstbuf, ssize
 	}
 }	
 
-union IP_UNION {
+union IP_UNION 
+{
 	unsigned __int128		v6_;
 	uint32_t			v4_;
 };

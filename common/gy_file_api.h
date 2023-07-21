@@ -127,8 +127,8 @@ ssize_t 	read_file_to_buffer(const char *pfilename, void *buf, size_t max_readle
 
 bool		write_string_to_file(const char *pinput, size_t szin, const char *outfilename, int flags = O_CREAT | O_WRONLY, mode_t mode = 0640) noexcept;
 
-void 		gy_host_to_nw_bo(void *pd, void *ps, int size, int is_little_endian) noexcept;
-void 		gy_nw_to_host_bo(void *pd, void *ps, int size, int is_little_endian) noexcept;
+void 		gy_host_to_nw_bo(void *pd, void *ps, size_t size, bool is_little_endian = (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) noexcept;
+void 		gy_nw_to_host_bo(void *pd, void *ps, size_t size, bool is_little_endian = (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) noexcept;
 
 /*
  * Get the version number from a version string of formats : a.b.c.d, a.b.c. or a.b
