@@ -205,7 +205,7 @@ static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is
 	uint32_t				npend = maxbytes, offset = parg->iov_offset;
 	int					err = 0;
 	uint16_t				niov = 0;
-	const uint16_t				maxiov = parg->nr_segs;
+	const uint16_t				maxiov = parg->nr_segs == 0 ? 1 : parg->nr_segs;
 	const bool				user_backed = parg->user_backed;
 
 	if (!maxbytes || !parg) {
@@ -299,10 +299,10 @@ static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is
 		phdr->npadbytes			= npad;
 
 		if (user_backed) {
-			err = bpf_core_read_user(pring + sizeof(*phdr), nbytes, psrc);
+			err = bpf_probe_read_user(pring + sizeof(*phdr), nbytes, psrc);
 		}
 		else {
-			err = bpf_core_read(pring + sizeof(*phdr), nbytes, psrc);
+			err = bpf_probe_read_kernel(pring + sizeof(*phdr), nbytes, psrc);
 		}	
 
 		if (err) {

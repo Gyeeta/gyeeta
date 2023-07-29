@@ -495,7 +495,7 @@ static constexpr int		MAX_DOMAINNAME_SIZE 	= 256;
 [[gnu::const]] 
 static constexpr bool gy_is_power_of_2(uint32_t v) noexcept
 {
-	return ((v & (v - 1)) == 0);
+	return v && ((v & (v - 1)) == 0);
 }	
 
 [[gnu::const]] 
@@ -558,7 +558,7 @@ static constexpr uint64_t gy_align_up_2(uint64_t nsize, uint64_t nalign) noexcep
 [[gnu::const]] 
 static constexpr uint64_t gy_align_down_2(uint64_t nsize, uint64_t nalign) noexcept
 {
-	assert(true == gy_is_power_of_2(nalign) && nalign != 0);
+	assert(true == gy_is_power_of_2(nalign));
 
 	return nsize & ~(nalign - 1);
 }
@@ -1840,15 +1840,6 @@ static inline uint64_t get_nsec_clock() noexcept
 	return ts_.tv_sec * GY_NSEC_PER_SEC + ts_.tv_nsec;
 }	
 
-static inline uint64_t get_usec_bootclock() noexcept
-{
-	struct timespec			ts_; 
-	
-	clock_gettime(CLOCK_BOOTTIME, &ts_);				
-
-	return ts_.tv_sec * GY_USEC_PER_SEC + ts_.tv_nsec/1000;
-}	
-
 static inline uint64_t get_nsec_bootclock() noexcept
 {	
 	struct timespec			ts_; 
@@ -1856,6 +1847,21 @@ static inline uint64_t get_nsec_bootclock() noexcept
 	clock_gettime(CLOCK_BOOTTIME, &ts_);				
 
 	return ts_.tv_sec * GY_NSEC_PER_SEC + ts_.tv_nsec;
+}	
+
+static inline uint64_t get_usec_bootclock() noexcept
+{
+	return get_nsec_bootclock()/1000;
+}	
+
+static inline uint64_t get_msec_bootclock() noexcept
+{
+	return get_nsec_bootclock()/GY_NSEC_PER_MSEC;
+}	
+
+static inline uint64_t get_sec_bootclock() noexcept
+{
+	return get_nsec_bootclock()/GY_NSEC_PER_SEC;
 }	
 
 #define GY_USEC_CONVERT(_sec, _usec)								\
@@ -1985,14 +1991,17 @@ static inline void add_to_timeval(struct timeval & tv, uint64_t msec_to_add) noe
 }	
 
 
-// This is prone to scheduling side effects. If accurate correlation is needed, specify chk_accuracy
-static inline uint64_t get_usec_time_from_clock(uint64_t clock_usec, bool chk_accuracy = false) noexcept
+/*
+ * Get CLOCK_REALTIME usec from CLOCK_MONOTONIC or CLOCK_BOOTTIME (set boot_clock to true for this)
+ * This is prone to scheduling side effects. If accurate correlation is needed, specify chk_accuracy
+ */
+static inline uint64_t get_usec_time_from_clock(uint64_t clock_usec, bool chk_accuracy = false, bool boot_clock = false) noexcept
 {
-	int64_t		currclock = get_usec_clock();
-	int64_t		currtime = get_usec_time();
+	int64_t			currclock = !boot_clock ? get_usec_clock() : get_usec_bootclock();
+	int64_t			currtime = get_usec_time();
 
 	if (chk_accuracy) {
-		int64_t	currclock2 	= get_usec_clock();
+		int64_t			currclock2 = !boot_clock ? get_usec_clock() : get_usec_bootclock();
 		
 		if (gy_unlikely(currclock2 - currclock > 100 /* 100 usec */)) {
 			currclock 	= currclock2;
@@ -2000,22 +2009,20 @@ static inline uint64_t get_usec_time_from_clock(uint64_t clock_usec, bool chk_ac
 		}	
 	}	
 	
-	if ((int64_t)clock_usec <= currclock) {
-		return currtime - (currclock - clock_usec);
-	}	
-	else {
-		return currtime + (clock_usec - currclock);
-	}	
+	return currtime + (clock_usec - currclock);
 }	
 
-// This is prone to scheduling side effects. If accurate correlation is needed, specify chk_accuracy
-static inline uint64_t get_nsec_time_from_clock(uint64_t clock_nsec, bool chk_accuracy = false) noexcept
+/*
+ * Get CLOCK_REALTIME nsec from CLOCK_MONOTONIC or CLOCK_BOOTTIME (set boot_clock to true for this)
+ * This is prone to scheduling side effects. If accurate correlation is needed, specify chk_accuracy
+ */
+static inline uint64_t get_nsec_time_from_clock(uint64_t clock_nsec, bool chk_accuracy = false, bool boot_clock = false) noexcept
 {
-	int64_t		currclock = get_nsec_clock();
-	int64_t		currtime = get_nsec_time();
+	int64_t			currclock = !boot_clock ? get_nsec_clock() : get_nsec_bootclock();
+	int64_t			currtime = get_nsec_time();
 
 	if (gy_unlikely(chk_accuracy)) {
-		int64_t		currclock2 	= get_nsec_clock();
+		int64_t			currclock2 = !boot_clock ? get_nsec_clock() : get_nsec_bootclock();
 		
 		if (gy_unlikely(currclock2 - currclock > 100'000 /* 100 usec */)) {
 			currclock 	= currclock2;
@@ -2023,22 +2030,20 @@ static inline uint64_t get_nsec_time_from_clock(uint64_t clock_nsec, bool chk_ac
 		}	
 	}	
 
-	if ((int64_t)clock_nsec <= currclock) {
-		return currtime - (currclock - clock_nsec);
-	}	
-	else {
-		return currtime + (clock_nsec - currclock);
-	}	
+	return currtime + (clock_nsec - currclock);
 }	
 
-// This is prone to scheduling side effects. If accurate correlation is needed, specify chk_accuracy
-static inline int64_t get_sec_time_from_clock(int64_t clock_sec, bool chk_accuracy = false) noexcept
+/*
+ * Get CLOCK_REALTIME time_t from CLOCK_MONOTONIC or CLOCK_BOOTTIME (set boot_clock to true for this)
+ * This is prone to scheduling side effects. If accurate correlation is needed, specify chk_accuracy
+ */
+static inline int64_t get_sec_time_from_clock(int64_t clock_sec, bool chk_accuracy = false, bool boot_clock = false) noexcept
 {
-	int64_t		currclock = get_sec_clock();
-	int64_t		currtime = get_sec_time();
+	int64_t			currclock = !boot_clock ? get_sec_clock() : get_sec_bootclock();
+	int64_t			currtime = get_sec_time();
 
 	if (chk_accuracy) {
-		int64_t	currclock2 	= get_sec_clock();
+		int64_t			currclock2 = !boot_clock ? get_sec_clock() : get_sec_bootclock();
 		
 		if (gy_unlikely(currclock2 - currclock > 1)) {
 			currclock 	= currclock2;
@@ -2046,38 +2051,29 @@ static inline int64_t get_sec_time_from_clock(int64_t clock_sec, bool chk_accura
 		}	
 	}	
 	
-	if (clock_sec <= currclock) {
-		return currtime - (currclock - clock_sec);
-	}	
-	else {
-		return currtime + (clock_sec - currclock);
-	}	
+	return currtime + (clock_sec - currclock);
 }	
 
-static inline uint64_t get_usec_clock_from_time(uint64_t atime) noexcept
+/*
+ * Does not handle Host Suspend time
+ */
+static inline uint64_t get_usec_clock_from_time(int64_t atime) noexcept
 {
-	uint64_t	currtime = get_usec_time();
-	uint64_t	currclock = get_usec_clock();
+	int64_t			currtime = get_usec_time();
+	int64_t			currclock = get_usec_clock();
 
-	if (atime <= currtime) {
-		return currclock - (currtime - atime);
-	}	
-	else {
-		return currclock + (atime - currtime);
-	}	
+	return currclock + (atime - currtime);
 }	
 
-static inline uint64_t get_nsec_clock_from_time(uint64_t atime) noexcept
+/*
+ * Does not handle Host Suspend time
+ */
+static inline uint64_t get_nsec_clock_from_time(int64_t atime) noexcept
 {
-	uint64_t	currtime = get_nsec_time();
-	uint64_t	currclock = get_nsec_clock();
+	int64_t			currtime = get_nsec_time();
+	int64_t			currclock = get_nsec_clock();
 
-	if (atime <= currtime) {
-		return currclock - (currtime - atime);
-	}	
-	else {
-		return currclock + (atime - currtime);
-	}	
+	return currclock + (atime - currtime);
 }	
 
 static inline int64_t get_usec_clock_from_usec_diff(int64_t clockusec, int64_t usec_diff) noexcept
@@ -2126,55 +2122,86 @@ static inline uint64_t get_host_uptime_nsec() noexcept
 
 /*
  * Class to get the Real Time from a Clock time without the need to repeatedly call get_nsec_time() 
+ * Use for fast retrieval of time when repeated calls are expected in a short duration
  */
 class GY_CLOCK_TO_TIME
 {
 public :
+	static constexpr int64_t		RECHECK_NSEC		{ 60 * GY_NSEC_PER_SEC };
+
 	GY_CLOCK_TO_TIME() noexcept	= default;
 
-	uint64_t get_time_ns(uint64_t clockns) const noexcept
+	uint64_t get_time_ns(int64_t clockns, bool forcecheck = false) noexcept
 	{
+		do_recheck(clockns, forcecheck);
+
 		return start_timens_ + clockns - start_clockns_;
 	}	
 
-	uint64_t get_time_us(uint64_t clockus) const noexcept
+	uint64_t get_time_us(int64_t clockus, bool forcecheck = false) noexcept
 	{
+		do_recheck(clockus * 1000, forcecheck);
+
 		return start_timens_/1000 + clockus - start_clockns_/1000;
 	}	
 
-	uint64_t get_time_ms(uint64_t clockms) const noexcept
+	uint64_t get_time_ms(int64_t clockms, bool forcecheck = false) noexcept
 	{
+		do_recheck(clockms * GY_NSEC_PER_MSEC, forcecheck);
+
 		return start_timens_/GY_NSEC_PER_MSEC + clockms - start_clockns_/GY_NSEC_PER_MSEC;
 	}	
 
-	time_t get_time_t(uint64_t clocksec) const noexcept
+	time_t get_time_t(int64_t clocksec, bool forcecheck = false) noexcept
 	{
+		do_recheck(clocksec * GY_NSEC_PER_SEC, forcecheck);
+
 		return start_timens_/GY_NSEC_PER_SEC + clocksec - start_clockns_/GY_NSEC_PER_SEC;
 	}	
 
-	struct timespec get_timespec(uint64_t clockns) const noexcept
+	struct timespec get_timespec(int64_t clockns, bool forcecheck = false) noexcept
 	{
+		do_recheck(clockns, forcecheck);
+
 		return GY_NSEC_TO_TIMESPEC(get_time_ns(clockns));
 	}	
 
-	struct timeval get_timeval(uint64_t clockus) const noexcept
+	struct timeval get_timeval(int64_t clockus, bool forcecheck = false) noexcept
 	{
+		do_recheck(clockus * 1000, forcecheck);
+
 		return GY_USEC_TO_TIMEVAL(get_time_us(clockus));
 	}	
 
-	const uint64_t			start_clockns_		{ get_nsec_clock() };
-	const uint64_t			start_timens_		{ get_nsec_time() };
+
+protected :
+
+	void do_recheck(int64_t clockns, bool forcecheck) noexcept
+	{
+		if (forcecheck || (clockns > next_check_clockns_)) {
+			next_check_clockns_ += RECHECK_NSEC;
+
+			start_clockns_ 	= get_nsec_clock();
+			start_timens_	= get_nsec_time();
+		}	
+	}	
+
+	int64_t				start_clockns_		{ (int64_t)get_nsec_clock() };
+	int64_t				start_timens_		{ (int64_t)get_nsec_time() };
+	int64_t				next_check_clockns_	{ start_clockns_ + RECHECK_NSEC };
 };	
 
 /*
  * Class to get the Clock Time from a Real Time without the need to repeatedly call get_nsec_clock() 
+ * Use for fast retrieval of clock when repeated calls are expected in a short duration
+ * XXX Does not account for system suspend times
  */
 class GY_TIME_TO_CLOCK
 {
 public :
 	GY_TIME_TO_CLOCK() noexcept	= default;
 
-	uint64_t get_clock_ns(uint64_t timens) const noexcept
+	uint64_t get_clock_ns(int64_t timens) const noexcept
 	{
 		return start_clockns_ + timens - start_timens_;
 	}	
@@ -2184,7 +2211,7 @@ public :
 		return get_clock_ns(ts.tv_sec * GY_NSEC_PER_SEC + ts.tv_nsec);
 	}	
 
-	uint64_t get_clock_us(uint64_t timeus) const noexcept
+	uint64_t get_clock_us(int64_t timeus) const noexcept
 	{
 		return start_clockns_/1000 + timeus - start_timens_/1000;
 	}	
@@ -2194,7 +2221,7 @@ public :
 		return get_clock_us(tv.tv_sec * GY_USEC_PER_SEC + tv.tv_usec);
 	}	
 
-	uint64_t get_clock_ms(uint64_t timems) const noexcept
+	uint64_t get_clock_ms(int64_t timems) const noexcept
 	{
 		return start_clockns_/GY_NSEC_PER_MSEC + timems - start_timens_/GY_NSEC_PER_MSEC;
 	}	
@@ -2204,8 +2231,8 @@ public :
 		return start_clockns_/GY_NSEC_PER_SEC + (uint64_t)tsec - start_timens_/GY_NSEC_PER_SEC;
 	}	
 
-	const uint64_t			start_timens_		{ get_nsec_time() };
-	const uint64_t			start_clockns_		{ get_nsec_clock() };
+	const int64_t			start_timens_		{ (int64_t)get_nsec_time() };
+	const int64_t			start_clockns_		{ (int64_t)get_nsec_clock() };
 };	
 
 

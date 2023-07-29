@@ -23,12 +23,15 @@ std::atomic<int>		gsig_rcvd(0);
 void handle_data(void *pcb_cookie, void *pdata, int data_size)
 {
 	GY_PCAP_WRITER			*pwriter = (GY_PCAP_WRITER *)pcb_cookie;
-	const tcaphdr_t			*pevent = static_cast<const tcaphdr_t *>(pdata);
 
-	if (data_size < (signed)(sizeof(tcaphdr_t))) {
+	if (!pdata || data_size < (signed)(sizeof(tcaphdr_t))) {
 		ERRORPRINT("Invalid ring buffer callback size seen %d : expected min %lu\n", data_size, sizeof(tcaphdr_t));
 		return;
 	}
+
+	tcaphdr_t			event, *pevent = &event;
+
+	std::memcpy(&event, pdata, sizeof(event));
 	
 	if ((uint32_t)data_size != pevent->len + sizeof(*pevent)) {
 		ERRORPRINT("Invalid ring buffer callback size seen %d : expected size %lu\n", data_size, sizeof(tcaphdr_t) + pevent->len);
@@ -43,7 +46,7 @@ void handle_data(void *pcb_cookie, void *pdata, int data_size)
 					GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr.ser6addr, pevent->tuple.seraddr.ser4addr, pevent->tuple.ipver == 6)), 
 					pevent->tuple.cliport, pevent->tuple.serport,
 					pevent->get_src_seq_start(), pevent->nxt_ser_seq, 
-					pevent->tcp_flags, pevent + 1, pevent->get_act_payload_len());
+					pevent->tcp_flags, (const uint8_t *)pdata + sizeof(*pevent), pevent->get_act_payload_len());
 	}
 	else {
 		// Outbound
@@ -52,7 +55,7 @@ void handle_data(void *pcb_cookie, void *pdata, int data_size)
 					GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr.cli6addr, pevent->tuple.cliaddr.cli4addr, pevent->tuple.ipver == 6)), 
 					pevent->tuple.serport, pevent->tuple.cliport,
 					pevent->get_src_seq_start(), pevent->nxt_cli_seq, 
-					pevent->tcp_flags, pevent + 1, pevent->get_act_payload_len());
+					pevent->tcp_flags, (const uint8_t *)pdata + sizeof(*pevent), pevent->get_act_payload_len());
 		
 	}
 

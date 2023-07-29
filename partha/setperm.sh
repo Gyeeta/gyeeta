@@ -122,6 +122,19 @@ set_capabilities()
 	fi	
 }	
 
+check_mount_suid()
+{
+	local MOUNTDIR=$( df -k . | tail -1 | awk '{print $1}' ) 
+
+	local ISSUID=$( grep $MOUNTDIR /proc/self/mounts | grep -cw nosuid )
+
+	if [ $ISSUID -ne 0 ]; then
+		printf "\nERROR : partha dir $PWD (Mount dir $MOUNTDIR) has nosuid mount option set. partha needs Kernel Capabilities and cannot work on a nosuid mount...Exiting...\n\n"
+		exit 1
+	fi	
+}
+
+
 if [ ! -f ./partha-bpf ] ||  [ ! -f ./partha-bcc ] || [ ! -f ./runpartha.sh ]; then
 	printf "\n\nERROR : Please run this script from partha install dir where runpartha.sh and partha binaries partha-bpf and partha-bcc are present.\n\n"
 	exit 1
@@ -140,6 +153,7 @@ check_core_headers
 check_lib_deps partha-bpf
 check_lib_deps partha-bcc
 set_capabilities
+check_mount_suid
 
 printf "\n\npartha Package permissions set successfully : To start partha, please set the config file partha_main.json file in cfg dir : You can refer to sample_partha_main.json for a sample config...\n\n"
 
