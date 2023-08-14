@@ -21,7 +21,7 @@ BINARIES := tcptracer tcpresponse tcpresponse_libbpf test_caps test_ipaddr test_
 		test_rcu_list test_multi_proc_comm test_listener test_gy_pool test_strncpy test_sso_string test2_rcu_hashtable	\
 		test_rapidjson test_bufcache test_pg1 test_postgres_qry test_postgres_insert test_postgres_exec test_filterparse test_re2 test_tinyregex \
 		test_in_clause test_criterion1 test_options test_boolparse test_boost_rolling_sum test_libcurl test_cloud_metadata test_pcap_writer \
-		test_netcap_ebpf
+		test_netcap_ebpf test_ssl_cap
 
 .PHONY: all libpath clean distclean install ci
 
@@ -42,6 +42,13 @@ test_netcap_ebpf.o: test_netcap_ebpf.cc test_netcap_ebpf.bpf.c
 	$(BPFTOOL) gen skeleton ./test_netcap_ebpf.bpf.o > ./test_netcap_ebpf.skel.h
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<
 
+test_ssl_cap.o: test_ssl_cap.cc test_ssl_cap.bpf.c
+	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -Wno-unused-function -c test_ssl_cap.bpf.c -o ./test_ssl_cap.bpf.o
+	$(LLVM_STRIP) -g ./test_ssl_cap.bpf.o
+	$(BPFTOOL) gen skeleton ./test_ssl_cap.bpf.o > ./test_ssl_cap.skel.h
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<
+
+
 
 
 gitignores:
@@ -57,6 +64,9 @@ tcpresponse_libbpf: tcpresponse_libbpf.o $(INC_MAKE_DIR)/common/gy_no_partha_ser
 	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(LIBBPFLIBS) $(LDLIBS) -o $@
 
 test_netcap_ebpf: test_netcap_ebpf.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MAKE_DIR)/common/libgycommon.a
+	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(LIBBPFLIBS) $(LDLIBS) -o $@
+
+test_ssl_cap: test_ssl_cap.o $(INC_MAKE_DIR)/common/gy_no_partha_server.o $(INC_MAKE_DIR)/common/libgycommon.a
 	$(CXX) $(CXXFLAGS) $(EXTRALDLIBS) $^ $(LIBBPFLIBS) $(LDLIBS) -o $@
 
 test_caps: test_caps.o $(INC_MAKE_DIR)/common/libgycommon.a

@@ -3709,6 +3709,20 @@ int get_proc_ns_inodes(pid_t pid, const char * nsstr[], ino_t nsinode[], size_t 
 	return nupd;
 }
 
+// Returns inode number on success or 0 on failure
+ino_t get_proc_ns_inode(pid_t pid, const char * nsstr, int proc_dir_fd, pid_t tid) noexcept
+{
+	ino_t			inode;
+	int			ret;
+
+	ret = get_proc_ns_inodes(pid, &nsstr, &inode, 1, proc_dir_fd, tid);
+	if (ret == 1) {
+		return inode;
+	}	
+
+	return 0;
+}	
+
 
 int get_proc_stat(pid_t pid, pid_t & task_ppid, char & task_state, uint32_t & task_flags, uint64_t & starttimeusec, int64_t & task_priority, int64_t & task_nice, uint32_t & task_rt_priority, uint32_t & task_sched_policy, int proc_dir_fd, bool is_tgid, pid_t tid) noexcept
 {
@@ -3805,10 +3819,11 @@ try_again :
 }
 
 // Returns exe strlen on success -errno on error
-ssize_t get_task_exe_path(pid_t pid, char *pbuf, size_t maxlen, int proc_dir_fd) noexcept
+ssize_t get_task_exe_path(pid_t pid, char *pbuf, size_t maxlen, int proc_dir_fd, bool * is_deleted) noexcept
 {
 	ssize_t				sret;
 	char				path[256], *ptmp;
+	bool				isdel = false;
 	constexpr size_t		delstrlen = GY_CONST_STRLEN(" (deleted)");
 
 	assert(pbuf && maxlen);
@@ -3835,7 +3850,12 @@ ssize_t get_task_exe_path(pid_t pid, char *pbuf, size_t maxlen, int proc_dir_fd)
 			// exe has been deleted
 			*ptmp = 0;
 			sret -= delstrlen;
+			isdel = true;
 		}	
+	}	
+
+	if (is_deleted) {
+		*is_deleted = isdel;
 	}	
 
 	return sret;

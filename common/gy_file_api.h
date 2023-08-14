@@ -189,12 +189,18 @@ int 		get_host_meminfo(uint64_t * memtotal, uint64_t * memrss, float * pctmemrss
 
 int 		get_host_vmstat(uint64_t & pgpgin, uint64_t & pgpgout, uint64_t & pswpin, uint64_t & pswpout, uint64_t & allocstall, uint64_t & pgmajfault, uint64_t & oom_kill) noexcept;
 
+// Returns number of inodes updated on success -errno on error
 int 		get_proc_ns_inodes(pid_t pid, const char * nsstr[], ino_t nsinode[], size_t nitems, int proc_dir_fd = -1, pid_t tid = -1) noexcept; 
+
+// Returns inode number on success or 0 on failure
+ino_t 		get_proc_ns_inode(pid_t pid, const char * nsstr, int proc_dir_fd = -1, pid_t tid = -1) noexcept; 
 
 int 		get_proc_stat(pid_t pid, pid_t & task_ppid, char & task_state, uint32_t & task_flags, uint64_t & starttimeusec, int64_t & task_priority, \
 			int64_t & task_nice, uint32_t & task_rt_priority, uint32_t & task_sched_policy, int proc_dir_fd = -1, bool is_tgid = true, pid_t tid = 0) noexcept;
 
-ssize_t 	get_task_exe_path(pid_t pid, char *pbuf, size_t maxlen, int proc_dir_fd = -1) noexcept;
+// Updates the process exec path in pbuf and returns the strlen of the path or < 0 on error
+ssize_t 	get_task_exe_path(pid_t pid, char *pbuf, size_t maxlen, int proc_dir_fd = -1, bool * is_deleted = nullptr) noexcept;
+
 ssize_t 	get_task_comm(pid_t pid, char *pbuf, size_t maxlen, int proc_dir_fd = -1) noexcept;
 ssize_t 	get_task_cmdline(pid_t pid, char *pbuf, size_t maxlen, int proc_dir_fd = -1) noexcept;
 int 		get_proc_cgroups(pid_t pid, const char *ptypecg1[], char *pdircg1[], size_t maxcg1sz[], int maxcg1types, char *pdircg2, size_t maxcg2sz, \

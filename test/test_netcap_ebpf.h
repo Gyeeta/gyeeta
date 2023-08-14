@@ -6,12 +6,6 @@
 
 
 #define					TCAP_PROTO_UNKNOWN		0
-#define					TCAP_PROTO_HTTP			1
-#define					TCAP_PROTO_HTTP2		2
-#define					TCAP_PROTO_GRPC			3
-#define					TCAP_PROTO_POSTGRES		4
-#define					TCAP_PROTO_MYSQL		5
-#define					TCAP_PROTO_REDIS		6
 
 #define					TDIR_INBOUND			0
 #define					TDIR_OUTBOUND			1

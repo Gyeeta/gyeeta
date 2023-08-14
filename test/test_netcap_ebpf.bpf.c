@@ -7,6 +7,8 @@
 #include 		<bpf/bpf_tracing.h>
 #include 		<bpf/bpf_endian.h>
 
+#define			GY_BPF_DEBUG
+
 #include		"../common/gy_ebpf_bpf_common.h"
 #include		"test_netcap_ebpf.h"
 
@@ -212,7 +214,7 @@ static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is
 		return true;
 	}	
 
-	bpf_printk("read_iov_data input #maxbytes : %u, server port : %u, iter_type : %u\n", maxbytes, parg->tuple.serport, (uint32_t)parg->iter_type);
+	gy_bpf_printk("read_iov_data input #maxbytes : %u, server port : %u, iter_type : %u\n", maxbytes, parg->tuple.serport, (uint32_t)parg->iter_type);
 
 	for (int i = 0; i < 1 && (int)npend > 0 && niov < 128 && niov < maxiov; ++i) {
 
@@ -228,7 +230,7 @@ static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is
 			err = bpf_probe_read(&iov, sizeof(iov), parg->pvec.piov + niov);
 		}
 
-		// bpf_printk("read_iov_data IOV data is base %p len %d err %d\n", iov.iov_base, (int)iov.iov_len, err);
+		// gy_bpf_printk("read_iov_data IOV data is base %p len %d err %d\n", iov.iov_base, (int)iov.iov_len, err);
 
 		if (err) {
 			break;
@@ -306,14 +308,14 @@ static bool read_iov_data(struct tiov_iter_arg *parg, uint32_t maxbytes, bool is
 		}	
 
 		if (err) {
-			bpf_printk("ERROR read_iov_data read failed err = %d : nbytes %u, user_backed %d\n", err, nbytes, (int)user_backed);
+			gy_bpf_printk("ERROR read_iov_data read failed err = %d : nbytes %u, user_backed %d\n", err, nbytes, (int)user_backed);
 			bpf_ringbuf_discard(pring, 0);
 			break;
 		}	
 
 		bpf_ringbuf_submit(pring, 0);
 
-		bpf_printk("SUCCESS read_iov_data read nbytes %u, user_backed %d\n", nbytes, (int)user_backed);
+		gy_bpf_printk("SUCCESS read_iov_data read nbytes %u, user_backed %d\n", nbytes, (int)user_backed);
 
 		npend				-= nbytes;
 	}	

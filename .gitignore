@@ -37,8 +37,8 @@
 
 # Temporaries
 install/
-test/test1.cc
-test/test1
+test/test[12].cc
+test/test[12]
 
 # Binaries
 partha/partha-bcc

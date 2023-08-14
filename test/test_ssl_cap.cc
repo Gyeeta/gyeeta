@@ -1,10 +1,6 @@
 //  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
 //  SPDX-License-Identifier: GPL-3.0-or-later
 
-/*
- * XXX Does not work at the moment. Needs fixes to be worked on later...
- */
-
 #include			"gy_common_inc.h"
 
 #include 			<unistd.h>
@@ -16,8 +12,8 @@
 #include			"gy_libbpf.h"
 #include			"gy_pcap_write.h"
 
-#include			"test_netcap_ebpf.h"
-#include			"test_netcap_ebpf.skel.h"
+#include			"test_ssl_cap.h"
+#include			"test_ssl_cap.skel.h"
 
 using namespace			gyeeta;
 
@@ -69,27 +65,43 @@ void handle_data(void *pcb_cookie, void *pdata, int data_size)
 }	
 
 
-class TNETCAP
+
+
+class TSSLCAP
 {
 public :
-	using TNETCAP_OBJ			= GY_LIBBPF_OBJ<test_netcap_ebpf_bpf>;
+	using TSSLCAP_OBJ			= GY_LIBBPF_OBJ<test_ssl_cap>;
 	
-	TNETCAP()				= default;
+	TSSLCAP()				= default;
 
-	~TNETCAP() noexcept			= default;
+	~TSSLCAP() noexcept			= default;
 
 	void start_collection(void *pwriter)
 	{
 		int				ret;
-	
 
-		// bpf_program__set_autoload(obj_.get()->progs.fexit_tcp_recvmsg_exit, false);
+		if (true == is_init_.exchange(true)) {
+			ERRORPRINT("SSL Capture start_collection called after init completed...\n");
+			return;
+		}
+	
+		bpf_map__set_max_entries(obj_.get()->maps.ssl_conn_map, 8192);
+		bpf_map__set_max_entries(obj_.get()->maps.ssl_unmap, 2048);
+		bpf_map__set_max_entries(obj_.get()->maps.ssl_tcp_unmap, 2048);
+		bpf_map__set_max_entries(obj_.get()->maps.ssl_write_args_map, 2048);
+		bpf_map__set_max_entries(obj_.get()->maps.ssl_read_args_map, 2048);
+		bpf_map__set_max_entries(obj_.get()->maps.pid_map, 4096);
+		bpf_map__set_max_entries(obj_.get()->maps.sslcapring, 8 * 1024 * 1024);
+
+		bpf_program__set_autoload(obj_.get()->progs.fentry_tcp_sendmsg_entry, false);
+		bpf_program__set_autoload(obj_.get()->progs.trace_enter_execve, false);
+		bpf_program__set_autoload(obj_.get()->progs.sched_process_exit, false);
 
 		obj_.load_bpf();
 
 		obj_.attach_bpf();
 
-		pdatapool_.emplace("Net cap Pool", bpf_map__fd(obj_.get()->maps.capring), handle_data, pwriter);
+		// pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), handle_data, pwriter);
 	}	
 
 	int poll(int timeout_ms) noexcept
@@ -101,7 +113,7 @@ public :
 		return -1;
 	}	
 
-	void update_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto, bool to_pause)
+	void add_procs(pid_t pidarr[], size_t npids)
 	{
 		int 				fd = bpf_map__fd(obj_.get()->maps.listenmap);
 
@@ -131,72 +143,13 @@ public :
 		bpf_map_update_elem(fd, &key, &value, to_pause == false ? BPF_ANY : BPF_EXIST);
 	}	
 	
-	void delete_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
-	{
-		int 				fd = bpf_map__fd(obj_.get()->maps.listenmap);
-
-		if (fd < 0) {
-			GY_THROW_SYS_EXCEPTION("Failed to find fd of libbpf listenmap");
-		}	
-
-		tlistenkey			key {};
-
-		if (false == ipaddr.is_ipv6_addr()) {
-			ipaddr.get_as_inaddr(&key.seraddr.ser4addr);
-			key.ipver		= 4;
-		}
-		else {
-			ipaddr.get_as_inaddr(&key.seraddr.ser6addr);
-			key.ipver		= 6;
-		}	
-
-		key.netns 			= netns;
-		key.serport			= port;
-
-		bpf_map_delete_elem(fd, &key);
-	}	
-	
-
 	GY_BTF_INIT				btf_;
-	TNETCAP_OBJ				obj_		{"TCP Cap bpf"};
+	TSSLCAP_OBJ				obj_			{"SSL Cap bpf"};
 	std::optional<GY_RING_BUFPOOL>		pdatapool_;
+	GY_MUTEX				statemutex_;
+	std::unordered_set<std::string>		pathset_;
+	std::atomic<bool>			is_init_		{false};
 };
-
-class TNETCAP_HDLR
-{
-public:
-	TNETCAP_HDLR()				= default;
-	
-	~TNETCAP_HDLR()				= default;
-	
-	void start_collection(void *pwriter)
-	{
-		cap_.start_collection(pwriter);
-	}	
-
-	void add_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
-	{
-		cap_.update_listener(ipaddr, port, netns, proto, false);
-	}	
-
-	void pause_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
-	{
-		cap_.update_listener(ipaddr, port, netns, proto, true);
-	}
-
-	void resume_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
-	{
-		cap_.update_listener(ipaddr, port, netns, proto, false);
-	}
-
-	void delete_listener(const GY_IP_ADDR & ipaddr, uint16_t port, uint32_t netns, uint16_t proto)
-	{
-		cap_.delete_listener(ipaddr, port, netns, proto);
-	}
-
-
-	TNETCAP					cap_;
-};	
 
 
 int handle_signal(int signo)
@@ -210,9 +163,9 @@ int handle_signal(int signo)
 
 
 
-void * netcap_thr(void *parg)
+void * sslcap_thr(void *parg)
 {
-	auto				*pnetcap = (TNETCAP *)parg;
+	auto				*pnetcap = (TSSLCAP *)parg;
 
 	gy_nanosleep(0, 1000 * 1000 * 100);
 
@@ -249,8 +202,8 @@ int main(int argc, char *argv[])
 	try {	
 
 		if (argc < 5) {
-			IRPRINT("\nUsage : %s <Output pcap path> <Listener IP to capture> <Listener Port> <Listener NetNS inode> <Listener 2 IP> ...\n"
-					"\tFor e.g. %s /tmp/test1.pcap 0.0.0.0 10040 4026531840 192.168.0.1 10037 4026531840\n\n", argv[0], argv[0]);
+			IRPRINT("\nUsage : %s <Output pcap path> <Listener PID1> <Listener PID2> ...\n"
+					"\tFor e.g. %s /tmp/test1.pcap 1840 1842\n\n", argv[0], argv[0]);
 			return 1;
 		}	
 		
@@ -279,28 +232,32 @@ int main(int argc, char *argv[])
 
 		GY_SIGNAL_HANDLER::get_singleton()->ignore_signal(SIGHUP);
 
-		GY_PCAP_WRITER		wrpcap(argv[1]);
+		GY_PCAP_WRITER		wrpcap(argv[1], true /* use_unlocked_io */, false /* throw_if_exists */);
 		pthread_t		dbgtid, thrid;
 
 		gy_create_thread(&dbgtid, GET_PTHREAD_WRAPPER(debug_thread), nullptr, 64 * 1024, false);
 
-		ret = gy_create_thread(&thrid, GET_PTHREAD_WRAPPER(netcap_thr), &phdlr->cap_, GY_UP_MB(1), true);
+		ret = gy_create_thread(&thrid, GET_PTHREAD_WRAPPER(sslcap_thr), &phdlr->cap_, GY_UP_MB(1), true);
 		if (ret) {
-			PERRORPRINT("Could not create netcap handling thread");
+			PERRORPRINT("Could not create sslcap handling thread");
 			return -1;
 		}	
 
 		/*
-		 * We wait for 2 seconds and then enable TCP Capture
+		 * We wait for 5 seconds and then enable capture
 		 */
-		gy_nanosleep(2, 0);
+		INFOPRINT("Sleeping for 5 sec : Will start the ebpf load thereafter...\n\n");
+
+		gy_nanosleep(5, 0);
 
 		phdlr->start_collection(&wrpcap);
 
 		/*
-		 * Wait for 1 second and then set the listeners to capture
+		 * Wait for 5 second and then set the listeners to capture
 		 */
-		gy_nanosleep(1, 0);
+		INFOPRINT("Sleeping for 5 sec : Will enable the PID capture thereafter...\n\n");
+
+		gy_nanosleep(5, 0);
 
 		for (int i = 2; i + 2 < argc; i += 3) {
 			phdlr->add_listener(GY_IP_ADDR(argv[i]), string_to_number<uint16_t>(argv[i + 1]), string_to_number<uint32_t>(argv[i + 2]), TCAP_PROTO_UNKNOWN);

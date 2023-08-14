@@ -1110,6 +1110,17 @@ struct GY_PROC_EVENT {
 	} event_data;
 };
 
+
+static inline bool path_is_absolute(const char *p) noexcept
+{
+        return p[0] == '/';
+}
+
+static inline bool is_path_type_string(const char *p) noexcept
+{
+        return !!strchr(p, '/');
+}
+
 union CAP_BITFLAGS 
 {
 	uint32_t			is_elevated_cap		{0};
@@ -1472,19 +1483,80 @@ public :
 	}	
 };	
 
-static inline bool path_is_absolute(const char *p) noexcept
+static ino_t get_curr_mountns_inode() noexcept
 {
-	assert(p);
-
-        return p[0] == '/';
+	static ino_t		gmntns = get_proc_ns_inode(getpid(), "mnt");	
+	
+	return gmntns;
 }
 
-static inline bool is_path_type_string(const char *p) noexcept
+/*
+ * Returns a path valid from the current mount namespace. Use in case a path is returned from a process possibly in 
+ * another mount namespace.
+ * pid is the process ID for whom the path is valid
+ */
+static CHAR_BUF<GY_PATH_MAX> get_ns_safe_file_path(pid_t pid, const char *path, char (&errbuf)[256]) noexcept
 {
-	assert(p);
+	CHAR_BUF<GY_PATH_MAX>		obuf;
+	char				spath[GY_PATH_MAX], dpath[GY_PATH_MAX];
+	const char 			*psrc, *pdest;
+	ssize_t				sret;
+	ino_t				tns = get_proc_ns_inode(pid, "mnt");
+	
+	if (tns == 0) {
+		snprintf(errbuf, sizeof(errbuf), "Failed to get pid %d Mount namespace : %s", pid, gy_get_perror().get());
+		return obuf;
+	}
+	else if (!path || (0 == *path)) {
+		snprintf(errbuf, sizeof(errbuf), "No path specified");
+		return obuf;
+	}	
 
-        return !!strchr(p, '/');
-}
+	if (*path != '/') {
+		char			npath[GY_PATH_MAX], tpath[GY_PATH_MAX];
+
+		snprintf(npath, sizeof(npath), "/proc/%d/cwd", pid);
+
+		sret = readlink(npath, tpath, sizeof(tpath) - 1);
+		if (sret < 0) {
+			snprintf(errbuf, sizeof(errbuf), "Failed to get pid %d current working dir : %s", pid, gy_get_perror().get());
+			return obuf;
+		}
+		else if (sret == sizeof(tpath) - 1) {
+			snprintf(errbuf, sizeof(errbuf), "Failed as pid %d Current Working Dir too long : currently not handled", pid);
+			return obuf;
+		}	
+		
+		tpath[sret] = 0;
+
+		snprintf(spath, sizeof(spath), "%s/%s", tpath, path);
+
+		psrc = spath;
+	}
+	else {
+		psrc = path;
+	}	
+
+	if (tns == get_curr_mountns_inode()) {
+		pdest = psrc;
+	}	
+	else {
+		pdest = dpath;
+
+		sret = snprintf(dpath, sizeof(dpath), "/proc/%d/root%s", pid, psrc);
+
+		if ((unsigned)sret >= sizeof(dpath)) {
+			snprintf(errbuf, sizeof(errbuf), "Failed as path specified is too long : currently not handled");
+			return obuf;
+		}	
+	}	
+
+	*errbuf = 0;
+
+	obuf.setbuf(pdest);
+
+	return obuf;
+}	
 
 } // namespace gyeeta
 

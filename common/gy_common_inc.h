@@ -1381,6 +1381,20 @@ public :
 	}	
 };
 
+static CHAR_BUF<128> gy_get_perror(int terrno = errno) noexcept
+{
+	char			pbuf[128];
+	const char		*ptmp;
+
+	if (terrno != 0) {
+		ptmp = strerror_r(terrno, pbuf, sizeof(pbuf) - 1);
+	}
+	else {
+		ptmp = "";
+	}	
+
+	return CHAR_BUF<128>(ptmp);
+}	
 
 class GY_EXCEPTION : public std::exception
 {
@@ -4681,7 +4695,7 @@ class SCOPE_LOCK_FILE
 {
 public :
 	SCOPE_LOCK_FILE(FILE *pfile) noexcept
-		: pfile_(pfile), tounlock_(FSETLOCKING_INTERNAL == __fsetlocking(pfile, FSETLOCKING_QUERY))
+		: pfile_(pfile), tounlock_(pfile && (FSETLOCKING_INTERNAL == __fsetlocking(pfile, FSETLOCKING_QUERY)))
 	{
 		if (tounlock_) {
 			flockfile(pfile);
@@ -7051,6 +7065,29 @@ static std::string & gy_html_decode(std::string &str)
 
 	return str;	
 }	
+
+/*
+ * Binary buffer to Hex formatted ascii. Returns new strlen
+ * will truncate if szout < 2 * szin + 1
+ */
+static size_t binary_to_hex_string(const uint8_t * pin, size_t szin, char *pout, size_t szout) noexcept
+{
+	static constexpr const char 	hex[] = "0123456789abcdef";
+	int 				s, d;
+
+	if (szout < 2 * szin + 1) {
+		if (szout <= 2) return 0;
+		szin = szout / 2 - 1;	
+	}	
+
+	for (d = 0, s = 0; (unsigned)d < szin; d++, s += 2) {
+		pout[s + 0] 	= hex[(pin[d] >> 4) & 0x0f];
+		pout[s + 1] 	= hex[(pin[d] >> 0) & 0x0f];
+	}
+
+	pout[s] = 0;
+	return s;
+}
 
 /*
  * Search for whole word. '_' and alphanumeric chars are considered part of the word while finding the whole word

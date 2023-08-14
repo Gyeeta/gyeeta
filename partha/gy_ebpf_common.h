@@ -102,6 +102,17 @@ again1 :													\
 	return 0;												\
 }
 
+class GY_EBPF_ISRA
+{
+public :	
+	std::unordered_map<std::string, std::string>	map_isra_;
+
+	GY_EBPF_ISRA();
+
+	const char * get_isra_name(const char *funcname) const noexcept;
+};	
+
+
 
 static const char	*gstr_resp_sampling = "Check for ebpf response collection toggle";
 
@@ -129,18 +140,7 @@ static void tcpv6_idle_cb() noexcept
 	gyeeta::gy_rcu_offline();
 }			
 
-bool host_btf_enabled(bool check_module) noexcept;
-
-class GY_EBPF_ISRA
-{
-public :	
-	std::unordered_map<std::string, std::string>	map_isra_;
-
-	GY_EBPF_ISRA();
-
-	const char * get_isra_name(const char *funcname) const noexcept;
-};	
-
+bool 			host_btf_enabled(bool check_module) noexcept;
 
 } // namespace gyeeta
 
