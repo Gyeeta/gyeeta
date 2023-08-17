@@ -122,7 +122,9 @@ int set_bitset_from_buffer(T &bset, const char *buf, size_t buflen) noexcept
 
 		return 0;
 	}
-	GY_CATCH_EXCEPTION(ERRORPRINT("Exception caught while setting bitset from buffer : %s\n", GY_GET_EXCEPT_STRING); return -1;);
+	GY_CATCH_MSG("Exception caught while setting bitset from buffer");
+	
+	return -1;
 }	
 
 
@@ -1557,6 +1559,66 @@ static CHAR_BUF<GY_PATH_MAX> get_ns_safe_file_path(pid_t pid, const char *path, 
 
 	return obuf;
 }	
+
+/*
+ * Walk the /proc/pid/maps entry for a PID for each lib path
+ * Pass a lambda with params (const char *plibpath, const char *pline, bool is_lib_deleted) -> CB_RET_E
+ * The lambda if returns a CB_BREAK_LOOP will terminate the walk.
+ */
+template <typename FCB> 
+int walk_proc_pid_map_libs(pid_t pid, FCB & walk) noexcept(noexcept(walk(nullptr, nullptr, false)))
+{
+	SCOPE_FILE			sfile(gy_to_charbuf<128>("/proc/%d/maps", pid).get(), "r");
+	FILE 				*pfp = sfile.get();
+
+	if (nullptr == pfp) {
+		return -1;
+	}	
+
+	char 				*pline = nullptr, *lib, *pdel;
+	size_t 				len = 0;
+	ssize_t				nread;
+	int				nlibs = 0;
+	CB_RET_E			cret;
+
+	GY_SCOPE_EXIT {
+		if (pline) free(pline);
+	};
+
+	while ((nread = getline(&pline, &len, pfp)) != -1) {
+		if (nread <= 5) {
+			continue;
+		}
+		if (pline[nread - 1] == '\n') {
+			nread--;
+			pline[nread] = 0;
+		}	
+
+		lib = (char *)memrchr(pline, '/', nread - 4);
+		if (!lib) {
+			continue;
+		}	
+
+		lib++;
+
+		if ((0 == memcmp(lib, "lib", 3)) && strstr(lib, ".so")) {
+			nlibs++;
+
+			pdel = strstr(lib, " (deleted)");
+			if (pdel) {
+				*pdel = 0;
+			}	
+
+			cret = walk(lib, pline, !!pdel);
+
+			if (cret == CB_BREAK_LOOP || cret == CB_DELETE_BREAK) {
+				break;
+			}	
+		}	
+	}
+
+	return nlibs;
+}
 
 } // namespace gyeeta
 

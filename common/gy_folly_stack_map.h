@@ -11,6 +11,9 @@
 
 namespace gyeeta {
 
+using FollyTransparentStringHash 	= folly::transparent<folly::hasher<folly::StringPiece>>;
+using FollyTransparentStringEqual 	= folly::transparent<std::equal_to<folly::StringPiece>>;
+
 /*
  * Stack containers with inline Arena. On container clear() the container will be destroyed and constructed again and Arena reset(). 
  * This imples that the bucket count for Map and Set will be 1 initially after a clear()

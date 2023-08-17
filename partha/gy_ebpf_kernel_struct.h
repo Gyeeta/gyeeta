@@ -60,6 +60,17 @@ struct ipv6_tuple_t
 
 #if				defined (__clang__) && defined (__BPF__) && !defined (__BCC__)
 
+#ifdef GY_BPF_DEBUG
+
+#define				gy_bpf_printk(fmt, args...) bpf_printk(fmt, ##args)
+
+#else
+
+#define 			gy_bpf_printk(fmt, args...)
+
+#endif
+
+
 static int read_ipv4_tuple(struct ipv4_tuple_t *tuple, struct sock *skp)
 {
 	u32 			net_ns_inum = 0, saddr, daddr;
@@ -149,6 +160,10 @@ static __always_inline bool is_ipv4_mapped_ipv6(unsigned __int128 ip128_be)
 	return false;	
 }
 
+static uint64_t align_up_8(uint64_t nsize)
+{
+	return ((nsize - 1) & ~7) + 8;
+}
 
 #endif // defined (__clang__) && defined (__BPF__)
 

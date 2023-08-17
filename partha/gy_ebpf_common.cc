@@ -146,7 +146,7 @@ bool host_btf_enabled(bool check_module) noexcept
 
 GY_EBPF_ISRA::GY_EBPF_ISRA()
 {
-	SCOPE_FILE			sf("/proc/kallsyms", "r");
+	SCOPE_FILE			sf(GY_TAG_EXCEPTION(), "/proc/kallsyms", "r");
 	FILE 				*pfp = sf.get();
 	char 				*pline = nullptr;
 	size_t 				len = 0;

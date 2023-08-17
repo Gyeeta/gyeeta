@@ -1645,6 +1645,29 @@ do {																	\
 #define GY_GET_EXCEPT_CODE_ERRNO()	GY_EXCEPTION::get_except_code_errno(e)		
 
 /*
+ * On exceptions, the passed errmsg along with the exception cause will be ERRORPRINT'ed
+ * Pass a 0 length errmsg to not print anything on an exception
+ * e.g.
+
+	std::unordered_map<int, uint64_t>	tmap;
+
+	try {
+		for (int j = 0; j < 100'000; ++j) {
+			tmap.emplace(j, get_nsec_clock());
+		}
+	}	
+	GY_CATCH_MSG("Adding to map failed");
+ *
+ */
+#define GY_CATCH_MSG(errmsg)												\
+	GY_CATCH_EXPRESSION(												\
+		const char			*errmsg_ = static_cast<const char *>(errmsg);				\
+		if (errmsg_ && *errmsg_) {										\
+			ERRORPRINT("%s : %s\n", errmsg_, GY_GET_EXCEPT_STRING);						\
+		}													\
+	);														\
+
+/*
  * Execute the passed block of code within a try catch and on exception return -1 or else 0
  * On exceptions, the passed errmsg along with the exception cause will be ERRORPRINT'ed
  * Pass a 0 length errmsg to not print anything on an exception
@@ -1669,8 +1692,9 @@ do {																	\
 		ret__ = 0;												\
 	}														\
 	GY_CATCH_EXPRESSION(												\
-		if (errmsg && *errmsg) {										\
-			ERRORPRINT("%s %s\n", static_cast<const char *>(errmsg), GY_GET_EXCEPT_STRING);			\
+		const char			*errmsg_ = static_cast<const char *>(errmsg);				\
+		if (errmsg_ && *errmsg_) {										\
+			ERRORPRINT("%s : %s\n", errmsg_, GY_GET_EXCEPT_STRING);						\
 		}													\
 	);														\
 	ret__;														\
@@ -7067,8 +7091,7 @@ static std::string & gy_html_decode(std::string &str)
 }	
 
 /*
- * Binary buffer to Hex formatted ascii. Returns new strlen
- * will truncate if szout < 2 * szin + 1
+ * Binary buffer to Hex string. Returns new strlen. Will truncate if szout < 2 * szin + 1
  */
 static size_t binary_to_hex_string(const uint8_t * pin, size_t szin, char *pout, size_t szout) noexcept
 {
@@ -7081,8 +7104,8 @@ static size_t binary_to_hex_string(const uint8_t * pin, size_t szin, char *pout,
 	}	
 
 	for (d = 0, s = 0; (unsigned)d < szin; d++, s += 2) {
-		pout[s + 0] 	= hex[(pin[d] >> 4) & 0x0f];
-		pout[s + 1] 	= hex[(pin[d] >> 0) & 0x0f];
+		pout[s + 0] 	= 	hex[ (pin[d] >> 4) & 0x0F ];
+		pout[s + 1] 	= 	hex[ (pin[d] >> 0) & 0x0F ];
 	}
 
 	pout[s] = 0;
@@ -7206,6 +7229,35 @@ static char * string_ends_with(const char *pinput, const char *substr, bool igno
 
 	return (char *)pinput + leninput - lensub;
 }
+
+// Returns true on match. ignore_case will only work on ASCII strings
+static bool string_starts_with(const char *pinput, const char *substr, bool ignore_case = false, size_t lensub = 0) noexcept 
+{
+	assert(pinput);
+	assert(substr);
+
+	if (lensub == 0) {	
+		lensub = strlen(substr);
+	}	
+
+	if (lensub == 0) {
+		return false;
+	}	
+
+	if (ignore_case == false) {
+		if (memcmp(pinput, substr, lensub) != 0) {
+			return false;
+		}
+	}
+	else {
+		if (strncasecmp(pinput, substr, lensub) != 0) {
+			return false;
+		}
+	}	
+
+	return true;
+}
+
 
 /*
  * Static Char arr with strlen and optional start offset

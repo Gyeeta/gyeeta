@@ -14,24 +14,21 @@ class GY_ELF_UTIL
 public :
 	GY_ELF_UTIL(const char *pfile)
 	{
-		open_elf(pfile, nullptr);
+		char			errorbuf[256];
+
+		open_elf(pfile, nullptr, errorbuf);
 	}
 
-	// Will try not to throw exception on errors
-	GY_ELF_UTIL(const char * pfile, int & retcode)
+	// Will not throw exception on errors
+	GY_ELF_UTIL(const char * pfile, int & retcode, char (&errorbuf)[256])
 	{
-		open_elf(pfile, &retcode);
+		open_elf(pfile, &retcode, errorbuf);
 	}
 
-	GY_ELF_UTIL(int fd)
+	// Will not throw exception on errors
+	GY_ELF_UTIL(int fd, int & retcode, char (&errorbuf)[256])
 	{
-		open_elf_fd(fd, nullptr);
-	}
-
-	// Will try not to throw exception on errors
-	GY_ELF_UTIL(int fd, int & retcode)
-	{
-		open_elf_fd(fd, &retcode);
+		open_elf_fd(fd, &retcode, errorbuf);
 	}	
 
 	~GY_ELF_UTIL() noexcept;
@@ -57,14 +54,27 @@ public :
 		return *this;
 	}	
 
-	int find_elf_func_offsets(const char *funcarr[], size_t nfuncs, off_t offsetarr[]) const;
+	size_t 				find_func_offsets(const char *funcarr[], size_t nfuncs, off_t offsetarr[]) const;
 
-	CHAR_BUF<256> get_buildid() const noexcept;
+	CHAR_BUF<256> 			get_buildid() const noexcept;
+	
+	bool				is_go_binary() const noexcept;
+	
+	size_t				get_dynamic_libs(STR_WR_BUF & strbuf) const noexcept;
+
+	// Only if file path passed in constructor
+	const char *			get_file_path() const noexcept
+	{
+		return filename_.data();
+	}	
 
 protected :
 
-	void 				open_elf(const char *pfile, int *pretcode);
-	int 				open_elf_fd(int fd, int *pretcode, const char *pfile = nullptr);
+	void 				open_elf(const char *pfile, int *pretcode, char (&errorbuf)[256]);
+	int 				open_elf_fd(int fd, int *pretcode, char (&errorbuf)[256], const char *pfile = nullptr);
+
+	static constexpr const char	gnu_buildnote[] 	= ".note.gnu.build-id";
+	static constexpr const char	go_buildnote[] 		= ".note.go.buildid";
 
 	struct Elf			*pelf_			{nullptr};
 	int				fd_			{-1};

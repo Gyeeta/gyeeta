@@ -325,6 +325,103 @@ int main()
 	}
 
 	{
+		using folly::StringPiece;
+
+		IRPRINT("\n\n");
+
+		INFOPRINTCOLOR(GY_COLOR_CYAN, "Testing Inline Folly Stack Hash Map with Transparent Hashing to avoid temp std::string objects with Memory usage ...\n");
+
+		using Stackmap 		= INLINE_STACK_F14_MAP<std::string, std::string, 100 * 1024, FollyTransparentStringHash, FollyTransparentStringEqual>;
+
+		Stackmap			u(100);
+		auto			 & 	arena = u.get_arena();
+
+		memuse("After construction with 100 reserves", arena);
+
+		for (uint64_t i = 0; i < 300; ++i) {
+			u.try_emplace(gy_to_charbuf<64>("Key %lu", i).get(), gy_to_charbuf<128>("Value %lu", i).get());
+		}	
+
+		memuse("After 300 emplaces", arena);
+
+		for (uint64_t i = 0; i < 300; ++i) {
+			assert(u.find(StringPiece(gy_to_charbuf<64>("Key %lu", i).get())) != u.end());
+		}	
+
+		assert(u.find(StringPiece("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 88)) == u.end());
+
+		memuse("After 300 finds", arena);
+
+		u.clear();
+
+		memuse("After clear", arena);
+
+		u.reserve(300);
+
+		for (uint64_t i = 0; i < 300; ++i) {
+			u.try_emplace(gy_to_charbuf<64>("Key %lu", i).get(), gy_to_charbuf<128>("Value %lu", i).get());
+		}	
+
+		memuse("After second 300 emplaces and before destruction", arena);
+
+	}
+
+	{
+		using folly::StringPiece;
+
+		IRPRINT("\n\n");
+
+		INFOPRINTCOLOR(GY_COLOR_CYAN, "Testing Inline Folly Stack Hash Map with Transparent Hashing and pointer objects to avoid temp std::string objects with Memory usage ...\n");
+
+		using Stackmap 		= INLINE_STACK_F14_MAP<const char *, std::string, 8 * 1024, FollyTransparentStringHash, FollyTransparentStringEqual>;
+
+		CHAR_BUF<64>			carr[30];
+		Stackmap			u(100);
+		auto			 & 	arena = u.get_arena();
+
+		memuse("After construction with 100 reserves", arena);
+
+		for (uint64_t i = 0; i < 30; ++i) {
+			snprintf(carr[i].get(), sizeof(carr[i]), "Key %lu", i);
+		}	
+
+		for (uint64_t i = 0; i < 30; ++i) {
+			u.try_emplace(carr[i].get(), gy_to_charbuf<128>("Value %lu", i).get());
+		}	
+
+		memuse("After 30 emplaces", arena);
+
+		for (uint64_t i = 0; i < 30; ++i) {
+			assert(u.find(StringPiece(gy_to_charbuf<64>("Key %lu", i).get())) != u.end());
+		}	
+
+		auto			it1 = u.find("Key 1");
+		auto			it2 = u.find("key 1");
+
+		assert(it1 != u.end() && it1->second == "Value 1");
+		assert(it2 == u.end());
+
+		assert(u.find(StringPiece("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 88)) == u.end());
+
+		memuse("After 30 finds", arena);
+
+		u.clear();
+
+		memuse("After clear", arena);
+
+		u.reserve(300);
+
+		for (uint64_t i = 0; i < 30; ++i) {
+			u.try_emplace(gy_to_charbuf<64>("Key %lu", i).get(), gy_to_charbuf<128>("Value %lu", i).get());
+		}	
+
+		memuse("After second 30 emplaces and before destruction", arena);
+
+	}
+
+
+
+	{
 		IRPRINT("\n\n");
 
 		INFOPRINTCOLOR(GY_COLOR_CYAN, "Testing Inline Stack Hash Set Memory usage ...\n");
