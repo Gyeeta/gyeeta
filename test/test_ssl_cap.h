@@ -50,6 +50,7 @@ struct tssl_conn_info
 	struct taddr_tuple		tup;
 	u32				nxt_cli_seq;
 	u32				nxt_ser_seq;
+	bool				is_client;
 };	
 
 struct tcaphdr_t 

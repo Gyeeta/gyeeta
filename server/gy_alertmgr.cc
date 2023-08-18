@@ -3561,9 +3561,10 @@ bool ALERT_DB_HDLR::db_new_alert_stat(ADB_MSG & amsg) noexcept
 
 		nnew_++;
 
-		qbuf << "insert into public.alertstbl" << datetbl.get() << " values ($1::timestamptz, $2::char(8), $3::text, $4::text, $5::char(8), "
+		qbuf << "insert into public.alertstbl" << datetbl.get();
+		qbuf.appendconst(" values ($1::timestamptz, $2::char(8), $3::text, $4::text, $5::char(8), "
 				"$6::timestamptz, $7::timestamptz, $8::timestamptz, $9::char(8), $10::text, $11::text, $12::text, "
-				"$13::smallint, $14::text, $15::text, $16::text)\n;";
+				"$13::smallint, $14::text, $15::text, $16::text)\n;");
 
 		bret = PQsendQueryParams(pconn->get(), qbuf.get(), GY_ARRAY_SIZE(json_db_alerts_arr), nullptr, amsg.parambufs_, nullptr, nullptr, 0);
 
@@ -5280,7 +5281,9 @@ bool ALERTMGR::send_alert_to_dbhdlr(const AlertStatFilter & filter)
 	nalerts_++;
 
 	offlens[0] = 0;
-	strbuf << timebuf.get() << "\x0";
+	strbuf << timebuf.get();
+
+	strbuf.appendconst("\x0");
 
 	for (size_t i = 1; i < GY_ARRAY_SIZE(json_db_alerts_arr) - 1; ++i) {
 		STRING_BUFFER<2048>		tbuf;
@@ -5290,14 +5293,15 @@ bool ALERTMGR::send_alert_to_dbhdlr(const AlertStatFilter & filter)
 
 		bret = filter.astat_field_to_string(pcol, tbuf);	
 		if (bret && tbuf.size()) {
-			strbuf << tbuf << "\x0";
+			strbuf << tbuf;
+			strbuf.appendconst("\x0");
 		}	
 		else {
 			if (0 == strcmp(pcol->dbtype, "timestamptz")) {
 				offlens[i] = ~0u;
 			}
 			else {
-				strbuf << "\x0";
+				strbuf.appendconst("\x0");
 			}
 		}	
 	}	
@@ -8173,7 +8177,7 @@ bool ALERTMGR::db_update_silence(uint32_t *psilidarr, uint32_t nid, bool is_dele
 		strbuf.appendfmt("update public.silencestbl set disabled = \'%s\'::boolean where silid in (", is_disabled ? "true" : "false");
 	}
 	else {
-		strbuf << "delete from public.silencestbl where silid in (";
+		strbuf.appendconst("delete from public.silencestbl where silid in (");
 	}	
 
 	for (uint32_t i = 0; i < nid; ++i) {

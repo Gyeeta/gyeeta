@@ -163,7 +163,9 @@ size_t GY_ELF_UTIL::find_func_offsets(const char *funcarr[], size_t nfuncs, off_
 	std::memset(offsetarr, 0, nfuncs * sizeof(*offsetarr));
 
 	for (int i = 0; (unsigned)i < nfuncs; ++i) {
-		fmap.try_emplace(funcarr[i], offsetarr + i);
+		if (funcarr[i]) {
+			fmap.try_emplace(funcarr[i], offsetarr + i);
+		}
 	}	
 
 	const auto chk_update = [&](const char *pfunc, off_t foff) -> bool

@@ -4405,7 +4405,7 @@ bool SHCONN_HANDLER::handle_ms_partha_ping(const std::shared_ptr<MADHAVA_INFO> &
 
 	RCU_LOCK_SLOW			slowlock;
 
-	qbuf << "insert into public.parthatbl values ";
+	qbuf.appendconst("insert into public.parthatbl values ");
 
 	for (int i = 0; i < nelems; ++i, ++pone) {
 		prawpartha = partha_tbl_.lookup_single_elem_locked(pone->machine_id_, pone->machine_id_.get_hash());
@@ -6034,7 +6034,7 @@ void SHCONN_HANDLER::read_db_partha_info(PGConnPool & dbpool) noexcept
 
 		// If sql changed, update ncols below
 		ncols = 6;
-		strbuf << "select machid, clustername, region, zone, madhavaid, extract(epoch from del_after) as del_after from public.parthatbl limit 500000;";
+		strbuf.appendconst( "select machid, clustername, region, zone, madhavaid, extract(epoch from del_after) as del_after from public.parthatbl limit 500000;");
 
 		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
 

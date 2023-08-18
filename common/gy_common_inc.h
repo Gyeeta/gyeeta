@@ -8491,16 +8491,23 @@ public :
 	template <size_t N>
 	STR_WR_BUF & operator<< (const char (&str)[N]) noexcept
 	{
-		append(static_cast<const char *>(str), N - 1);
+		/*
+		 * Disabing the optimization as compiler will invoke this for a class member array in a const method as well... :(
+		 *
+			append(static_cast<const char *>(str), N - 1);
+		 */	
+		append(static_cast<const char *>(str), ::strnlen(str, std::min<size_t>(N - 1, maxsz_ - currsz_)));
 		return *this;
 	}
 
+	/*
 	template <size_t N>
 	STR_WR_BUF & operator<< (char (&str)[N]) noexcept
 	{
 		append(static_cast<const char *>(str), ::strnlen(str, std::min<size_t>(N - 1, maxsz_ - currsz_)));
 		return *this;
 	}
+	*/
 
 	// Cast as (void *) to print Address of a pointer
 	STR_WR_BUF & operator<< (void *pval) noexcept

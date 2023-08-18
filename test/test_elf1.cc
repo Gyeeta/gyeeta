@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 		size_t			nlibs;
 		int			ret;
 		auto			tpath = argv[1];
-		GY_ELF_UTIL		elf(tpath, ret, errbuf );
+		GY_ELF_UTIL		elf(tpath, ret, errbuf);
 
 		if (ret != 0) {
 			ERRORPRINT("%s\n", errbuf);

@@ -1497,7 +1497,7 @@ static ino_t get_curr_mountns_inode() noexcept
  * another mount namespace.
  * pid is the process ID for whom the path is valid
  */
-static CHAR_BUF<GY_PATH_MAX> get_ns_safe_file_path(pid_t pid, const char *path, char (&errbuf)[256]) noexcept
+static CHAR_BUF<GY_PATH_MAX> get_ns_safe_file_path(pid_t pid, const char *path, char (&errbuf)[256], bool *pnewmount = nullptr) noexcept
 {
 	CHAR_BUF<GY_PATH_MAX>		obuf;
 	char				spath[GY_PATH_MAX], dpath[GY_PATH_MAX];
@@ -1551,6 +1551,10 @@ static CHAR_BUF<GY_PATH_MAX> get_ns_safe_file_path(pid_t pid, const char *path, 
 			snprintf(errbuf, sizeof(errbuf), "Failed as path specified is too long : currently not handled");
 			return obuf;
 		}	
+
+		if (pnewmount) {
+			*pnewmount = true;
+		}	
 	}	
 
 	*errbuf = 0;
@@ -1562,11 +1566,11 @@ static CHAR_BUF<GY_PATH_MAX> get_ns_safe_file_path(pid_t pid, const char *path, 
 
 /*
  * Walk the /proc/pid/maps entry for a PID for each lib path
- * Pass a lambda with params (const char *plibpath, const char *pline, bool is_lib_deleted) -> CB_RET_E
+ * Pass a lambda with params (const char *plibname, const char *plibpath, const char *pline, bool is_lib_deleted) -> CB_RET_E
  * The lambda if returns a CB_BREAK_LOOP will terminate the walk.
  */
 template <typename FCB> 
-int walk_proc_pid_map_libs(pid_t pid, FCB & walk) noexcept(noexcept(walk(nullptr, nullptr, false)))
+int walk_proc_pid_map_libs(pid_t pid, FCB & walk) noexcept(noexcept(walk(nullptr, nullptr, nullptr, false)))
 {
 	SCOPE_FILE			sfile(gy_to_charbuf<128>("/proc/%d/maps", pid).get(), "r");
 	FILE 				*pfp = sfile.get();
@@ -1575,7 +1579,7 @@ int walk_proc_pid_map_libs(pid_t pid, FCB & walk) noexcept(noexcept(walk(nullptr
 		return -1;
 	}	
 
-	char 				*pline = nullptr, *lib, *pdel;
+	char 				*pline = nullptr, *lib, *plibpath, *pdel;
 	size_t 				len = 0;
 	ssize_t				nread;
 	int				nlibs = 0;
@@ -1602,6 +1606,13 @@ int walk_proc_pid_map_libs(pid_t pid, FCB & walk) noexcept(noexcept(walk(nullptr
 		lib++;
 
 		if ((0 == memcmp(lib, "lib", 3)) && strstr(lib, ".so")) {
+
+			plibpath = (char *)memrchr(pline, ' ', lib - pline);
+			if (!plibpath) {
+				continue;
+			}	
+			plibpath++;
+
 			nlibs++;
 
 			pdel = strstr(lib, " (deleted)");
@@ -1609,7 +1620,7 @@ int walk_proc_pid_map_libs(pid_t pid, FCB & walk) noexcept(noexcept(walk(nullptr
 				*pdel = 0;
 			}	
 
-			cret = walk(lib, pline, !!pdel);
+			cret = walk(lib, plibpath, pline, !!pdel);
 
 			if (cret == CB_BREAK_LOOP || cret == CB_DELETE_BREAK) {
 				break;

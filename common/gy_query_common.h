@@ -917,7 +917,7 @@ static CHAR_BUF<128> get_db_init_commands() noexcept
 		strbuf.appendfmt("set time zone \'%s\';", ptz->get_tz_string());
 	}
 
-	strbuf << "set client_min_messages to warning;";
+	strbuf.appendconst("set client_min_messages to warning;");
 
 	return cbuf;
 }	

@@ -590,7 +590,7 @@ char * QUERY_OPTIONS::get_db_select_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E su
 		*tabalias = 0;
 	}	
 
-	strbuf << " select ";
+	strbuf.appendconst(" select ");
 	
 	get_db_table_columns(strbuf, subsys, table_alias_prefix, ign_col_list);
 	
@@ -627,7 +627,7 @@ char * QUERY_OPTIONS::get_db_select_multihost_query(STR_WR_BUF & strbuf, SUBSYS_
 					get_subsys_info(subsys) ? get_subsys_info(subsys)->jsonstr : "");
 	}	
 
-	strbuf << "select * from gy_multihostselect( $a$ ";
+	strbuf.appendconst("select * from gy_multihostselect( $a$ ");
 
 	get_db_where_clause(strbuf, SUBSYS_HOST, tablename, datetbl, "");
 
@@ -645,7 +645,7 @@ char * QUERY_OPTIONS::get_db_select_multihost_query(STR_WR_BUF & strbuf, SUBSYS_
 		strbuf.appendfmt(" $b$, %lu) as (machid char(32), hostname text, madhavaid char(16), clustername text,", maxrecs_);
 	}
 	else {
-		strbuf << " $b$ ) as (machid char(32), hostname text, madhavaid char(16), clustername text,";
+		strbuf.appendconst(" $b$ ) as (machid char(32), hostname text, madhavaid char(16), clustername text,");
 	}
 
 	size_t			ncol;
@@ -708,7 +708,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 	if (!naggr_column_spec_) {
 		// Default aggregation oper
 		
-		strbuf << " select * from (select ";
+		strbuf.appendconst(" select * from (select ");
 
 		uint32_t 		istart = 0;
 
@@ -896,7 +896,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 		}
 		noutcol			= szhostjsonmap;
 
-		strbuf << " select * from (select * from gy_multihostselect( $a$ ";
+		strbuf.appendconst(" select * from (select * from gy_multihostselect( $a$ ");
 
 		get_db_where_clause(strbuf, SUBSYS_HOST, tablename, datetbl, "");
 
