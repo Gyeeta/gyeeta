@@ -103,10 +103,9 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 	
 	if ((ret < 0) || is_error) {
 		retcode = -1;
-		snprintf(errorbuf, sizeof(errorbuf), "Failed to get PID %d info : %s", pid, gy_get_perror().get());
+		snprintf(errorbuf, sizeof(errorbuf), "Failed to get PID %d info : %s", pid, *errbuf ? errbuf : gy_get_perror().get());
 		return ssluniq;
 	}	
-
 
 	if (libtype == SSL_LIB_UNKNOWN) {
 		// Check if its a statically linked lib
@@ -122,6 +121,13 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 
 		if (!is_deleted) {
 			GY_STRNCPY(pathbuf, get_ns_safe_file_path(pid, buf, errbuf, &newmount).get(), sizeof(pathbuf));
+
+			if (0 == *pathbuf) {
+				retcode = -1;
+				snprintf(errorbuf, sizeof(errorbuf), "Failed to get PID %d mount safe exe path : %s", 
+						pid, *errbuf ? errbuf : gy_get_perror().get());
+				return ssluniq;
+			}	
 		}
 		else {
 			snprintf(pathbuf, sizeof(pathbuf), "/proc/%d/exe", pid);
@@ -138,7 +144,7 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 
 	if (ret != 0) {
 		retcode = -1;
-		snprintf(errorbuf, sizeof(errorbuf), "Failed to get PID %d ELF info : %s", pid, gy_get_perror().get());
+		snprintf(errorbuf, sizeof(errorbuf), "Failed to get PID %d ELF info : %s", pid, errbuf);
 		return ssluniq;
 	}	
 	

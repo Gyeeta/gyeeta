@@ -85,5 +85,5 @@ LDLIBS := -Wl,-rpath,./lib -Wl,-rpath-link,./lib -lpthread -lrt -L. -lgcc -lstdc
 	-L$(FOLLY_HOME)/lib -lfolly $(GLOG_HOME)/lib/libglog.a $(GFLAGS_HOME)/lib/libgflags.a -lgcc_s -lunwind -ldl -ldouble-conversion	\
 	$(URCU_HOME)/lib/liburcu-qsbr.a $(URCU_HOME)/lib/liburcu-cds.a $(LIBPCAP_HOME)/lib/libpcap.a \
 	$(POSTGRES_HOME)/lib/libpq.a $(POSTGRES_HOME)/lib/libpgport.a $(POSTGRES_HOME)/lib/libpgcommon.a \
-	$(BOOLSTUFF_HOME)/lib/libboolstuff-0.1.a $(CURL_HOME)/lib/libcurl.a -lcap -liberty -lcrypto -lssl -Wl,--build-id
+	$(BOOLSTUFF_HOME)/lib/libboolstuff-0.1.a $(CURL_HOME)/lib/libcurl.a -lcap -liberty -lcrypto -lssl -lelf -Wl,--build-id
 

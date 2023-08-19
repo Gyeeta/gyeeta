@@ -8072,8 +8072,7 @@ public :
  * Usage :
  *
  * strbuf << "Str " << 1 << ',' << 3.2f << '\n';			// Allowed data types include string, integral, float, double, uint8_t, char, bool, void * pointer
- * strbuf.appendconst("This is a string literal ");			// Use appendconst() for string literals to skip compute of strlen at run time or use << operator
- * strbuf << "2nd string";						// Append using << operator (Runtime strlen is skipped for string literals)
+ * strbuf.appendconst("This is a string literal ");			// Use appendconst() for string literals to skip compute of strlen at run time
  * strbuf.appendutf("नमस्ते");						// UTF8 safe Append (Default append() may result in multibyte UTF8 char truncation on overflow)
  * strbuf.appendfmt("Samples : %s %.3f", teststr, testfloat);		// sprintf style formatted append	
  * strbuf.appendptr(&myobject);						// Add Pointer Address in %p format
@@ -8171,6 +8170,7 @@ public :
 	}	
 
 	/*
+	 * Optimized append for String literals. 
 	 * Use only for string literals and not char arrays as no run time strlen calculated...
 	 */
 	template <size_t N>
@@ -8393,7 +8393,7 @@ public :
 	template <typename FCB, size_t N>
 	char *appendconstcb(FCB & overflowcb, char (&str)[N]) 	= delete;
 
-	// Will ignore '\0'. If need to add '\0' within string, use "\x0" string method
+	// Will ignore '\0'. If need to add '\0' within string, use appendconst("\x0") method
 	char *append(char c) noexcept
 	{
 		if (gy_unlikely((currsz_ >= maxsz_) || (c == 0))) {
@@ -8492,7 +8492,7 @@ public :
 	STR_WR_BUF & operator<< (const char (&str)[N]) noexcept
 	{
 		/*
-		 * Disabing the optimization as compiler will invoke this for a class member array in a const method as well... :(
+		 * Disabing the optimization as compiler will invoke this for a class array member in a const method as well :(
 		 *
 			append(static_cast<const char *>(str), N - 1);
 		 */	
@@ -8501,6 +8501,7 @@ public :
 	}
 
 	/*
+	 * See comment above for the const char array
 	template <size_t N>
 	STR_WR_BUF & operator<< (char (&str)[N]) noexcept
 	{
