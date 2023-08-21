@@ -333,11 +333,11 @@ void GY_BOOLPARSE::replace_expr_criteria(STR_WR_BUF & strbuf, const char *pinput
 									c, c2, c3);
 			}	
 
-			strbuf << " & ";
+			strbuf << " & "sv;
 			ptmp += 4;
 		}	
 		else if (c == 'o' && c2 == 'r' && is_space_tab(c3)) {
-			strbuf << " | ";
+			strbuf << " | "sv;
 			ptmp += 3;
 		}
 		else {

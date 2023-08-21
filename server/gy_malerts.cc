@@ -1827,33 +1827,33 @@ void MRT_ALERT_HDLR::print_stats(int64_t tdiff, time_t tcurr) noexcept
 	STRING_BUFFER<1024>		strbuf;
 	auto				nmissed = nmissed_.load(mo_relaxed);
 
-	strbuf << "Realtime Alert Stats for the last " << tdiff << " secs : " 
-		<< nalerts_ - lastnalerts_ << " New Alerts, "  << nrepeats_ - lastnrepeats_ << " Repeat Alerts, "
-		<< nrtskips_ - lastnrtskips_ << " Skipped Alerts, " 
-		<< nalertclose_ - lastnalertclose_ << " Close Alerts sent, " << nforceclose_ - lastnforceclose_ << " Force Closed Alerts, ";
+	strbuf << "Realtime Alert Stats for the last "sv << tdiff << " secs : "sv 
+		<< nalerts_ - lastnalerts_ << " New Alerts, "sv  << nrepeats_ - lastnrepeats_ << " Repeat Alerts, "sv
+		<< nrtskips_ - lastnrtskips_ << " Skipped Alerts, "sv 
+		<< nalertclose_ - lastnalertclose_ << " Close Alerts sent, "sv << nforceclose_ - lastnforceclose_ << " Force Closed Alerts, "sv;
 	
 	if (nmissed) {
-		strbuf << nmissed - lastnmissed_ << " Missed by Pool Block, ";
+		strbuf << nmissed - lastnmissed_ << " Missed by Pool Block, "sv;
 	}	
 
 	if (nmsgerr_) {
-		strbuf << nmsgerr_ - lastnmsgerr_ << " Internal Msg Errors";
+		strbuf << nmsgerr_ - lastnmsgerr_ << " Internal Msg Errors"sv;
 	}	
 	
-	strbuf  << "\n\t\t\tCumulative Realtime Alert Stats : " 
-		<< nalerts_ << " Total Alerts, " << nrepeats_ << " Repeat Alerts, "
-		<< nrtskips_ << " Skipped Alerts, " << nalertclose_ << " Close Alerts sent, " << nforceclose_ << " Force Closed Alerts, ";
+	strbuf  << "\n\t\t\tCumulative Realtime Alert Stats : "sv 
+		<< nalerts_ << " Total Alerts, "sv << nrepeats_ << " Repeat Alerts, "sv
+		<< nrtskips_ << " Skipped Alerts, "sv << nalertclose_ << " Close Alerts sent, "sv << nforceclose_ << " Force Closed Alerts, "sv;
 
 	if (nmissed) {
-		strbuf << nmissed << " Missed by Pool Block, ";
+		strbuf << nmissed << " Missed by Pool Block, "sv;
 	}	
 
 	if (nmsgerr_) {	
-		strbuf << nmsgerr_  << " Internal Msg Errors";
+		strbuf << nmsgerr_  << " Internal Msg Errors"sv;
 	}	
 	
-	strbuf	<< "\n\n\t\t\tCurrent Realtime Alert definitions : " << adeftbl_.size() // No locking needed
-		<< " , Timemap Entries : " << atimemap_.size();
+	strbuf	<< "\n\n\t\t\tCurrent Realtime Alert definitions : "sv << adeftbl_.size() // No locking needed
+		<< " , Timemap Entries : "sv << atimemap_.size();
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "%s\n\n", strbuf.buffer());
 
@@ -2617,24 +2617,24 @@ void MDB_ALERT_HDLR::print_stats(int64_t tdiff, time_t tcurr) noexcept
 {
 	STRING_BUFFER<1024>		strbuf;
 
-	strbuf << "DB Alert Stats for the last " << tdiff << " secs : " 
-		<< nalerts_ - lastnalerts_ << " New Alerts, "  << nrepeats_ - lastnrepeats_ << " Repeat Alerts, "
-		<< ndbskips_ - lastndbskips_ << " Skipped Alerts, " << nkeyskips_ - lastnkeyskips_ << " Skipped due to Key Issues, " 
-		<< ndberrors_ - lastndberrors_ << " DB Alert Query Issues, " 
-		<< "\n\t\t\t" << ngetdberrors_ - lastngetdberrors_ << " DB Query String Overflows, "
-		<< nconnmiss_ - lastnconnmiss_ << " DB Connection Issue by long exec time, "
-		<< nalertclose_ - lastnalertclose_ << " Close Alerts sent, " << nforceclose_ - lastnforceclose_ << " Force Closed Alerts ";
+	strbuf << "DB Alert Stats for the last "sv << tdiff << " secs : "sv 
+		<< nalerts_ - lastnalerts_ << " New Alerts, "sv  << nrepeats_ - lastnrepeats_ << " Repeat Alerts, "sv
+		<< ndbskips_ - lastndbskips_ << " Skipped Alerts, "sv << nkeyskips_ - lastnkeyskips_ << " Skipped due to Key Issues, "sv 
+		<< ndberrors_ - lastndberrors_ << " DB Alert Query Issues, "sv 
+		<< "\n\t\t\t" << ngetdberrors_ - lastngetdberrors_ << " DB Query String Overflows, "sv
+		<< nconnmiss_ - lastnconnmiss_ << " DB Connection Issue by long exec time, "sv
+		<< nalertclose_ - lastnalertclose_ << " Close Alerts sent, "sv << nforceclose_ - lastnforceclose_ << " Force Closed Alerts "sv;
 	
-	strbuf  << "\n\n\t\t\tCumulative DB Alert Stats : " 
-		<< nalerts_ << " Total Alerts, " << nrepeats_ << " Repeat Alerts, "
-		<< ndbskips_ << " Skipped Alerts, " << nkeyskips_ << " Skipped due to Key Issues, "
-		<< ndberrors_ << " DB Alert Query Issues, " 
-		<< "\n\t\t\t" << ngetdberrors_ << " DB Query String Overflows, "
-		<< nconnmiss_ << " DB Connection Issue by long exec time, "
-		<< nalertclose_ << " Close Alerts sent, " << nforceclose_ << " Force Closed Alerts ";
+	strbuf  << "\n\n\t\t\tCumulative DB Alert Stats : "sv 
+		<< nalerts_ << " Total Alerts, "sv << nrepeats_ << " Repeat Alerts, "sv
+		<< ndbskips_ << " Skipped Alerts, "sv << nkeyskips_ << " Skipped due to Key Issues, "sv
+		<< ndberrors_ << " DB Alert Query Issues, "sv 
+		<< "\n\t\t\t" << ngetdberrors_ << " DB Query String Overflows, "sv
+		<< nconnmiss_ << " DB Connection Issue by long exec time, "sv
+		<< nalertclose_ << " Close Alerts sent, "sv << nforceclose_ << " Force Closed Alerts "sv;
 
-	strbuf	<< "\n\n\t\t\tCurrent DB Alert definitions : " << adeftbl_.size()
-		<< " , Timemap Entries : " << atimemap_.size();
+	strbuf	<< "\n\n\t\t\tCurrent DB Alert definitions : "sv << adeftbl_.size()
+		<< " , Timemap Entries : "sv << atimemap_.size();
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "DB Handler %d Stats : %s\n\n", dbhandlerid_, strbuf.buffer());
 

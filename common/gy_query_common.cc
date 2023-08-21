@@ -635,7 +635,7 @@ char * QUERY_OPTIONS::get_db_select_multihost_query(STR_WR_BUF & strbuf, SUBSYS_
 	
 	get_db_table_columns(strbuf, subsys, "tbl.", ign_col_list);
 
-	strbuf << " \', $b$ ";
+	strbuf << " \', $b$ "sv;
 
 	get_db_where_clause(strbuf, subsys, tablename, datetbl, "tbl.", true /* add_multihost_subsys */);
 
@@ -715,7 +715,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 		if (aggr_dur_sec_ && (pajsonmap[0].jsoncrc == FIELD_TIME || pajsonmap[0].jsoncrc == FIELD_ALERTTIME)) {
 
 			get_date_trunc_str(strbuf);
-			strbuf << " as atime, ";
+			strbuf << " as atime, "sv;
 
 			pcolarr[noutcol++] = pajsonmap[0];
 			istart++;
@@ -737,7 +737,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 			pcolarr[noutcol++] = pajsonmap[i];
 
 			if (i + 1 < szaggrinfo) {
-				strbuf << ", ";
+				strbuf << ", "sv;
 			}	
 		}
 
@@ -749,7 +749,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 
 		if (aggr_dur_sec_ && (pajsonmap[0].jsoncrc == FIELD_TIME || pajsonmap[0].jsoncrc == FIELD_ALERTTIME)) {
 
-			strbuf << " group by atime ";
+			strbuf << " group by atime "sv;
 			ngrpby = 1;
 		}
 
@@ -761,10 +761,10 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 			}
 
 			if (ngrpby > 0) {
-				strbuf << ", ";
+				strbuf << ", "sv;
 			}	
 			else {
-				strbuf << " group by ";
+				strbuf << " group by "sv;
 			}
 
 			ngrpby++;
@@ -772,7 +772,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 			strbuf.append(paggr->dbfieldname);
 		}
 
-		strbuf << " ) " << pdefsubsys_->jsonstr << ' ';
+		strbuf << " ) "sv << pdefsubsys_->jsonstr << ' ';
 		
 		set_aggr_where_clause(strbuf, pcolarr, noutcol);
 
@@ -817,15 +817,15 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 		return 0;
 	}
 
-	strbuf << " select * from (select ";
+	strbuf << " select * from (select "sv;
 
 	aggr_column_query(strbuf, dbpostaggrarr, npostcol);
 	
-	strbuf << " from ( select ";
+	strbuf << " from ( select "sv;
 	
 	aggr_column_query(strbuf, dbouterarr, noutcol);
 
-	strbuf << " from ( select ";
+	strbuf << " from ( select "sv;
 
 	aggr_column_query(strbuf, dbinnerarr, nincol);
 
@@ -837,11 +837,11 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 
 	aggr_groupby_query(strbuf, dbinnerarr, nincol);
 
-	strbuf << " ) s ";
+	strbuf << " ) s "sv;
 
 	aggr_groupby_query(strbuf, dbouterarr, noutcol);
 
-	strbuf << " ) ss ) " << pdefsubsys_->jsonstr << ' ';
+	strbuf << " ) ss ) "sv << pdefsubsys_->jsonstr << ' ';
 
 	set_aggr_where_clause(strbuf, pcolarr, npostcol);
 
@@ -907,7 +907,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 		if (aggr_dur_sec_ && (pajsonmap[0].jsoncrc == FIELD_TIME || pajsonmap[0].jsoncrc == FIELD_ALERTTIME)) {
 
 			get_date_trunc_str(strbuf);
-			strbuf << " as atime, ";
+			strbuf << " as atime, "sv;
 
 			pcolarr[noutcol++] = pajsonmap[0];
 
@@ -930,11 +930,11 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 			pcolarr[noutcol++] = pajsonmap[i];
 
 			if (i + 1 < szaggrinfo) {
-				strbuf << ", ";
+				strbuf << ", "sv;
 			}	
 		}
 
-		strbuf << " $a$ , $b$ ";
+		strbuf << " $a$ , $b$ "sv;
 
 		get_db_where_clause(strbuf, subsys, tablename, datetbl, "tbl.", true /* add_multihost_subsys */);
 
@@ -942,7 +942,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 
 		if (aggr_dur_sec_ && (pajsonmap[0].jsoncrc == FIELD_TIME || pajsonmap[0].jsoncrc == FIELD_ALERTTIME)) {
 
-			strbuf << " group by atime ";
+			strbuf << " group by atime "sv;
 			ngrpby = 1;
 		}
 
@@ -954,10 +954,10 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 			}
 
 			if (ngrpby > 0) {
-				strbuf << ", ";
+				strbuf << ", "sv;
 			}	
 			else {
-				strbuf << " group by ";
+				strbuf << " group by "sv;
 			}
 
 			ngrpby++;
@@ -973,10 +973,10 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 			}
 
 			if (ngrpby > 0) {
-				strbuf << ", ";
+				strbuf << ", "sv;
 			}	
 			else {
-				strbuf << " group by ";
+				strbuf << " group by "sv;
 			}
 
 			ngrpby++;
@@ -984,14 +984,14 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 			strbuf.append(paggr->dbfieldname);
 		}
 
-		strbuf << " $b$, 50000) as (";
+		strbuf << " $b$, 50000) as ("sv;
 
 		for (uint32_t i = 0; i < szhostjsonmap; ++i) {
 			strbuf << phostaggrinfo[i].dbfieldname << ' ' << phostaggrinfo[i].dbfieldtype << ',';
 		}	
 
 		if (aggr_dur_sec_ && (pajsonmap[0].jsoncrc == FIELD_TIME || pajsonmap[0].jsoncrc == FIELD_ALERTTIME)) {
-			strbuf << "atime timestamptz,";
+			strbuf << "atime timestamptz,"sv;
 		}
 
 		for (uint32_t i = istart; i < szaggrinfo; ++i) {
@@ -1000,9 +1000,9 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 
 		strbuf.set_last_char(')');
 
-		strbuf << " limit 100000 ";
+		strbuf << " limit 100000 "sv;
 
-		strbuf << " ) " << pdefsubsys_->jsonstr << ' ';
+		strbuf << " ) "sv << pdefsubsys_->jsonstr << ' ';
 
 		set_aggr_where_clause(strbuf, pcolarr, noutcol);
 
@@ -1053,15 +1053,15 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 		return 0;
 	}
 
-	strbuf << " select * from (select ";
+	strbuf << " select * from (select "sv;
 
 	aggr_column_query(strbuf, dbpostaggrarr, npostcol);
 	
-	strbuf << " from ( select ";
+	strbuf << " from ( select "sv;
 	
 	aggr_column_query(strbuf, dbouterarr, noutcol);
 
-	strbuf << " from ( select * from gy_multihostselect( $a$ ";
+	strbuf << " from ( select * from gy_multihostselect( $a$ "sv;
 
 	get_db_where_clause(strbuf, SUBSYS_HOST, tablename, datetbl, "");
 
@@ -1069,7 +1069,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 
 	aggr_column_query(strbuf, dbinnerarr, nincol);
 
-	strbuf << " $a$ , $b$ ";
+	strbuf << " $a$ , $b$ "sv;
 
 	get_db_where_clause(strbuf, subsys, tablename, datetbl, "tbl.", true /* add_multihost_subsys */);
 	
@@ -1077,7 +1077,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 
 	aggr_groupby_query(strbuf, dbinnerarr, nincol);
 
-	strbuf << " $b$, 50000) as (";
+	strbuf << " $b$, 50000) as ("sv;
 
 	for (uint32_t i = 0; i < nincol; ++i) {
 		strbuf << dbinnerarr[i].dbfieldname << ' ' << dbinnerarr[i].dbfieldtype << ',';
@@ -1085,13 +1085,13 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 
 	strbuf.set_last_char(')');
 
-	strbuf << " limit 100000 ";
+	strbuf << " limit 100000 "sv;
 
-	strbuf << " ) ss ";
+	strbuf << " ) ss "sv;
 	
 	aggr_groupby_query(strbuf, dbouterarr, noutcol);
 
-	strbuf << " ) sss ) " << pdefsubsys_->jsonstr << ' ';
+	strbuf << " ) sss ) "sv << pdefsubsys_->jsonstr << ' ';
 
 	set_aggr_where_clause(strbuf, pcolarr, npostcol);
 
@@ -1513,7 +1513,7 @@ void QUERY_OPTIONS::parse_aggr_col_expr(SUBSYS_CLASS_E subsys, const char *colna
 								}	
 
 								if ((*ptmp2 == '/') || (*ptmp2 == '%')) {
-									strbuf << "nullif(" << field << ", 0)";
+									strbuf << "nullif("sv << field << ", 0)"sv;
 									isdiv = true;
 								}	
 							}
@@ -1720,8 +1720,8 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 							colname);
 			}	
 
-			innera << "public.tdigest((";
-			outera << "public.tdigest_percentile(" << pstrfield << ',' << pct << ")::real as " << pfield;
+			innera << "public.tdigest(("sv;
+			outera << "public.tdigest_percentile("sv << pstrfield << ',' << pct << ")::real as "sv << pfield;
 
 			bool			validfield = false;
 
@@ -1757,7 +1757,7 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 				
 			} while (true);
 
-			innera << ", 100)::public.tdigest as " << pfield;
+			innera << ", 100)::public.tdigest as "sv << pfield;
 			
 			pdbtype 	= "real";
 			pinnertype	= "public.tdigest";
@@ -1773,8 +1773,8 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 	case AOPER_BOOL_OR :
 	case AOPER_BOOL_AND :
 		if (true) {
-			innera << qryoper[aoperid] << "((";
-			outera << qryoper[aoperid] << "(" << pstrfield;
+			innera << qryoper[aoperid] << "(("sv;
+			outera << qryoper[aoperid] << "("sv << pstrfield;
 
 			const JSON_DB_MAPPING		*pdbcol = nullptr;
 			bool				validfield = false;
@@ -1851,7 +1851,7 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 
 	case AOPER_AVG :
 		if (true) {
-			innera << "sum((";
+			innera << "sum(("sv;
 
 			bool			validfield = false;
 
@@ -1902,22 +1902,22 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 
 			} while (true);
 
-			innera << ")::" << pinnertype << " as " << pfield;
-			outera << "(sum(" << pstrfield << ")/greatest(sum(inrecs), 1))::" << pdbtype << " as " << pfield;
+			innera << ")::"sv << pinnertype << " as "sv << pfield;
+			outera << "(sum("sv << pstrfield << ")/greatest(sum(inrecs), 1))::"sv << pdbtype << " as "sv << pfield;
 		}	
 
 		break;
 
 	case AOPER_COUNT :
 		if (true) {
-			innera << "count(*) filter (where (";
-			outera << "sum(" << pstrfield;
+			innera << "count(*) filter (where ("sv;
+			outera << "sum("sv << pstrfield;
 
 			const char		*pcurr = rdbuf.get_curr_pos();
 			bool			validfield = false, compseen = false;
 
 			if (0 == memcmp(pcurr, "*)", 2)) {
-				innera << "true)";
+				innera << "true)"sv;
 			}
 			else {
 				do {
@@ -1968,8 +1968,8 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 				} while (true);
 			}	
 
-			innera << ")::bigint as " << pfield;
-			outera << ")::bigint as " << pfield;
+			innera << ")::bigint as "sv << pfield;
+			outera << ")::bigint as "sv << pfield;
 		}	
 
 		break;
@@ -2049,7 +2049,7 @@ void QUERY_OPTIONS::set_aggr_where_clause(STR_WR_BUF & strbuf, const JSON_DB_MAP
 						"If needed add that filter within \'filter\' field as Aggregated filters can only be for limited types", *ptmp);
 	}	
 
-	strbuf << " where ";
+	strbuf << " where "sv;
 	
 	do {
 		ptmp = rdbuf.get_next_word(nbytes, true, separators);
@@ -2062,7 +2062,7 @@ void QUERY_OPTIONS::set_aggr_where_clause(STR_WR_BUF & strbuf, const JSON_DB_MAP
 
 			if (pcol2) {
 				if (prevdiv && pcol2->numtype != NUM_NAN && pcol2->numtype != NUM_DOUBLE) {
-					strbuf << "nullif(" << pcol2->dbcolname << ", 0)::real";
+					strbuf << "nullif("sv << pcol2->dbcolname << ", 0)::real"sv;
 				}
 				else {
 					strbuf << pcol2->dbcolname;
@@ -2074,10 +2074,10 @@ void QUERY_OPTIONS::set_aggr_where_clause(STR_WR_BUF & strbuf, const JSON_DB_MAP
 					const char		*pbrace = "";
 
 					if (nbytes == 2) {
-						strbuf << "in (";
+						strbuf << "in ("sv;
 					}
 					else {
-						strbuf << "not in (";
+						strbuf << "not in ("sv;
 					}	
 					
 					ptmp += nbytes;
@@ -2159,7 +2159,7 @@ void QUERY_OPTIONS::set_aggr_where_clause(STR_WR_BUF & strbuf, const JSON_DB_MAP
 	} while (true);
 
 	if (!updated) {
-		strbuf << " (true) ";
+		strbuf << " (true) "sv;
 	}
 	
 	has_aggr_filters_ = !!ncolseen;
@@ -2286,7 +2286,7 @@ void QUERY_OPTIONS::aggr_column_query(STR_WR_BUF & strbuf, const DB_AGGR_INFO *d
 		}
 
 		if (nupd++ > 0) {
-			strbuf << ", ";
+			strbuf << ", "sv;
 		}	
 
 		strbuf << paggr->dbexpr;
@@ -2308,10 +2308,10 @@ uint32_t QUERY_OPTIONS::aggr_groupby_query(STR_WR_BUF & strbuf, const DB_AGGR_IN
 		}
 
 		if (ngrpby > 0) {
-			strbuf << ", ";
+			strbuf << ", "sv;
 		}	
 		else {
-			strbuf << " group by ";
+			strbuf << " group by "sv;
 		}
 
 		ngrpby++;
@@ -2328,10 +2328,10 @@ uint32_t QUERY_OPTIONS::aggr_groupby_query(STR_WR_BUF & strbuf, const DB_AGGR_IN
 		}
 
 		if (ngrpby > 0) {
-			strbuf << ", ";
+			strbuf << ", "sv;
 		}	
 		else {
-			strbuf << " group by ";
+			strbuf << " group by "sv;
 		}
 
 		ngrpby++;

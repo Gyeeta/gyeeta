@@ -6186,7 +6186,7 @@ void SHCONN_HANDLER::cleanup_db_partha_entries() noexcept
 		STRING_BUFFER<1024 * 1024>	qbuf;
 		int				ndel = 0, nact = 0, maxdel = 25000;
 
-		qbuf << "delete from public.parthatbl where machid in (";
+		qbuf << "delete from public.parthatbl where machid in ("sv;
 
 		SCOPE_GY_MUTEX			scopelock(pardb_mutex_);
 
@@ -6231,8 +6231,8 @@ void SHCONN_HANDLER::cleanup_db_partha_entries() noexcept
 
 		partha_tbl_.walk_hash_table(lampar);
 
-		qbuf << "NULL);\n";
-		qbuf << "delete from public.parthatbl where del_after is not null and now() > del_after;\n";
+		qbuf << "NULL);\n"sv;
+		qbuf << "delete from public.parthatbl where del_after is not null and now() > del_after;\n"sv;
 
 		auto				res = get_new_db_conn().pqexec_blocking(qbuf.buffer());
 

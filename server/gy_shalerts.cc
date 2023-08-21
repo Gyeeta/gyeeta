@@ -1036,27 +1036,27 @@ void SHALERT_HDLR::print_stats(int64_t tdiff, time_t tcurr) noexcept
 {
 	STRING_BUFFER<1024>		strbuf;
 
-	strbuf << "Stats for the last " << tdiff << " secs : " 
-		<< nrtalerts_ - lastnrtalerts_ << " New RT Alerts, "  << nrtrepeats_ - lastnrtrepeats_ << " Repeat RT Alerts, "
-		<< ndbalerts_ - lastndbalerts_ << " New DB Alerts, "  << ndbrepeats_ - lastndbrepeats_ << " Repeat DB Alerts, "
-		<< ndbskips_ - lastndbskips_ << " Skipped Alerts, " 
-		<< "\n\t\t\t" << npoolskips_ - lastnpoolskips_ << " Skipped due to Pool Blocks, " 
-		<< ndberrors_ - lastndberrors_ << " DB Alert Query Issues, " 
-		<< ngetdberrors_ - lastngetdberrors_ << " DB Query String Overflows, "
-		<< nconnmiss_ - lastnconnmiss_ << " DB Connection Issue by long exec time, "
-		<< nalertclose_ - lastnalertclose_ << " Close Alerts sent, " << nforceclose_ - lastnforceclose_ << " Force Closed Alerts ";
+	strbuf << "Stats for the last "sv << tdiff << " secs : "sv 
+		<< nrtalerts_ - lastnrtalerts_ << " New RT Alerts, "sv  << nrtrepeats_ - lastnrtrepeats_ << " Repeat RT Alerts, "sv
+		<< ndbalerts_ - lastndbalerts_ << " New DB Alerts, "  << ndbrepeats_ - lastndbrepeats_ << " Repeat DB Alerts, "sv
+		<< ndbskips_ - lastndbskips_ << " Skipped Alerts, "sv 
+		<< "\n\t\t\t" << npoolskips_ - lastnpoolskips_ << " Skipped due to Pool Blocks, "sv 
+		<< ndberrors_ - lastndberrors_ << " DB Alert Query Issues, "sv 
+		<< ngetdberrors_ - lastngetdberrors_ << " DB Query String Overflows, "sv
+		<< nconnmiss_ - lastnconnmiss_ << " DB Connection Issue by long exec time, "sv
+		<< nalertclose_ - lastnalertclose_ << " Close Alerts sent, "sv << nforceclose_ - lastnforceclose_ << " Force Closed Alerts "sv;
 	
-	strbuf  << "\n\n\t\t\tCumulative Alert Stats : " 
-		<< nrtalerts_ << " Total RT Alerts, " << nrtrepeats_ << " Repeat RT Alerts, "
-		<< ndbalerts_ << " Total DB Alerts, " << ndbrepeats_ << " Repeat DB Alerts, "
-		<< ndbskips_ << " Skipped Alerts, " << npoolskips_ << " Skipped due to Pool Blocks, "
-		<< ndberrors_ << " DB Alert Query Issues, " 
-		<< "\n\t\t\t" << ngetdberrors_ << " DB Query String Overflows, "
-		<< nconnmiss_ << " DB Connection Issue by long exec time, "
-		<< nalertclose_ << " Close Alerts sent, " << nforceclose_ << " Force Closed Alerts ";
+	strbuf  << "\n\n\t\t\tCumulative Alert Stats : "sv 
+		<< nrtalerts_ << " Total RT Alerts, "sv << nrtrepeats_ << " Repeat RT Alerts, "sv
+		<< ndbalerts_ << " Total DB Alerts, "sv << ndbrepeats_ << " Repeat DB Alerts, "sv
+		<< ndbskips_ << " Skipped Alerts, "sv << npoolskips_ << " Skipped due to Pool Blocks, "sv
+		<< ndberrors_ << " DB Alert Query Issues, "sv 
+		<< "\n\t\t\t" << ngetdberrors_ << " DB Query String Overflows, "sv
+		<< nconnmiss_ << " DB Connection Issue by long exec time, "sv
+		<< nalertclose_ << " Close Alerts sent, "sv << nforceclose_ << " Force Closed Alerts "sv;
 
-	strbuf	<< "\n\n\t\t\tCurrent RT Alert definitions : " << artdeftbl_.size() << ", Current DB Alert definitions : " << adbdeftbl_.size() 
-		<< ", Timemap Entries : " << atimemap_.size();
+	strbuf	<< "\n\n\t\t\tCurrent RT Alert definitions : "sv << artdeftbl_.size() << ", Current DB Alert definitions : "sv << adbdeftbl_.size() 
+		<< ", Timemap Entries : "sv << atimemap_.size();
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Shyama Alert Stats : %s\n\n", strbuf.buffer());
 

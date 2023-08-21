@@ -3549,7 +3549,7 @@ int TCP_SOCK_HANDLER::update_cli_conn_info_madhava(const comm::MP_CLI_TCP_INFO *
 
 				CONDEXEC(
 					DEBUGEXECN(10, 
-						strbuf << "\n\t\t#" << nconns << " : ";
+						strbuf << "\n\t\t#"sv << nconns << " : "sv;
 						ptcp->print_string(strbuf);
 					);
 				);
@@ -3630,7 +3630,7 @@ int TCP_SOCK_HANDLER::update_ser_conn_info_madhava(const comm::MP_SER_TCP_INFO *
 
 				CONDEXEC(
 					DEBUGEXECN(10, 
-						strbuf << "\n\t\t#" << nconns << " : ";
+						strbuf << "\n\t\t#"sv << nconns << " : "sv;
 						ptcp->print_string(strbuf);
 					);
 				);

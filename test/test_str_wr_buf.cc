@@ -21,7 +21,7 @@ STRING_HEAP test1()
 	strcpy(sbuf, " : Local Array string : ");
 	strcpy(sbuf2, "Char Pointer Test : ");
 
-	stackbuf << " Testing STRING_BUFFER " << cbuf << sbuf << psbuf << " : Address of stackbuf = " << (void *)stackbuf.buffer() << " Current length is " << stackbuf.length();
+	stackbuf << " Testing String View Operator "sv << cbuf << sbuf << psbuf << " : Address of stackbuf = " << (void *)stackbuf.buffer() << " Current length is " << stackbuf.length();
 		
 	IRPRINT("\n\n");	
 	INFOPRINT("stackbuf buffer is \'%s\'\n\n", stackbuf.buffer());
@@ -33,7 +33,7 @@ STRING_HEAP test1()
 	heapbuf.appendutf("नमस्ते");				
 	heapbuf.appendconst(" This is a string literal ");	
 	heapbuf.append(3.1);			
-	heapbuf << " Testing STRING_HEAP" << " : Address of heapbuf = " << (void *)heapbuf.buffer() << " Current length is " << heapbuf.length();
+	heapbuf << " Testing STRING_HEAP"sv << " : Address of heapbuf = "sv << (void *)heapbuf.buffer() << " Current length is "sv << heapbuf.length();
 		
 	IRPRINT("\n\n");	
 	INFOPRINT("heapbuf buffer is \'%s\'\n\n", heapbuf.buffer());

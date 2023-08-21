@@ -10888,7 +10888,7 @@ void MCONN_HANDLER::handle_shyama_svc_natip_clust(const comm::SM_SVC_NAT_IP_CLUS
 				
 				if (nprints++ == 3) {
 					nprints = 0;
-					strbuf << "\n\t";
+					strbuf << "\n\t"sv;
 				}	
 				break;
 			}
@@ -11623,17 +11623,17 @@ void MCONN_HANDLER::handle_listen_taskmap(const std::shared_ptr<PARTHA_INFO> & p
 				qbuf << listener.nat_ip_port_arr_[0].ipaddr_.printaddr().get();
 			}
 
-			qbuf << "\'," << listener.nat_ip_port_arr_[0].port_ << ",\'"; 
+			qbuf << "\',"sv << listener.nat_ip_port_arr_[0].port_ << ",\'"sv; 
 
 			if (listener.nat_ip_port_arr_[1].port_ > 0) {
 				qbuf << listener.nat_ip_port_arr_[1].ipaddr_.printaddr().get();
 			}
 
-			qbuf << "\'," << listener.nat_ip_port_arr_[1].port_ << ",\'";
+			qbuf << "\',"sv << listener.nat_ip_port_arr_[1].port_ << ",\'"sv;
 
 			qbuf.append(listener.server_domain_, GY_READ_ONCE(listener.domain_string_len_));
 
-			qbuf << "\',\'";
+			qbuf << "\',\'"sv;
 
 			auto relshr = listener.related_listen_shr_.load(mo_relaxed);
 
@@ -11647,25 +11647,25 @@ void MCONN_HANDLER::handle_listen_taskmap(const std::shared_ptr<PARTHA_INFO> & p
 				}
 			}	
 			
-			qbuf << "\',\'";
+			qbuf << "\',\'"sv;
 
 			if (listener.is_cluster_mesh_) {
 				qbuf.appendfmt("%016lx", listener.eff_mesh_cluster_id_.load(mo_relaxed));
 			}
 
-			qbuf << "\'," << listener.ntotal_mesh_svc_ << ",\'";
+			qbuf << "\',"sv << listener.ntotal_mesh_svc_ << ",\'"sv;
 
 			if (listener.is_cluster_nat_ip_[0]) {
 				qbuf.appendfmt("%016lx", listener.nat_ip_cluster_id_[0].load(mo_relaxed));
 			}
 
-			qbuf << "\'," << listener.ntotal_nat_ip_svc_[0] << ",\'";
+			qbuf << "\',"sv << listener.ntotal_nat_ip_svc_[0] << ",\'"sv;
 
 			if (listener.is_cluster_nat_ip_[1]) {
 				qbuf.appendfmt("%016lx", listener.nat_ip_cluster_id_[1].load(mo_relaxed));
 			}
 
-			qbuf << "\'," << listener.ntotal_nat_ip_svc_[1];
+			qbuf << "\',"sv << listener.ntotal_nat_ip_svc_[1];
 
 			qbuf.appendfmt(",\'%s\',\'%s\'),", prawpartha->region_name_, prawpartha->zone_name_);
 

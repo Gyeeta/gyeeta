@@ -59,6 +59,8 @@
 #include 		"gy_utf8.h"
 #include		"jhash.h"
 
+using 			std::string_view_literals::operator""sv;
+
 namespace gyeeta {
 
 #define GY_READ_ONCE(x) 			(*(volatile decltype(x) *)&(x))
@@ -8071,8 +8073,8 @@ public :
  *
  * Usage :
  *
- * strbuf << "Str " << 1 << ',' << 3.2f << '\n';			// Allowed data types include string, integral, float, double, uint8_t, char, bool, void * pointer
- * strbuf.appendconst("This is a string literal ");			// Use appendconst() for string literals to skip compute of strlen at run time
+ * strbuf << "Str " << "Strview "sv << 1 << ',' << 3.2f << '\n';	// Allowed data types include string, stringview, integral, float, double, uint8_t, char, bool, void * pointer
+ * strbuf.appendconst("This is a string literal ");			// Use appendconst() for string literals to skip compute of strlen at run time or use << with sv operator
  * strbuf.appendutf("नमस्ते");						// UTF8 safe Append (Default append() may result in multibyte UTF8 char truncation on overflow)
  * strbuf.appendfmt("Samples : %s %.3f", teststr, testfloat);		// sprintf style formatted append	
  * strbuf.appendptr(&myobject);						// Add Pointer Address in %p format

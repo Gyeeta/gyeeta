@@ -17,8 +17,10 @@ enum SSL_LIB_TYPE : uint8_t
 	SSL_LIB_GNUTLS,
 };
 
-struct SSL_LIB_INFO
+class SSL_LIB_INFO
 {
+public :
+
 	uint64_t			tstartns_				{get_nsec_time()};
 	const char			*libname_				{nullptr};
 	char				path_[GY_PATH_MAX];
@@ -60,9 +62,9 @@ struct SSL_LIB_INFO
 		std::memcpy(offsetarr_, offsetarr, nfuncs_ * sizeof(*offsetarr_));
 	}	
 
-	CHAR_BUF<300> get_hash_buf() const noexcept
+	CHAR_BUF<GY_PATH_MAX> get_hash_buf() const noexcept
 	{
-		return gy_to_charbuf<300>("%s_%lu", path_, inode_);
+		return gy_to_charbuf<GY_PATH_MAX>("%s_%lu", path_, inode_);
 	}
 
 	const char * print(STR_WR_BUF & strbuf) const noexcept;

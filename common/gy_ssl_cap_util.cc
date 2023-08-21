@@ -11,12 +11,12 @@ static constexpr const char	*opensslfuncs[] = {
 	"SSL_do_handshake", "SSL_read", "SSL_read_ex", "SSL_write", "SSL_write_ex", "SSL_shutdown",
 };
 
+static_assert(GY_ARRAY_SIZE(opensslfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");
+
 static constexpr const char	*gnutlsfuncs[] = {
 	"gnutls_handshake", "gnutls_transport_set_int2", "gnutls_transport_set_ptr", "gnutls_transport_set_ptr2",
 	"gnutls_record_recv", "gnutls_record_send", "gnutls_bye", "gnutls_deinit",
 };
-
-static_assert(GY_ARRAY_SIZE(opensslfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");
 
 static_assert(GY_ARRAY_SIZE(gnutlsfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");
 
@@ -208,21 +208,21 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 
 const char * SSL_LIB_INFO::print(STR_WR_BUF & strbuf) const noexcept
 {
-	strbuf.appendconst("SSL Library Probe Info : ");
+	strbuf << "SSL Library Probe Info : "sv;
 
 	if (libtype_ == SSL_LIB_UNKNOWN) {
-		strbuf << "SSL Library unknown...";
+		strbuf << "SSL Library unknown..."sv;
 		return strbuf.data();
 	}	
 
-	strbuf << "SSL Library " << libname_ << " : Path " << path_ << " : Init PID " << init_pid_;
+	strbuf << "SSL Library "sv << libname_ << " : Path "sv << path_ << " : Init PID "sv << init_pid_;
 	
-	if (is_deleted_) strbuf << " : File is deleted";
-	if (is_static_binary_) strbuf << " : SSL Library is statically linked";
-	if (is_go_binary_) strbuf << " : File is a Go Language binary";
-	if (newmount_) strbuf << " : File is from a separate Mount Namespace";
+	if (is_deleted_) 	strbuf << " : File is deleted"sv;
+	if (is_static_binary_) 	strbuf << " : SSL Library is statically linked"sv;
+	if (is_go_binary_) 	strbuf << " : File is a Go Language binary"sv;
+	if (newmount_) 		strbuf << " : File is from a separate Mount Namespace"sv;
 
-	strbuf << "\n\n";
+	strbuf << "\n\n"sv;
 
 	return strbuf.data();
 }

@@ -2501,7 +2501,7 @@ void ALERT_TMPL_STRING::set_string(STR_WR_BUF & strbuf, const AlertStatFilter & 
 
 		filter.astat_field_to_string(offset.pcol_, strbuf);	
 
-		strbuf << "] ";
+		strbuf << "] "sv;
 
 		last_end = offset.end_ + 1;
 	}	
@@ -2567,22 +2567,22 @@ STRING_BUFFER<8192> ALERT_ANNOTATIONS::get_annotations(const AlertStatFilter & f
 	STRING_BUFFER<8192>		strbuf;
 
 	if (annotvec_.size()) {
-		strbuf << "[";
+		strbuf << "["sv;
 	}
 
 	for (size_t i = 0; i < annotvec_.size(); ++i) {
 		
-		strbuf << "\"";
+		strbuf << "\""sv;
 		annotvec_[i].set_string(strbuf, filter);
-		strbuf << "\"";
+		strbuf << "\""sv;
 
 		if (i + 1 < annotvec_.size()) {
-			strbuf << ", ";
+			strbuf << ", "sv;
 		}	
 	}
 
 	if (annotvec_.size()) {
-		strbuf << "]";
+		strbuf << "]"sv;
 	}
 
 	return strbuf;
@@ -2894,7 +2894,7 @@ AActionVec ALERTDEF::get_actions(const AlertStatFilter & filter, STR_WR_BUF & ac
 		if (CRIT_FAIL != filter.filter_match(pactdef->match_)) {
 
 			vec.emplace_back(pactdef);
-			actstrbuf << pactdef->actionshr_->name_.get_view() << ", ";
+			actstrbuf << pactdef->actionshr_->name_.get_view() << ", "sv;
 
 			if (pactdef->continue_ == false) {
 				break;
@@ -3150,16 +3150,16 @@ void ACTION_HDLR::print_stats(int64_t tsec, time_t tcurr) noexcept
 	
 	STRING_BUFFER<4096>		strbuf;
 
-	strbuf << "Alertmgr Action Handler Stats for the last " << tsec << " secs : \n\t\t\t" 
-		<< nsent_ - lastnsent_ << " Alerts sent, " << nfailed_ - lastnfailed_ << " Failed Alerts (by socket failures or internal errors), " 
-		<< nnoconns_ - lastnnoconns_ << " Alerts Skipped by no Node Connections, " 
-		<< GY_READ_ONCE(npoolblocks_) - lastnpoolblocks_ << " Alerts missed by Pool Blocks, "
-		<< GY_READ_ONCE(nstrbufovf_) - lastnstrbufovf_ << " Alerts missed by Buffer overflows" 
+	strbuf << "Alertmgr Action Handler Stats for the last "sv << tsec << " secs : \n\t\t\t"sv 
+		<< nsent_ - lastnsent_ << " Alerts sent, "sv << nfailed_ - lastnfailed_ << " Failed Alerts (by socket failures or internal errors), "sv 
+		<< nnoconns_ - lastnnoconns_ << " Alerts Skipped by no Node Connections, "sv 
+		<< GY_READ_ONCE(npoolblocks_) - lastnpoolblocks_ << " Alerts missed by Pool Blocks, "sv
+		<< GY_READ_ONCE(nstrbufovf_) - lastnstrbufovf_ << " Alerts missed by Buffer overflows"sv 
 		
-		<< "\n\t\t\tCumulative Stats : " 
-		<< nsent_ << " Alerts sent, " << nfailed_ << " Failed Alerts, " << nnoconns_  << " Alerts Skipped by no Node Connections, "
-		<< GY_READ_ONCE(npoolblocks_) << " Alerts missed by Pool Blocks, "
-		<< GY_READ_ONCE(nstrbufovf_) << " Alerts missed by Buffer overflows"; 
+		<< "\n\t\t\tCumulative Stats : "sv 
+		<< nsent_ << " Alerts sent, "sv << nfailed_ << " Failed Alerts, "sv << nnoconns_  << " Alerts Skipped by no Node Connections, "sv
+		<< GY_READ_ONCE(npoolblocks_) << " Alerts missed by Pool Blocks, "sv
+		<< GY_READ_ONCE(nstrbufovf_) << " Alerts missed by Buffer overflows"sv; 
 
 	lastnsent_ 		= nsent_;
 	lastnfailed_		= nfailed_;
@@ -3167,7 +3167,7 @@ void ACTION_HDLR::print_stats(int64_t tsec, time_t tcurr) noexcept
 	lastnpoolblocks_	= npoolblocks_;
 	lastnstrbufovf_		= nstrbufovf_;
 
-	strbuf 	<< "\n\t\t\tTotal Node Action Connections are " << ntotalconns_;
+	strbuf 	<< "\n\t\t\tTotal Node Action Connections are "sv << ntotalconns_;
 	
 	if (tcurr > tdescprint_ and ntotalconns_ > 0) {
 		try {
@@ -3181,7 +3181,7 @@ void ACTION_HDLR::print_stats(int64_t tsec, time_t tcurr) noexcept
 
 			ntotalprocs_ = nodemap.size();
 
-			strbuf << " from these " << ntotalprocs_ << " Nodes : \n\t\t\t";
+			strbuf << " from these "sv << ntotalprocs_ << " Nodes : \n\t\t\t"sv;
 			
 			for (const auto [id, desc] : nodemap) {
 				strbuf << desc << ", ";
@@ -3561,7 +3561,7 @@ bool ALERT_DB_HDLR::db_new_alert_stat(ADB_MSG & amsg) noexcept
 
 		nnew_++;
 
-		qbuf << "insert into public.alertstbl" << datetbl.get();
+		qbuf << "insert into public.alertstbl"sv << datetbl.get();
 		qbuf.appendconst(" values ($1::timestamptz, $2::char(8), $3::text, $4::text, $5::char(8), "
 				"$6::timestamptz, $7::timestamptz, $8::timestamptz, $9::char(8), $10::text, $11::text, $12::text, "
 				"$13::smallint, $14::text, $15::text, $16::text)\n;");
@@ -3629,28 +3629,28 @@ bool ALERT_DB_HDLR::db_upd_alert_stat(ADB_MSG & amsg) noexcept
 		uint32_t			nparams = 0;
 		bool				bret;
 
-		qbuf << "update public.alertstbl" << datetbl.get() << ' ';
+		qbuf << "update public.alertstbl"sv << datetbl.get() << ' ';
 
 		switch (amsg.mtype_) {
 		
 		case ADB_MSG::MsgResolved :
 			nresolved_++;
 
-			qbuf << "set astate = \'resolved\', tclose = to_timestamp(" << amsg.tupdate_ << ") ";
+			qbuf << "set astate = \'resolved\', tclose = to_timestamp("sv << amsg.tupdate_ << ") "sv;
 			break;
 		
 		case ADB_MSG::MsgExpired :
 			nexpired_++;
 
-			qbuf << "set astate = \'expired\', tclose = to_timestamp(" << amsg.tupdate_ << ") ";
+			qbuf << "set astate = \'expired\', tclose = to_timestamp("sv << amsg.tupdate_ << ") "sv;
 			break;
 
 		case ADB_MSG::MsgAck :
 			nack_++;
 
-			qbuf << "set astate = \'acked\' ";
+			qbuf << "set astate = \'acked\' "sv;
 			if (amsg.alertstr_.size()) {
-				qbuf << ", acknotes = $1::text ";
+				qbuf << ", acknotes = $1::text "sv;
 				params[0] 	= amsg.alertstr_.data();
 				nparams		= 1;
 			}	
@@ -3713,15 +3713,15 @@ void ALERT_DB_HDLR::print_stats(int64_t tsec) noexcept
 {
 	STRING_BUFFER<1024>		strbuf;
 
-	strbuf << "Alertmgr DB Stats for the last " << tsec << " secs : " 
-		<< nnew_ - lastnnew_ << " New Alerts, " << nresolved_ - lastnresolved_ << " Resolved, " << nexpired_ - lastnexpired_ << " Expired, " 
-		<< nack_ - lastnack_ << " Acked, " << GY_READ_ONCE(npoolblocks_) - lastnpoolblocks_ << " DB Alerts missed by Pool Blocks, "
-		<< GY_READ_ONCE(nstrbufovf_) - lastnstrbufovf_ << " DB Alerts missed by Buffer overflows\n" 
+	strbuf << "Alertmgr DB Stats for the last "sv << tsec << " secs : "sv 
+		<< nnew_ - lastnnew_ << " New Alerts, "sv << nresolved_ - lastnresolved_ << " Resolved, "sv << nexpired_ - lastnexpired_ << " Expired, "sv 
+		<< nack_ - lastnack_ << " Acked, "sv << GY_READ_ONCE(npoolblocks_) - lastnpoolblocks_ << " DB Alerts missed by Pool Blocks, "sv
+		<< GY_READ_ONCE(nstrbufovf_) - lastnstrbufovf_ << " DB Alerts missed by Buffer overflows\n"sv 
 		
-		<< "\t\t\tCumulative DB Stats : " 
-		<< nnew_ << " Alerts, " << nresolved_ << " Resolved, " << nexpired_  << " Expired, "
-		<< nack_ << " Acked, " << GY_READ_ONCE(npoolblocks_) << " DB Alerts missed by Pool Blocks, "
-		<< GY_READ_ONCE(nstrbufovf_) << " DB Alerts missed by Buffer overflows"; 
+		<< "\t\t\tCumulative DB Stats : "sv 
+		<< nnew_ << " Alerts, "sv << nresolved_ << " Resolved, "sv << nexpired_  << " Expired, "sv
+		<< nack_ << " Acked, "sv << GY_READ_ONCE(npoolblocks_) << " DB Alerts missed by Pool Blocks, "sv
+		<< GY_READ_ONCE(nstrbufovf_) << " DB Alerts missed by Buffer overflows"sv; 
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "%s\n\n", strbuf.buffer());
 
@@ -3891,7 +3891,7 @@ void ALERTMGR::read_db_inhibits()
 	size_t				ncol;
 	STRING_BUFFER<1024>		strbuf;
 
-	strbuf << "select inhid, tcreated, disabled, inhibit from public.inhibitstbl limit " << ALERT_INHIBIT::MAX_INHIBITS << "\n;";
+	strbuf << "select inhid, tcreated, disabled, inhibit from public.inhibitstbl limit "sv << ALERT_INHIBIT::MAX_INHIBITS << "\n;"sv;
 
 	bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.length());
 
@@ -4095,7 +4095,7 @@ void ALERTMGR::read_db_silences()
 	size_t				ncol;
 	STRING_BUFFER<1024>		strbuf;
 
-	strbuf << "select silid, tcreated, disabled, silence from public.silencestbl limit " << ALERT_SILENCE::MAX_SILENCES << "\n;";
+	strbuf << "select silid, tcreated, disabled, silence from public.silencestbl limit "sv << ALERT_SILENCE::MAX_SILENCES << "\n;";
 
 	bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.length());
 
@@ -4299,7 +4299,7 @@ void ALERTMGR::read_db_actions()
 	size_t				ncol;
 	STRING_BUFFER<1024>		strbuf;
 
-	strbuf << "select actionid, acttype, tcreated, action from public.actionstbl limit " << ALERT_ACTION::MAX_ACTIONS << "\n;";
+	strbuf << "select actionid, acttype, tcreated, action from public.actionstbl limit "sv << ALERT_ACTION::MAX_ACTIONS << "\n;";
 
 	bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.length());
 
@@ -4508,7 +4508,7 @@ void ALERTMGR::read_db_alert_defs()
 	size_t				ncol;
 	STRING_BUFFER<1024>		strbuf;
 
-	strbuf << "select adefid, tcreated, disabled, definition from public.alertdeftbl limit " << MAX_ALERT_DEFS << "\n;";
+	strbuf << "select adefid, tcreated, disabled, definition from public.alertdeftbl limit "sv << MAX_ALERT_DEFS << "\n;";
 
 	bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.length());
 
@@ -5342,15 +5342,15 @@ bool ADEF_ACTION::to_string(STR_WR_BUF & strbuf) const noexcept
 		return false;
 	}	
 
-	strbuf << "{ \"type\" : \"" << action_to_stringlen(actionshr_->acttype_) << "\", \"config\" : " << actionshr_->config_;
+	strbuf << "{ \"type\" : \""sv << action_to_stringlen(actionshr_->acttype_) << "\", \"config\" : "sv << actionshr_->config_;
 
 	strbuf.appendfmt(", \"configid\" : \"%08x\"", actionshr_->configid_);
 
 	if (newconfig_.size()) {
-		strbuf << ", \"newconfig\" : " << newconfig_;
+		strbuf << ", \"newconfig\" : "sv << newconfig_;
 	}	
 	
-	strbuf << " }";
+	strbuf << " }"sv;
 
 	return true;
 }	
@@ -5366,7 +5366,7 @@ bool ALERTMGR::send_close_action_msg(ALERT_STATS &astat, bool is_force_close)
 		return false;
 	}	
 
-	strbuf << "{ \"etype\" : \"action\", \"actions\" : [ ";
+	strbuf << "{ \"etype\" : \"action\", \"actions\" : [ "sv;
 
 	bret = false;
 
@@ -5384,7 +5384,7 @@ bool ALERTMGR::send_close_action_msg(ALERT_STATS &astat, bool is_force_close)
 		nact += bret;
 	}	
 	
-	strbuf << " ], \"close\" : true, \"expired\" : " << is_force_close << ", \"alerts\" : [ ";
+	strbuf << " ], \"close\" : true, \"expired\" : "sv << is_force_close << ", \"alerts\" : [ "sv;
 
 	if (nact == 0) {
 		return true;
@@ -5483,7 +5483,7 @@ bool ALERTMGR::send_multi_action_msg(const intrusive_ptr<ALERT_STATS> *pstatarr,
 	int				ntries = 0;
 	bool				bret;
 
-	strbuf << "{ \"etype\" : \"action\", \"actions\" : [ ";
+	strbuf << "{ \"etype\" : \"action\", \"actions\" : [ "sv;
 
 	bret = false;
 
@@ -5495,7 +5495,7 @@ bool ALERTMGR::send_multi_action_msg(const intrusive_ptr<ALERT_STATS> *pstatarr,
 		bret = paction->to_string(strbuf);
 	}	
 	
-	strbuf << " ], \"close\" : false, \"expired\" : false, \"alerts\" : [ ";
+	strbuf << " ], \"close\" : false, \"expired\" : false, \"alerts\" : [ "sv;
 
 	if (strbuf.is_overflow()) {
 		acthdlr_.nstrbufovf_++;
@@ -6470,7 +6470,7 @@ std::tuple<ERR_CODES_E, uint32_t, const ALERTDEF *> ALERTMGR::add_alertdef(uint3
 		 */
 		
 		if (!jdoc.IsObject()) {
-			strbuf << "Invalid Alert Add Definition JSON : Require a JSON Object";
+			strbuf << "Invalid Alert Add Definition JSON : Require a JSON Object"sv;
 			return {ERR_INVALID_REQUEST, 0, nullptr};
 		}	
 
@@ -6499,14 +6499,14 @@ std::tuple<ERR_CODES_E, uint32_t, const ALERTDEF *> ALERTMGR::add_alertdef(uint3
 
 		auto 			[it, success] = adefmap_.try_emplace(adefid);
 		if (!success) {
-			strbuf << "Alert Definition name \'" << pname << "\' already exists : Please use a different name or delete the existing one first";
+			strbuf << "Alert Definition name \'"sv << pname << "\' already exists : Please use a different name or delete the existing one first"sv;
 			return {ERR_CONFLICTS, 0, nullptr};
 		}	
 		else {
 			it->second 	= pdefuniq.release();
 		}	
 
-		strbuf << "Added new Alert Definition name \'" << pname << "\' successfully : Definition ID is ";
+		strbuf << "Added new Alert Definition name \'"sv << pname << "\' successfully : Definition ID is "sv;
 		strbuf.appendfmt("\'%08x\'", adefid);
 
 		return {ERR_STATUS_OK, adefid, pdef};
@@ -6516,7 +6516,7 @@ std::tuple<ERR_CODES_E, uint32_t, const ALERTDEF *> ALERTMGR::add_alertdef(uint3
 
 		if (ecode == 0) ecode = ERR_SERV_ERROR;
 	
-		strbuf << "New Alert Definition failed due to : " << GY_GET_EXCEPT_STRING;
+		strbuf << "New Alert Definition failed due to : "sv << GY_GET_EXCEPT_STRING;
 		return {ERR_CODES_E(ecode), 0, nullptr};
 	);
 }
@@ -7218,7 +7218,7 @@ std::tuple<ERR_CODES_E, uint32_t, const char *> ALERTMGR::add_inhibit(uint32_t i
 
 	try {
 		if (!jdoc.IsObject()) {
-			strbuf << "Invalid Alert Inhibit Add JSON : Require a JSON Object";
+			strbuf << "Invalid Alert Inhibit Add JSON : Require a JSON Object"sv;
 			return {ERR_INVALID_REQUEST, 0, nullptr};
 		}	
 
@@ -7235,11 +7235,11 @@ std::tuple<ERR_CODES_E, uint32_t, const char *> ALERTMGR::add_inhibit(uint32_t i
 
 		auto 			[it, success] = inhibitmap_.try_emplace(inhid, std::move(pinuniq));
 		if (!success) {
-			strbuf << "Alert Inhibit name \'" << pname << "\' already exists : Please use a different name";
+			strbuf << "Alert Inhibit name \'"sv << pname << "\' already exists : Please use a different name"sv;
 			return {ERR_CONFLICTS, 0, nullptr};
 		}	
 
-		strbuf << "Added new Alert Inhibit name \'" << pname << "\' successfully : Inhibit ID is ";
+		strbuf << "Added new Alert Inhibit name \'"sv << pname << "\' successfully : Inhibit ID is "sv;
 		strbuf.appendfmt("\'%08x\'", inhid);
 
 		return {ERR_STATUS_OK, inhid, pname};
@@ -7249,7 +7249,7 @@ std::tuple<ERR_CODES_E, uint32_t, const char *> ALERTMGR::add_inhibit(uint32_t i
 
 		if (ecode == 0) ecode = ERR_SERV_ERROR;
 	
-		strbuf << "New Alert Inhibit failed due to : " << GY_GET_EXCEPT_STRING;
+		strbuf << "New Alert Inhibit failed due to : "sv << GY_GET_EXCEPT_STRING;
 		return {ERR_CODES_E(ecode), 0, nullptr};
 	);
 }
@@ -7758,7 +7758,7 @@ std::tuple<ERR_CODES_E, uint32_t, const char *> ALERTMGR::add_silence(uint32_t s
 
 	try {
 		if (!jdoc.IsObject()) {
-			strbuf << "Invalid Alert Silence Add JSON : Require a JSON Object";
+			strbuf << "Invalid Alert Silence Add JSON : Require a JSON Object"sv;
 			return {ERR_INVALID_REQUEST, 0, nullptr};
 		}	
 
@@ -7775,11 +7775,11 @@ std::tuple<ERR_CODES_E, uint32_t, const char *> ALERTMGR::add_silence(uint32_t s
 
 		auto 			[it, success] = silencemap_.try_emplace(silid, std::move(psiluniq));
 		if (!success) {
-			strbuf << "Alert Silence name \'" << pname << "\' already exists : Please use a different name";
+			strbuf << "Alert Silence name \'"sv << pname << "\' already exists : Please use a different name"sv;
 			return {ERR_CONFLICTS, 0, nullptr};
 		}	
 
-		strbuf << "Added new Alert Silence name \'" << pname << "\' successfully : Silence ID is ";
+		strbuf << "Added new Alert Silence name \'"sv << pname << "\' successfully : Silence ID is "sv;
 		strbuf.appendfmt("\'%08x\'", silid);
 
 		return {ERR_STATUS_OK, silid, pname};
@@ -7789,7 +7789,7 @@ std::tuple<ERR_CODES_E, uint32_t, const char *> ALERTMGR::add_silence(uint32_t s
 
 		if (ecode == 0) ecode = ERR_SERV_ERROR;
 	
-		strbuf << "New Alert Silence failed due to : " << GY_GET_EXCEPT_STRING;
+		strbuf << "New Alert Silence failed due to : "sv << GY_GET_EXCEPT_STRING;
 		return {ERR_CODES_E(ecode), 0, nullptr};
 	);
 }
@@ -8307,7 +8307,7 @@ std::tuple<ERR_CODES_E, uint32_t, AL_ACTION_E, const char *> ALERTMGR::add_actio
 
 	try {
 		if (!jdoc.IsObject()) {
-			strbuf << "Invalid Alert Action Add JSON : Require a JSON Object";
+			strbuf << "Invalid Alert Action Add JSON : Require a JSON Object"sv;
 			return {ERR_INVALID_REQUEST, 0, ACTION_MAX, nullptr};
 		}	
 
@@ -8325,7 +8325,7 @@ std::tuple<ERR_CODES_E, uint32_t, AL_ACTION_E, const char *> ALERTMGR::add_actio
 
 		auto 			[it, success] = actionmap_.try_emplace(actionid);
 		if (!success) {
-			strbuf << "Alert Action name \'" << pname << "\' already exists : Please use a different name";
+			strbuf << "Alert Action name \'" << pname << "\' already exists : Please use a different name"sv;
 			return {ERR_CONFLICTS, 0, ACTION_MAX, nullptr};
 		}	
 		else {
@@ -8342,7 +8342,7 @@ std::tuple<ERR_CODES_E, uint32_t, AL_ACTION_E, const char *> ALERTMGR::add_actio
 
 		if (ecode == 0) ecode = ERR_SERV_ERROR;
 	
-		strbuf << "New Alert Action failed due to : " << GY_GET_EXCEPT_STRING;
+		strbuf << "New Alert Action failed due to : "sv << GY_GET_EXCEPT_STRING;
 		return {ERR_CODES_E(ecode), 0, ACTION_MAX, nullptr};
 	);
 }
@@ -9343,24 +9343,24 @@ void ALERTMGR::update_alert_stats()
 	roll.day_silenced_		= rolling_sum(roll.acc_silenced_);	
 	roll.day_inhib_			= rolling_sum(roll.acc_inhib_);	
 
-	strbuf << "Alertmgr Stats for the last " << tsec << " secs : " 
-		<< nalerts_ - roll.lastnalerts_ << " New Alerts, "  << ninvalid_alerts_ - roll.lastninvalid_alerts_ << " Invalid Alerts, "
-		<< nalerts_skipped_ - roll.lastnalerts_skipped_ << " Skipped Alerts, " 
-		<< nalerts_silenced_ - roll.lastnalerts_silenced_ << " Alerts Skipped by Silencing, "
-		<< nalerts_inhib_ - roll.lastnalerts_inhib_ << " Alerts Skipped by Inhibition"
+	strbuf << "Alertmgr Stats for the last "sv << tsec << " secs : "sv 
+		<< nalerts_ - roll.lastnalerts_ << " New Alerts, "sv  << ninvalid_alerts_ - roll.lastninvalid_alerts_ << " Invalid Alerts, "sv
+		<< nalerts_skipped_ - roll.lastnalerts_skipped_ << " Skipped Alerts, "sv 
+		<< nalerts_silenced_ - roll.lastnalerts_silenced_ << " Alerts Skipped by Silencing, "sv
+		<< nalerts_inhib_ - roll.lastnalerts_inhib_ << " Alerts Skipped by Inhibition"sv
 		
-		<< "\n\t\t\t24 hours Alert Stats : " << roll.day_alerts_ << " Alerts, " << roll.day_silenced_ << " Alerts Silenced, " << roll.day_inhib_ << " Alerts Inhibited"
+		<< "\n\t\t\t24 hours Alert Stats : "sv << roll.day_alerts_ << " Alerts, "sv << roll.day_silenced_ << " Alerts Silenced, "sv << roll.day_inhib_ << " Alerts Inhibited"sv
 
-		<< "\n\t\t\tCumulative Alert Stats : " << nalerts_ << " Total Alerts, " << ninvalid_alerts_ << " Invalid Alerts, "
-		<< nalerts_skipped_ << " Skipped Alerts, " << nalerts_silenced_ << " Alerts Skipped by Silencing, "
-		<< nalerts_inhib_ << " Alerts Skipped by Inhibition"
+		<< "\n\t\t\tCumulative Alert Stats : "sv << nalerts_ << " Total Alerts, "sv << ninvalid_alerts_ << " Invalid Alerts, "sv
+		<< nalerts_skipped_ << " Skipped Alerts, "sv << nalerts_silenced_ << " Alerts Skipped by Silencing, "sv
+		<< nalerts_inhib_ << " Alerts Skipped by Inhibition"sv
 	
-		<< "\n\t\t\tAlerts seen : " << nalerts_min_ << " in last minute, " << nalerts_hour_ << " in last hour"
+		<< "\n\t\t\tAlerts seen : "sv << nalerts_min_ << " in last minute, "sv << nalerts_hour_ << " in last hour"sv
 
-		<< "\n\n\t\t\tOther Stats : " << adefmap_.size() << " Total Alert Definitions, " 
-		<< inhibitmap_.size() << " Total Inhibit Defs, " <<  silencemap_.size() << " Total Silences, "
-		<< actionmap_.size() << " Total Action Defs, " << agroupmap_.size() << " Total Alert Groups active, "
-		<< astatmap_.size() << " Total Alert Stats active, " << atimemap_.size() << " Timemap Entries";
+		<< "\n\n\t\t\tOther Stats : "sv << adefmap_.size() << " Total Alert Definitions, "sv 
+		<< inhibitmap_.size() << " Total Inhibit Defs, "sv <<  silencemap_.size() << " Total Silences, "sv
+		<< actionmap_.size() << " Total Action Defs, "sv << agroupmap_.size() << " Total Alert Groups active, "sv
+		<< astatmap_.size() << " Total Alert Stats active, "sv << atimemap_.size() << " Timemap Entries"sv;
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "%s\n\n", strbuf.buffer());
 

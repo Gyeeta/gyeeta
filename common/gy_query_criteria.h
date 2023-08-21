@@ -1142,25 +1142,25 @@ public :
 
 		switch (comp_) {
 		
-		case COMP_EQ		:	strbuf << " = "; break;
+		case COMP_EQ		:	strbuf << " = "sv; break;
 
-		case COMP_NEQ		:	strbuf << " != "; break;
+		case COMP_NEQ		:	strbuf << " != "sv; break;
 
-		case COMP_LT		:	strbuf << " < "; break;
+		case COMP_LT		:	strbuf << " < "sv; break;
 
-		case COMP_LE		:	strbuf << " <= "; break;
+		case COMP_LE		:	strbuf << " <= "sv; break;
 
-		case COMP_GT		:	strbuf << " > "; break;
+		case COMP_GT		:	strbuf << " > "sv; break;
 
-		case COMP_GE		:	strbuf << " >= "; break;
+		case COMP_GE		:	strbuf << " >= "sv; break;
 
-		case COMP_LIKE		:	strbuf << " ~ "; break;
+		case COMP_LIKE		:	strbuf << " ~ "sv; break;
 
-		case COMP_NOTLIKE	:	strbuf << " !~ "; break;
+		case COMP_NOTLIKE	:	strbuf << " !~ "sv; break;
 
-		case COMP_IN		:	strbuf << " in "; break;
+		case COMP_IN		:	strbuf << " in "sv; break;
 
-		case COMP_NOTIN		:	strbuf << " not in "; break;
+		case COMP_NOTIN		:	strbuf << " not in "sv; break;
 
 		default			:	GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid comparator while creating DB filter");
 		}
@@ -1174,7 +1174,7 @@ public :
 				numval_->set_db_filter(strbuf, pfield1_);
 			}
 			else {
-				strbuf << " now() ";
+				strbuf << " now() "sv;
 			}	
 		}	
 		else if (boolval_) {
