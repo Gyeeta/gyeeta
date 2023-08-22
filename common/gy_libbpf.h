@@ -33,6 +33,25 @@ public :
 };
 
 template <typename T>
+void gy_bpf_type_destroy(T *pdata) noexcept
+{
+	if constexpr(std::is_same_v<T, bpf_link>) {
+		if (pdata) bpf_link__destroy(pdata);
+	}
+	else if constexpr(std::is_same_v<T, bpf_object_skeleton>) {
+		if (pdata) bpf_object__destroy_skeleton(pdata);
+	}	
+	else if constexpr(std::is_same_v<T, bpf_object_subskeleton>) {
+		if (pdata) bpf_object__destroy_subskeleton(pdata);
+	}	
+}	
+
+using UNIQ_BPF_LINK_PTR 	= FUNC_DELETE_PTR<bpf_link, gy_bpf_type_destroy<bpf_link>>;
+using UNIQ_BPF_SKEL_PTR 	= FUNC_DELETE_PTR<bpf_object_skeleton, gy_bpf_type_destroy<bpf_object_skeleton>>;
+using UNIQ_BPF_SUBSKEL_PTR 	= FUNC_DELETE_PTR<bpf_object_subskeleton, gy_bpf_type_destroy<bpf_object_subskeleton>>;
+
+
+template <typename T>
 class GY_LIBBPF_OBJ
 {
 public :	
@@ -179,8 +198,6 @@ public :
 	GY_EBPF_CB			cb_			{nullptr};
 	void				*pcb_cookie_		{nullptr};
 };	
-
-
 
 } // namespace gyeeta
 

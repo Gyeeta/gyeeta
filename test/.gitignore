@@ -68,4 +68,5 @@ test_libcurl
 test_cloud_metadata
 test_pcap_writer
 test_netcap_ebpf
+test_ssl_cap
 test_elf1

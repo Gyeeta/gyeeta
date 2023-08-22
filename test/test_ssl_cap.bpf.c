@@ -61,6 +61,18 @@ struct {
 } sslcapring SEC(".maps");
 
 
+struct ClearArgs
+{
+	struct tssl_conn_info 		*psslinfo;
+	struct tssl_rw_args 		*pargs;
+	int 				nbytes;
+	u32 				pid;
+	u8 				tcp_flags;
+	bool				is_write;
+};	
+
+char LICENSE[] SEC("license") = "GPL";
+
 static bool valid_cap_pid(u32 pid, bool checkppid)
 {
 	u32			*pvalid = bpf_map_lookup_elem(&pid_map, &pid);
@@ -86,7 +98,7 @@ static bool valid_cap_pid(u32 pid, bool checkppid)
 			if (pvalid && *pvalid == 1) {
 				u32			val = 1;
 
-				bpf_map_update_elem(pid_map, &pid, &val, BPF_ANY);
+				bpf_map_update_elem(&pid_map, &pid, &val, BPF_ANY);
 				return true;
 			}	
 		}	
@@ -185,8 +197,15 @@ static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * 
 	return true;
 }
 
-static bool get_cleartext(void *ctx, struct tssl_conn_info *psslinfo, struct tssl_rw_args *pargs, int nbytes, u8 tcp_flags, u32 pid, bool is_write)
+static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 {
+	struct tssl_conn_info 		*psslinfo 	= pcleararg->psslinfo;
+	struct tssl_rw_args 		*pargs		= pcleararg->pargs;
+	int 				nbytes		= pcleararg->nbytes;
+	u32 				pid		= pcleararg->pid;
+	u8 				tcp_flags	= pcleararg->tcp_flags;
+	bool				is_write	= pcleararg->is_write;
+
 	if (nbytes < 0) {
 		return false;
 	}	
@@ -194,7 +213,7 @@ static bool get_cleartext(void *ctx, struct tssl_conn_info *psslinfo, struct tss
 	bool 				is_resp;
 
 	if (psslinfo->is_client) {
-		is_resp			= !is_write
+		is_resp			= !is_write;
 	}
 	else {
 		is_resp			= is_write;
@@ -225,11 +244,11 @@ static bool get_cleartext(void *ctx, struct tssl_conn_info *psslinfo, struct tss
 	const uint8_t			*porigsrc = pargs->buf, *pend = porigsrc + nleft, *psrc = porigsrc;
 
 	for (uint32_t i = 0; i < nloops && i < TMAX_TOTAL_PAYLOAD_LEN/TMAX_ONE_PAYLOAD_LEN + 1 && psrc <= pend; ++i) {
-		uint32_t			rd, npad, nring;
+		uint32_t			rd, npad;
+		const uint32_t			nring = TMAX_ONE_PAYLOAD_LEN;
 
-		rd 				= nleft > TMAX_ONE_PAYLOAD_LEN ? TMAX_ONE_PAYLOAD_LEN : nleft;
-		nring 				= align_up_8(sizeof(tcaphdr_t) + rd); 
-		npad 				= nring - (sizeof(tcaphdr_t) + rd);
+		rd 				= nleft > TMAX_ONE_PAYLOAD_LEN - sizeof(struct tcaphdr_t) ? TMAX_ONE_PAYLOAD_LEN - sizeof(struct tcaphdr_t) : nleft;
+		npad 				= nring - (sizeof(struct tcaphdr_t) + rd);
 
 		uint8_t				*pring = bpf_ringbuf_reserve(&sslcapring, nring, 0);
 
@@ -238,12 +257,14 @@ static bool get_cleartext(void *ctx, struct tssl_conn_info *psslinfo, struct tss
 		}	
 
 		startsrcseq			+= rd;
+
+		struct tcaphdr_t		*phdr;
 		
 		phdr 				= (struct tcaphdr_t *)pring;
 
 		phdr->ts_ns			= ts_ns;
 
-		__builtin_memcpy(&phdr->tuple, &parg->tuple, sizeof(phdr->tuple));
+		__builtin_memcpy(&phdr->tuple, &psslinfo->tup, sizeof(phdr->tuple));
 
 		phdr->len			= nring - sizeof(*phdr);
 		phdr->pid			= pid;
@@ -254,7 +275,7 @@ static bool get_cleartext(void *ctx, struct tssl_conn_info *psslinfo, struct tss
 		phdr->npadbytes			= npad;
 
 		if (rd > 0 && rd < TMAX_ONE_PAYLOAD_LEN) {
-			err = bpf_probe_read_user(pring + sizeof(*phdr), rd, psrc);
+			int			err = bpf_probe_read_user(pring + sizeof(*phdr), rd, psrc);
 
 			if (err) {
 				gy_bpf_printk("ERROR : SSL user bytes read failed err = %d : rd %u bytes : nleft %u bytes\n", err, rd, nleft);
@@ -267,8 +288,8 @@ static bool get_cleartext(void *ctx, struct tssl_conn_info *psslinfo, struct tss
 
 		gy_bpf_printk("SUCCESS : SSL user bytes read success rd %u bytes : nleft %u bytes\n", rd, nleft);
 
-		nleft				-= nrd;
-		psrc				+= nrd;
+		nleft				-= rd;
+		psrc				+= rd;
 
 		if ((nleft == 0) || (psrc >= pend)) {
 			break;
@@ -315,13 +336,13 @@ static void ssl_rw_probe(void *ssl, void *buffer, size_t *pwritten, bool is_writ
 	args.buf			= buffer;
 	args.pexsize			= pwritten;
 
-	bpf_map_update_elem(is_write ? &ssl_write_args_map : &ssl_read_args_map, &pidtid, &args, BPF_ANY);
+	bpf_map_update_elem(is_write ? (void *)&ssl_write_args_map : (void *)&ssl_read_args_map, &pidtid, &args, BPF_ANY);
 }	
 
-static void ssl_ret_rw_probe(void *ctx, bool is_write)
+static void ssl_ret_rw_probe(void *ctx, int rc, bool is_write)
 {
 	u64				pidtid = bpf_get_current_pid_tgid();
-	int 				rc = (int)PT_REGS_RC(ctx), nbytes = 0;	
+	int 				nbytes = 0;	
 	
 	if (rc <= 0) {
 		goto done;
@@ -329,7 +350,7 @@ static void ssl_ret_rw_probe(void *ctx, bool is_write)
 
 	struct tssl_rw_args		*pargs;
 
-	pargs = bpf_map_lookup_elem(is_write ? &ssl_write_args_map : &ssl_read_args_map, &pidtid);
+	pargs = bpf_map_lookup_elem(is_write ? (void *)&ssl_write_args_map : (void *)&ssl_read_args_map, &pidtid);
 	if (!pargs) {
 		return;
 	}	
@@ -369,13 +390,23 @@ static void ssl_ret_rw_probe(void *ctx, bool is_write)
 		goto done;
 	}	
 
-	get_cleartext(ctx, psslinfo, pargs, nbytes, is_resp, GY_TH_ACK, pidtid >> 32, is_write);
+	struct ClearArgs		clearargs = 
+	{
+		.psslinfo		= psslinfo,
+		.pargs			= pargs,
+		.nbytes			= nbytes,
+		.pid			= pidtid >> 32,
+		.tcp_flags		= GY_TH_ACK,
+		.is_write		= is_write,
+	};
+
+	get_cleartext(ctx, &clearargs);
 
 done :
-	bpf_map_delete_elem(is_write ? &ssl_write_args_map : &ssl_read_args_map, &pidtid);
+	bpf_map_delete_elem(is_write ? (void *)&ssl_write_args_map : (void *)&ssl_read_args_map, &pidtid);
 }	
 
-SEC("uprobe/SSL_do_handshake")
+SEC("uprobe")
 void BPF_UPROBE(ssl_do_handshake, void *ssl) 
 {
 	u64 				pidtid = bpf_get_current_pid_tgid();
@@ -399,8 +430,8 @@ void BPF_UPROBE(ssl_do_handshake, void *ssl)
 	}
 }	
 
-SEC("uretprobe/SSL_do_handshake")
-int BPF_URETPROBE(ssl_do_handshake) 
+SEC("uretprobe")
+int BPF_URETPROBE(ssl_ret_do_handshake) 
 {
 	u64 				pidtid = bpf_get_current_pid_tgid();
 
@@ -409,53 +440,53 @@ int BPF_URETPROBE(ssl_do_handshake)
 	return 0;
 }	
 
-SEC("uprobe/ssl_write")
+SEC("uprobe")
 void BPF_UPROBE(ssl_write, void *ssl, void *buffer, int num) 
 {
 	ssl_rw_probe(ssl, buffer, NULL, true /* is_write */);
 }
 
-SEC("uretprobe/ssl_write")
-void BPF_URETPROBE(ssl_ret_write) 
+SEC("uretprobe")
+void BPF_URETPROBE(ssl_ret_write, int rc) 
 {
-	ssl_ret_rw_probe(ctx, true /* is_write */);
+	ssl_ret_rw_probe(ctx, rc, true /* is_write */);
 }
 
-SEC("uprobe/ssl_write_ex")
+SEC("uprobe")
 void BPF_UPROBE(ssl_write_ex, void *ssl, void *buffer, size_t num, size_t *written) 
 {
 	ssl_rw_probe(ssl, buffer, written, true /* is_write */);
 }
 
-SEC("uretprobe/ssl_write_ex")
-void BPF_URETPROBE(ssl_ret_write_ex) 
+SEC("uretprobe")
+void BPF_URETPROBE(ssl_ret_write_ex, int rc) 
 {
-	ssl_ret_rw_probe(ctx, true /* is_write */);
+	ssl_ret_rw_probe(ctx, rc, true /* is_write */);
 }
 
 
-SEC("uprobe/ssl_read")
+SEC("uprobe")
 void BPF_UPROBE(ssl_read, void *ssl, void *buffer, int num) 
 {
 	ssl_rw_probe(ssl, buffer, NULL, false /* is_write */);
 }
 
-SEC("uretprobe/ssl_read")
-void BPF_URETPROBE(ssl_ret_read) 
+SEC("uretprobe")
+void BPF_URETPROBE(ssl_ret_read, int rc) 
 {
-	ssl_ret_rw_probe(ctx, false /* is_write */);
+	ssl_ret_rw_probe(ctx, rc, false /* is_write */);
 }
 
-SEC("uprobe/ssl_read_ex")
+SEC("uprobe")
 void BPF_UPROBE(ssl_read_ex, void *ssl, void *buffer, size_t num, size_t *readbytes) 
 {
 	ssl_rw_probe(ssl, buffer, readbytes, false /* is_write */);
 }
 
-SEC("uretprobe/ssl_read_ex")
-void BPF_URETPROBE(ssl_ret_read_ex) 
+SEC("uretprobe")
+void BPF_URETPROBE(ssl_ret_read_ex, int rc) 
 {
-	ssl_ret_rw_probe(ctx, false /* is_write */);
+	ssl_ret_rw_probe(ctx, rc, false /* is_write */);
 }
 
 static int upd_tcp_sock(void *ctx, struct sock *sk)
@@ -477,11 +508,21 @@ static int upd_tcp_sock(void *ctx, struct sock *sk)
 	}	
 	
 	if (pval->is_init) {
-		struct tssl_rw_args	args = {};
+		struct tssl_rw_args		args = {};
 
-		args.pssl		= pval->tkey.ssl;
+		args.pssl			= pval->tkey.ssl;
 
-		get_cleartext(ctx, &sslinfo, &args, 0, GY_TH_SYN, pidtid >> 32, true /* is_write */);
+		struct ClearArgs		clearargs = 
+		{
+			.psslinfo		= &sslinfo,
+			.pargs			= &args,
+			.nbytes			= 0,
+			.pid			= pidtid >> 32,
+			.tcp_flags		= GY_TH_SYN,
+			.is_write		= true,
+		};
+
+		get_cleartext(ctx, &clearargs);
 	}
 
 	bpf_map_update_elem(&ssl_conn_map, &pval->tkey, &sslinfo, BPF_ANY);
@@ -492,7 +533,7 @@ done :
 	return 0;
 }	
 
-SEC("uprobe/SSL_shutdown")
+SEC("uprobe")
 int BPF_UPROBE(ssl_shutdown, void *ssl) 
 {
 	u64 				pidtid = bpf_get_current_pid_tgid();
@@ -511,7 +552,17 @@ int BPF_UPROBE(ssl_shutdown, void *ssl)
 
 	args.pssl			= ssl;
 
-	get_cleartext(ctx, psslinfo, &args, 0, GY_TH_FIN | GY_TH_ACK, pidtid >> 32, true /* is_write */);
+	struct ClearArgs		clearargs = 
+	{
+		.psslinfo		= psslinfo,
+		.pargs			= &args,
+		.nbytes			= 0,
+		.pid			= pidtid >> 32,
+		.tcp_flags		= GY_TH_FIN | GY_TH_ACK,
+		.is_write		= true,
+	};
+
+	get_cleartext(ctx, &clearargs);
 
 	bpf_map_delete_elem(&ssl_conn_map, &tkey);
 

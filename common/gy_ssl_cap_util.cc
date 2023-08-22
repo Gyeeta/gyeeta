@@ -7,20 +7,6 @@
 
 namespace gyeeta {
 
-static constexpr const char	*opensslfuncs[] = {
-	"SSL_do_handshake", "SSL_read", "SSL_read_ex", "SSL_write", "SSL_write_ex", "SSL_shutdown",
-};
-
-static_assert(GY_ARRAY_SIZE(opensslfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");
-
-static constexpr const char	*gnutlsfuncs[] = {
-	"gnutls_handshake", "gnutls_transport_set_int2", "gnutls_transport_set_ptr", "gnutls_transport_set_ptr2",
-	"gnutls_record_recv", "gnutls_record_send", "gnutls_bye", "gnutls_deinit",
-};
-
-static_assert(GY_ARRAY_SIZE(gnutlsfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");
-
-
 static bool verifyfuncs(const char *funcarr[], size_t nfuncs, off_t offsetarr[]) noexcept
 {
 	for (int i = 0; i < (int)nfuncs; ++i) {
@@ -34,14 +20,14 @@ static bool verifyfuncs(const char *funcarr[], size_t nfuncs, off_t offsetarr[])
 
 std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&errorbuf)[256])
 {
-	constexpr uint32_t		maxfunc 		{GY_ARRAY_SIZE(opensslfuncs) + GY_ARRAY_SIZE(gnutlsfuncs)};
+	constexpr uint32_t		maxfunc 		{GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs) + GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs)};
 	const char 			*funcarr[maxfunc]	{};
 	off_t				offsetarr[maxfunc]	{};
 	uint32_t			nfuncs			{0};
 	SSL_LIB_TYPE			libtype			{SSL_LIB_UNKNOWN};
 
 	ssize_t				sret;
-	char				pathbuf[GY_PATH_MAX], errbuf[256];
+	char				pathbuf[GY_PATH_MAX], filepath[GY_PATH_MAX], errbuf[256];
 	int				ret;
 	bool				is_deleted = false, bret, is_static_binary = false, newmount = false, is_error = false;
 	
@@ -54,18 +40,20 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 		if (string_starts_with(plibname, SSL_LIB_INFO::openssl_libname, false, sizeof(SSL_LIB_INFO::openssl_libname) - 1)) {
 			libtype		= SSL_LIB_OPENSSL;
 			
-			nfuncs		= GY_ARRAY_SIZE(opensslfuncs); 
-			std::memcpy(funcarr, opensslfuncs, sizeof(opensslfuncs));
+			nfuncs		= GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs); 
+			std::memcpy(funcarr, SSL_LIB_INFO::opensslfuncs, sizeof(SSL_LIB_INFO::opensslfuncs));
 		}	
 		else if (string_starts_with(plibname, SSL_LIB_INFO::gnutls_libname, false, sizeof(SSL_LIB_INFO::gnutls_libname) - 1)) {
 			libtype		= SSL_LIB_GNUTLS;
 
-			nfuncs		= GY_ARRAY_SIZE(gnutlsfuncs); 
-			std::memcpy(funcarr, gnutlsfuncs, sizeof(gnutlsfuncs));
+			nfuncs		= GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs); 
+			std::memcpy(funcarr, SSL_LIB_INFO::gnutlsfuncs, sizeof(SSL_LIB_INFO::gnutlsfuncs));
 		}	
 		else {
 			return CB_OK;
 		}	
+
+		GY_STRNCPY(filepath, plibpath, sizeof(filepath));
 
 		if (!is_lib_deleted) {
 			GY_STRNCPY(pathbuf, get_ns_safe_file_path(pid, plibpath, errbuf, &newmount).get(), sizeof(pathbuf));
@@ -83,6 +71,7 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 			char			buf[sizeof("ffffffffffffffff-ffffffffffffffff") + 2];
 			
 			if (!pspace || (size_t(pspace - pline) >= sizeof(buf)) || (pspace == pline)) {
+				is_error = true;
 				return CB_BREAK_LOOP;
 			}
 
@@ -97,6 +86,7 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 	};	
 
 	*pathbuf = 0;
+	*filepath = 0;
 	*errbuf = 0;
 
 	ret = walk_proc_pid_map_libs(pid, liblam);
@@ -133,10 +123,10 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 			snprintf(pathbuf, sizeof(pathbuf), "/proc/%d/exe", pid);
 		}	
 
-		std::memcpy(funcarr, opensslfuncs, sizeof(opensslfuncs));
-		std::memcpy(funcarr + GY_ARRAY_SIZE(opensslfuncs), gnutlsfuncs, sizeof(gnutlsfuncs));
+		std::memcpy(funcarr, SSL_LIB_INFO::opensslfuncs, sizeof(SSL_LIB_INFO::opensslfuncs));
+		std::memcpy(funcarr + GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs), SSL_LIB_INFO::gnutlsfuncs, sizeof(SSL_LIB_INFO::gnutlsfuncs));
 
-		nfuncs = GY_ARRAY_SIZE(opensslfuncs) + GY_ARRAY_SIZE(gnutlsfuncs);
+		nfuncs = GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs) + GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs);
 	}	
 
 	GY_ELF_UTIL			elf(pathbuf, ret, errbuf);
@@ -165,9 +155,10 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 
 	if (libtype == SSL_LIB_UNKNOWN) {
 
-		bret = verifyfuncs(funcarr, GY_ARRAY_SIZE(opensslfuncs), offsetarr);
+		bret = verifyfuncs(funcarr, GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs), offsetarr);
 		if (!bret) {
-			bret = verifyfuncs(&funcarr[GY_ARRAY_SIZE(opensslfuncs)], GY_ARRAY_SIZE(gnutlsfuncs), offsetarr + GY_ARRAY_SIZE(opensslfuncs));
+			bret = verifyfuncs(&funcarr[GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs)], GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs), 
+						offsetarr + GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs));
 			if (!bret) {
 				retcode = 0;
 				*errorbuf = 0;
@@ -200,7 +191,7 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 		return ssluniq;
 	}	
 
-	ssluniq = std::make_unique<SSL_LIB_INFO>(pid, libtype, pathbuf, funcarr, offsetarr, nfuncs, stat1.st_ino, is_deleted, is_static_binary, 
+	ssluniq = std::make_unique<SSL_LIB_INFO>(pid, libtype, pathbuf, filepath, funcarr, offsetarr, nfuncs, stat1.st_ino, is_deleted, is_static_binary, 
 							elf.is_go_binary(), newmount);
 
 	return ssluniq;
@@ -215,7 +206,7 @@ const char * SSL_LIB_INFO::print(STR_WR_BUF & strbuf) const noexcept
 		return strbuf.data();
 	}	
 
-	strbuf << "SSL Library "sv << libname_ << " : Path "sv << path_ << " : Init PID "sv << init_pid_;
+	strbuf << "SSL Library "sv << libname_ << " : Path "sv << path_ << " : Init PID "sv << init_pid_ << " : Inode "sv << inode_;
 	
 	if (is_deleted_) 	strbuf << " : File is deleted"sv;
 	if (is_static_binary_) 	strbuf << " : SSL Library is statically linked"sv;

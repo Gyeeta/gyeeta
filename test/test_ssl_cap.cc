@@ -11,11 +11,14 @@
 
 #include			"gy_libbpf.h"
 #include			"gy_pcap_write.h"
+#include			"gy_folly_stack_map.h"
+#include			"gy_ssl_cap_util.h"
 
 #include			"test_ssl_cap.h"
 #include			"test_ssl_cap.skel.h"
 
 using namespace			gyeeta;
+using 				folly::StringPiece;
 
 GY_CLOCK_TO_TIME		clktime;
 std::atomic<int>		gsig_rcvd(0);
@@ -70,7 +73,9 @@ void handle_data(void *pcb_cookie, void *pdata, int data_size)
 class TSSLCAP
 {
 public :
-	using TSSLCAP_OBJ			= GY_LIBBPF_OBJ<test_ssl_cap>;
+	using TSSLCAP_OBJ			= GY_LIBBPF_OBJ<test_ssl_cap_bpf>;
+	using LINK_VEC				= std::vector<UNIQ_BPF_LINK_PTR>;
+	using LINK_PATH_MAP			= folly::F14NodeMap<std::string, LINK_VEC, FollyTransparentStringHash, FollyTransparentStringEqual>;
 	
 	TSSLCAP()				= default;
 
@@ -78,12 +83,15 @@ public :
 
 	void start_collection(void *pwriter)
 	{
-		int				ret;
+		SCOPE_GY_MUTEX			sc(statemutex_);
 
-		if (true == is_init_.exchange(true)) {
-			ERRORPRINT("SSL Capture start_collection called after init completed...\n");
+		if (true == is_init_.load(mo_relaxed)) {
 			return;
 		}
+
+		int				ret;
+
+		INFOPRINTCOLOR(GY_COLOR_GREEN, "Starting init of SSL collection...\n");
 	
 		bpf_map__set_max_entries(obj_.get()->maps.ssl_conn_map, 8192);
 		bpf_map__set_max_entries(obj_.get()->maps.ssl_unmap, 2048);
@@ -93,15 +101,13 @@ public :
 		bpf_map__set_max_entries(obj_.get()->maps.pid_map, 4096);
 		bpf_map__set_max_entries(obj_.get()->maps.sslcapring, 8 * 1024 * 1024);
 
-		bpf_program__set_autoload(obj_.get()->progs.fentry_tcp_sendmsg_entry, false);
-		bpf_program__set_autoload(obj_.get()->progs.trace_enter_execve, false);
-		bpf_program__set_autoload(obj_.get()->progs.sched_process_exit, false);
-
 		obj_.load_bpf();
 
 		obj_.attach_bpf();
 
-		// pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), handle_data, pwriter);
+		pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), handle_data, pwriter);
+
+		is_init_.store(true, mo_release);
 	}	
 
 	int poll(int timeout_ms) noexcept
@@ -113,40 +119,245 @@ public :
 		return -1;
 	}	
 
-	void add_procs(pid_t pidarr[], size_t npids)
+	int add_procs(void *pwriter, pid_t pid)
 	{
-		int 				fd = bpf_map__fd(obj_.get()->maps.listenmap);
+		if (false == is_init_.load(mo_acquire)) {
+			start_collection(pwriter);
+		}
+
+		int 				ret, fd;
+
+		fd = bpf_map__fd(obj_.get()->maps.pid_map);
 
 		if (fd < 0) {
-			GY_THROW_SYS_EXCEPTION("Failed to find fd of libbpf listenmap");
+			GY_THROW_SYS_EXCEPTION("Failed to find fd of libbpf pid_map");
 		}	
 
-		tlistenkey			key {};
-		tlistenstat			value {};
+		ret = attach_uprobes(pid);
 
-		if (false == ipaddr.is_ipv6_addr()) {
-			ipaddr.get_as_inaddr(&key.seraddr.ser4addr);
-			key.ipver		= 4;
+		if (ret != 0) {
+			return ret;
+		}	
+
+		u32				key = pid, value = 1;
+
+		bpf_map_update_elem(fd, &key, &value, BPF_ANY);
+
+		return 0;
+	}
+	
+	int attach_uprobes(pid_t pid)
+	{
+		char				errbuf[256];
+		int				ret;
+
+		auto				pssllib = get_pid_ssl_lib(pid, ret, errbuf);
+
+		if (!pssllib) {
+			if (ret != 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib for PID %d due to %s\n\n", pid, errbuf);
+				return -1;
+			}
+			else {
+				INFOPRINTCOLOR(GY_COLOR_CYAN, "PID %d binary does not link with an SSL Library\n\n", pid);
+				return 1;
+			}	
+		}	
+
+		auto				libtype = pssllib->get_lib_type();
+
+		if (!((libtype == SSL_LIB_OPENSSL) || (libtype == SSL_LIB_GNUTLS))) {
+
+			ERRORPRINTCOLOR(GY_COLOR_RED, "Internal Error : Invalid SSL Lib Type %d seen for PID %d\n\n", libtype, pid);
+			return -1;
+		}	
+
+		auto				hashbuf = pssllib->get_hash_buf();
+		StringPiece			hashview = StringPiece(hashbuf.get());
+
+		const char 			*path = pssllib->get_mount_ns_safe_path();
+
+		if (!path || 0 == *path) {
+			ERRORPRINTCOLOR(GY_COLOR_RED, "Internal Error : Invalid SSL Lib Path seen for PID %d\n\n", pid);
+			return -1;
 		}
 		else {
-			ipaddr.get_as_inaddr(&key.seraddr.ser6addr);
-			key.ipver		= 6;
+			SCOPE_GY_MUTEX		sc(statemutex_);
+
+			auto			it = linkpathmap_.find(hashview);
+
+			if (it != linkpathmap_.end()) {
+				INFOPRINTCOLOR(GY_COLOR_GREEN, "SSL Capture already enabled for PID %d as path %s already attached (%s)\n", pid, path, hashbuf.get());
+				return 0;
+			}	
 		}	
 
-		key.netns 			= netns;
-		key.serport			= port;
+		LINK_VEC			vec;
 
-		value.proto			= proto;
-		value.isany			= ipaddr.is_any_address();
-		value.pausecap			= to_pause;
+		if (libtype == SSL_LIB_OPENSSL) {
+			bpf_link			*plink;
+			off_t				offset;
+			
+			offset = pssllib->get_func_offset("SSL_do_handshake");
 
-		bpf_map_update_elem(fd, &key, &value, to_pause == false ? BPF_ANY : BPF_EXIST);
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_do_handshake offset for PID %d\n\n", pid);
+				return -1;
+			}	
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_do_handshake, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_do_handshake for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_ret_do_handshake, true /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach ret function SSL_do_handshake for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+			
+			offset = pssllib->get_func_offset("SSL_write");
+
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_write offset for PID %d\n\n", pid);
+				return -1;
+			}	
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_write, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_write for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_ret_write, true /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach ret function SSL_write for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+			
+			vec.emplace_back(plink);
+
+			offset = pssllib->get_func_offset("SSL_write_ex");
+
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_write_ex offset for PID %d\n\n", pid);
+				return -1;
+			}	
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_write_ex, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_write_ex for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_ret_write_ex, true /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach ret function SSL_write_ex for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
+			offset = pssllib->get_func_offset("SSL_read");
+
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_read offset for PID %d\n\n", pid);
+				return -1;
+			}	
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_read, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_read for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_ret_read, true /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach ret function SSL_read for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+			
+			vec.emplace_back(plink);
+
+			offset = pssllib->get_func_offset("SSL_read_ex");
+
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_read_ex offset for PID %d\n\n", pid);
+				return -1;
+			}	
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_read_ex, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_read_ex for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_ret_read_ex, true /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach ret function SSL_read_ex for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
+			offset = pssllib->get_func_offset("SSL_shutdown");
+
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_shutdown offset for PID %d\n\n", pid);
+				return -1;
+			}	
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_shutdown, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_shutdown for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+			
+		}	
+		else if (libtype == SSL_LIB_GNUTLS) {
+			// TODO
+		}
+
+		SCOPE_GY_MUTEX		sc(statemutex_);
+
+		linkpathmap_.try_emplace(hashview, std::move(vec));
+
+		INFOPRINTCOLOR(GY_COLOR_GREEN, "SSL Capture enabled for PID %d : Attached File path %s Hash Path (%s)\n", pid, path, hashbuf.get());
+
+		return 0;
 	}	
-	
+
 	GY_BTF_INIT				btf_;
 	TSSLCAP_OBJ				obj_			{"SSL Cap bpf"};
 	std::optional<GY_RING_BUFPOOL>		pdatapool_;
 	GY_MUTEX				statemutex_;
+	LINK_PATH_MAP				linkpathmap_;
 	std::unordered_set<std::string>		pathset_;
 	std::atomic<bool>			is_init_		{false};
 };
@@ -165,19 +376,19 @@ int handle_signal(int signo)
 
 void * sslcap_thr(void *parg)
 {
-	auto				*pnetcap = (TSSLCAP *)parg;
+	auto				*psslcap = (TSSLCAP *)parg;
 
 	gy_nanosleep(0, 1000 * 1000 * 100);
 
 	while (gsig_rcvd.load() == 0) {
-		pnetcap->poll(2000);
+		psslcap->poll(2000);
 	}	
 
 	INFOPRINT("Thread %s returning as signal %s received...\n", __FUNCTION__, gy_signal_str(gsig_rcvd.load()));
 
 	return (void *)0;
 }	
-MAKE_PTHREAD_FUNC_WRAPPER(netcap_thr);
+MAKE_PTHREAD_FUNC_WRAPPER(sslcap_thr);
 
 
 void *debug_thread(void *arg)
@@ -201,8 +412,8 @@ int main(int argc, char *argv[])
 {
 	try {	
 
-		if (argc < 5) {
-			IRPRINT("\nUsage : %s <Output pcap path> <Listener PID1> <Listener PID2> ...\n"
+		if (argc < 3) {
+			IRPRINT("\nUsage : %s <Output pcap path> <PID1 (PID of process to capture)> <PID2> ...\n"
 					"\tFor e.g. %s /tmp/test1.pcap 1840 1842\n\n", argv[0], argv[0]);
 			return 1;
 		}	
@@ -210,7 +421,7 @@ int main(int argc, char *argv[])
 		int				ret;
 		char				buf1[1024];
 		size_t				idx;
-		std::optional<TNETCAP_HDLR>	phdlr;
+		std::optional<TSSLCAP>		phdlr;
 
 		gdebugexecn = 11;
 
@@ -237,31 +448,27 @@ int main(int argc, char *argv[])
 
 		gy_create_thread(&dbgtid, GET_PTHREAD_WRAPPER(debug_thread), nullptr, 64 * 1024, false);
 
-		ret = gy_create_thread(&thrid, GET_PTHREAD_WRAPPER(sslcap_thr), &phdlr->cap_, GY_UP_MB(1), true);
+		ret = gy_create_thread(&thrid, GET_PTHREAD_WRAPPER(sslcap_thr), std::addressof(phdlr.value()), GY_UP_MB(1), true);
 		if (ret) {
 			PERRORPRINT("Could not create sslcap handling thread");
 			return -1;
 		}	
 
 		/*
-		 * We wait for 5 seconds and then enable capture
+		 * We wait for 2 seconds and then enable capture
 		 */
-		INFOPRINT("Sleeping for 5 sec : Will start the ebpf load thereafter...\n\n");
+		INFOPRINT("Sleeping for 2 sec : Will start the ebpf load and each process will be captured after an init delay of 2 sec thereafter...\n\n");
 
-		gy_nanosleep(5, 0);
+		gy_nanosleep(2, 0);
 
-		phdlr->start_collection(&wrpcap);
+		for (int i = 2; i < argc; ++i) {
+			try {
+				phdlr->add_procs(&wrpcap, atoi(argv[i]));
+			}
+			GY_CATCH_MSG("Exception seen while adding PID for ssl capture");
 
-		/*
-		 * Wait for 5 second and then set the listeners to capture
-		 */
-		INFOPRINT("Sleeping for 5 sec : Will enable the PID capture thereafter...\n\n");
-
-		gy_nanosleep(5, 0);
-
-		for (int i = 2; i + 2 < argc; i += 3) {
-			phdlr->add_listener(GY_IP_ADDR(argv[i]), string_to_number<uint16_t>(argv[i + 1]), string_to_number<uint32_t>(argv[i + 2]), TCAP_PROTO_UNKNOWN);
-		}	
+			gy_nanosleep(2, 0);
+		}
 
 		pthread_join(thrid, nullptr);
 
@@ -272,10 +479,9 @@ int main(int argc, char *argv[])
 
 		return 0;
 	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINT("Exception occured due to %s : Exiting...\n", GY_GET_EXCEPT_STRING);
-		return -1;
-	);	
+	GY_CATCH_MSG("Exception occured for SSL Capture");
+
+	return -1;
 }	
 
 

@@ -49,8 +49,6 @@ test_ssl_cap.o: test_ssl_cap.cc test_ssl_cap.bpf.c
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $<
 
 
-
-
 gitignores:
 	@-echo " $(BINARIES)" | sed "s/ /\\n/g" > .gitignore
 
@@ -139,7 +137,7 @@ clean:
 	rm -f *.o core core.* vgcore.* *.da *.bb *.bbg *.gcda *.gcno *.d .depend $(BINARIES)
 
 cleaninstall::
-	$(MAKE) clean && $(MAKE) -j 3 
+	$(MAKE) clean && $(MAKE) -j 2 
 
 ci:
 	$(MAKE) cleaninstall
