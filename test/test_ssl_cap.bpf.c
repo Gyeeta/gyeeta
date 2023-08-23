@@ -260,7 +260,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		psslinfo->nxt_cli_seq	+= nbytes;
 	}	
 
-	uint32_t			nleft = nbytes < TMAX_TOTAL_PAYLOAD_LEN ? nbytes : TMAX_TOTAL_PAYLOAD_LEN, nloops = nleft/TMAX_ONE_PAYLOAD_LEN + 1;
+	uint32_t			nleft = (nbytes < TMAX_TOTAL_PAYLOAD_LEN ? nbytes : TMAX_TOTAL_PAYLOAD_LEN), nloops = nleft/TMAX_ONE_PAYLOAD_LEN + 1;
 	const uint8_t			*porigsrc = pargs->buf, *pend = porigsrc + nleft, *psrc = porigsrc;
 
 	for (uint32_t i = 0; i < nloops && i < TMAX_TOTAL_PAYLOAD_LEN/TMAX_ONE_PAYLOAD_LEN + 1 && psrc <= pend; ++i) {
@@ -273,6 +273,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		uint8_t				*pring = bpf_ringbuf_reserve(&sslcapring, nring, 0);
 
 		if (!pring) {
+			gy_bpf_printk("ERROR : Failed to reserve Ring Buffer : nleft %u bytes\n", nleft);
 			break;
 		}	
 
@@ -294,7 +295,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		phdr->tcp_flags			= tcp_flags;
 		phdr->npadbytes			= npad;
 
-		if (rd > 0 && rd < TMAX_ONE_PAYLOAD_LEN) {
+		if (rd > 0 && rd <= TMAX_ONE_PAYLOAD_LEN) {
 			int			err = bpf_probe_read_user(pring + sizeof(*phdr), rd, psrc);
 
 			if (err) {
@@ -427,12 +428,17 @@ done :
 SEC("uprobe")
 void BPF_UPROBE(ssl_do_handshake, void *ssl) 
 {
-	u64 				pidtid = bpf_get_current_pid_tgid();
+	u64 				pidtid = bpf_get_current_pid_tgid(), pid = pidtid >> 32;
+
+	if (!valid_cap_pid(pid, true /* checkppid */)) {
+		return;
+	}	
+
 	struct tssl_conn_info		*pssl;
 	struct tssl_key			tkey = {};
 
 	tkey.ssl			= ssl;
-	tkey.pid			= pidtid >> 32;
+	tkey.pid			= pid;
 
 	// Handle renegotiation
 

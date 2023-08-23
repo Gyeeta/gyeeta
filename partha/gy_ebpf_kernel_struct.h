@@ -160,7 +160,7 @@ static __always_inline bool is_ipv4_mapped_ipv6(unsigned __int128 ip128_be)
 	return false;	
 }
 
-static uint64_t align_up_8(uint64_t nsize)
+static __always_inline uint64_t align_up_8(uint64_t nsize)
 {
 	return ((nsize - 1) & ~7) + 8;
 }
