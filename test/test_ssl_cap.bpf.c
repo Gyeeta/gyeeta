@@ -124,6 +124,10 @@ static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * 
 	port1					= bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
 	port2 					= bpf_ntohs(BPF_CORE_READ(sockp, inet_sport));
 
+	if (port1 == 0 || port2 == 0) {
+		return false;
+	}	
+
 	if (port1 > port2) {
 		is_inbound			= false;
 		*pis_client			= false;
@@ -189,11 +193,6 @@ static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * 
 		BPF_CORE_READ_INTO(&ptuple->netns, sk, __sk_common.skc_net.net, ns.inum);
 	}
 
-	// if ports are 0, ignore
-	if (ptuple->serport == 0 || ptuple->cliport == 0) {
-		return false;
-	}
-
 	return true;
 }
 
@@ -220,20 +219,41 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 	}	
 
 	if (tcp_flags & GY_TH_SYN) {
-		psslinfo->nxt_cli_seq	= TSEQ_START + !is_resp;
-		psslinfo->nxt_ser_seq	= TSEQ_START + is_resp;
+		psslinfo->nxt_cli_seq	= TSEQ_START;
+		psslinfo->nxt_ser_seq	= TSEQ_START;
+
+		if (is_resp) {
+			psslinfo->nxt_cli_seq++;
+			psslinfo->cli_started = true;
+			psslinfo->ser_started = false;
+		}
+		else {
+			psslinfo->nxt_ser_seq++;
+			psslinfo->ser_started = true;
+			psslinfo->cli_started = false;
+		}	
 	}	
 
 	uint64_t			ts_ns = bpf_ktime_get_ns();
 	uint32_t			startsrcseq, nxt_dst_seq;			
 
 	if (is_resp) {
+		if (nbytes > 0 && psslinfo->ser_started == false) {
+			psslinfo->nxt_ser_seq++;
+			psslinfo->ser_started = true;
+		}	
+
 		startsrcseq		= psslinfo->nxt_ser_seq;
 		nxt_dst_seq		= psslinfo->nxt_cli_seq;
 
 		psslinfo->nxt_ser_seq	+= nbytes;
 	}
 	else {
+		if (nbytes > 0 && psslinfo->cli_started == false) {
+			psslinfo->nxt_cli_seq++;
+			psslinfo->cli_started = true;
+		}	
+
 		startsrcseq		= psslinfo->nxt_cli_seq;
 		nxt_dst_seq		= psslinfo->nxt_ser_seq;
 
@@ -245,9 +265,9 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 
 	for (uint32_t i = 0; i < nloops && i < TMAX_TOTAL_PAYLOAD_LEN/TMAX_ONE_PAYLOAD_LEN + 1 && psrc <= pend; ++i) {
 		uint32_t			rd, npad;
-		const uint32_t			nring = TMAX_ONE_PAYLOAD_LEN;
+		const uint32_t			nring = TMAX_ONE_RING_SZ;
 
-		rd 				= nleft > TMAX_ONE_PAYLOAD_LEN - sizeof(struct tcaphdr_t) ? TMAX_ONE_PAYLOAD_LEN - sizeof(struct tcaphdr_t) : nleft;
+		rd 				= nleft > TMAX_ONE_PAYLOAD_LEN ? TMAX_ONE_PAYLOAD_LEN : nleft;
 		npad 				= nring - (sizeof(struct tcaphdr_t) + rd);
 
 		uint8_t				*pring = bpf_ringbuf_reserve(&sslcapring, nring, 0);
@@ -286,10 +306,10 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 
 		bpf_ringbuf_submit(pring, 0);
 
-		gy_bpf_printk("SUCCESS : SSL user bytes read success rd %u bytes : nleft %u bytes\n", rd, nleft);
-
 		nleft				-= rd;
 		psrc				+= rd;
+
+		gy_bpf_printk("SUCCESS : SSL user bytes read success rd %u bytes : nleft %u bytes\n", rd, nleft);
 
 		if ((nleft == 0) || (psrc >= pend)) {
 			break;
@@ -312,22 +332,20 @@ static void ssl_rw_probe(void *ssl, void *buffer, size_t *pwritten, bool is_writ
 	tkey.ssl			= ssl;
 	tkey.pid			= pid;
 
-	if (is_write) {
-		if (0 == bpf_map_delete_elem(&ssl_unmap, &tkey)) {
-			// Need to populate ssl_tcp_unmap
-			struct tssl_tcp_val		*pval;
+	if (0 == bpf_map_delete_elem(&ssl_unmap, &tkey)) {
+		// Need to populate ssl_tcp_unmap
+		struct tssl_tcp_val		*pval;
 
-			pval = bpf_map_lookup_elem(&ssl_tcp_unmap, &pidtid);
+		pval = bpf_map_lookup_elem(&ssl_tcp_unmap, &pidtid);
 
-			if (!pval || pval->tkey.ssl != ssl) {
-				struct tssl_tcp_val	val = {};
+		if (!pval || pval->tkey.ssl != ssl) {
+			struct tssl_tcp_val	val = {};
 
-				val.tkey		= tkey;
-				val.is_init		= false;
+			val.tkey		= tkey;
+			val.is_init		= false;
 
-				bpf_map_update_elem(&ssl_tcp_unmap, &pidtid, &val, BPF_ANY);
-			}	
-		}
+			bpf_map_update_elem(&ssl_tcp_unmap, &pidtid, &val, BPF_ANY);
+		}	
 	}
 
 	struct tssl_rw_args		args = {};
@@ -428,6 +446,8 @@ void BPF_UPROBE(ssl_do_handshake, void *ssl)
 
 		bpf_map_update_elem(&ssl_tcp_unmap, &pidtid, &val, BPF_ANY);
 	}
+
+	gy_bpf_printk("SSL_do_handshake : SSL ctx %p : Conn Map conn %p\n", ssl, pssl);
 }	
 
 SEC("uretprobe")
@@ -443,6 +463,8 @@ int BPF_URETPROBE(ssl_ret_do_handshake)
 SEC("uprobe")
 void BPF_UPROBE(ssl_write, void *ssl, void *buffer, int num) 
 {
+	gy_bpf_printk("SSL_write : SSL ctx %p : Buffer %p : Bytes %d\n", ssl, buffer, num);
+
 	ssl_rw_probe(ssl, buffer, NULL, true /* is_write */);
 }
 
@@ -455,6 +477,8 @@ void BPF_URETPROBE(ssl_ret_write, int rc)
 SEC("uprobe")
 void BPF_UPROBE(ssl_write_ex, void *ssl, void *buffer, size_t num, size_t *written) 
 {
+	gy_bpf_printk("SSL_write_ex : SSL ctx %p : Buffer %p : Bytes %d\n", ssl, buffer, num);
+
 	ssl_rw_probe(ssl, buffer, written, true /* is_write */);
 }
 
@@ -468,6 +492,8 @@ void BPF_URETPROBE(ssl_ret_write_ex, int rc)
 SEC("uprobe")
 void BPF_UPROBE(ssl_read, void *ssl, void *buffer, int num) 
 {
+	gy_bpf_printk("SSL_read : SSL ctx %p : Buffer %p : Bytes %d\n", ssl, buffer, num);
+
 	ssl_rw_probe(ssl, buffer, NULL, false /* is_write */);
 }
 
@@ -480,6 +506,8 @@ void BPF_URETPROBE(ssl_ret_read, int rc)
 SEC("uprobe")
 void BPF_UPROBE(ssl_read_ex, void *ssl, void *buffer, size_t num, size_t *readbytes) 
 {
+	gy_bpf_printk("SSL_read_ex : SSL ctx %p : Buffer %p : Bytes %d\n", ssl, buffer, num);
+
 	ssl_rw_probe(ssl, buffer, readbytes, false /* is_write */);
 }
 
@@ -565,6 +593,8 @@ int BPF_UPROBE(ssl_shutdown, void *ssl)
 	get_cleartext(ctx, &clearargs);
 
 	bpf_map_delete_elem(&ssl_conn_map, &tkey);
+
+	gy_bpf_printk("SSL_shutdown : SSL ctx %p : Conn Map conn %p\n", ssl, psslinfo);
 
 	return 0;
 }
