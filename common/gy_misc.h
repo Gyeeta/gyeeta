@@ -1485,13 +1485,6 @@ public :
 	}	
 };	
 
-static ino_t get_curr_mountns_inode() noexcept
-{
-	static ino_t		gmntns = get_proc_ns_inode(getpid(), "mnt");	
-	
-	return gmntns;
-}
-
 /*
  * Returns a path valid from the current mount namespace. Use in case a path is returned from a process possibly in 
  * another mount namespace.

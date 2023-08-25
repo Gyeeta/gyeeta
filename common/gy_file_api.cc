@@ -3723,6 +3723,13 @@ ino_t get_proc_ns_inode(pid_t pid, const char * nsstr, int proc_dir_fd, pid_t ti
 	return 0;
 }	
 
+ino_t get_curr_mountns_inode() noexcept
+{
+	static ino_t		gmntns = get_proc_ns_inode(getpid(), "mnt");	
+	
+	return gmntns;
+}
+
 
 int get_proc_stat(pid_t pid, pid_t & task_ppid, char & task_state, uint32_t & task_flags, uint64_t & starttimeusec, int64_t & task_priority, int64_t & task_nice, uint32_t & task_rt_priority, uint32_t & task_sched_policy, int proc_dir_fd, bool is_tgid, pid_t tid) noexcept
 {

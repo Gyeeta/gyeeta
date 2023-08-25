@@ -22,8 +22,8 @@ extern "C" {
 
 namespace gyeeta {
 
-typedef void (*GY_EBPF_CB)(void *pcb_cookie, void *pdata, int data_size);
-typedef void (*GY_EBPF_LOST_CB)(void *pcb_cookie, uint64_t cnt);
+typedef void (*GY_EBPF_CB)(void *pcb_cookie, void *pdata, int data_size) noexcept;
+typedef void (*GY_EBPF_LOST_CB)(void *pcb_cookie, uint64_t cnt) noexcept;
 
 class GY_BTF_INIT
 {	

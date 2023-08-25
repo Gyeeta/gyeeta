@@ -7,7 +7,7 @@
 #include 		<bpf/bpf_tracing.h>
 #include 		<bpf/bpf_endian.h>
 
-#define			GY_BPF_DEBUG
+// #define			GY_BPF_DEBUG
 
 #include		"test_ssl_cap.h"
 

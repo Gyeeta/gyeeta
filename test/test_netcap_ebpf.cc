@@ -24,48 +24,51 @@ using namespace			gyeeta;
 GY_CLOCK_TO_TIME		clktime;
 std::atomic<int>		gsig_rcvd(0);
 
-void handle_data(void *pcb_cookie, void *pdata, int data_size)
+void handle_data(void *pcb_cookie, void *pdata, int data_size) noexcept
 {
-	GY_PCAP_WRITER			*pwriter = (GY_PCAP_WRITER *)pcb_cookie;
+	try {
+		GY_PCAP_WRITER			*pwriter = (GY_PCAP_WRITER *)pcb_cookie;
 
-	if (!pdata || data_size < (signed)(sizeof(tcaphdr_t))) {
-		ERRORPRINT("Invalid ring buffer callback size seen %d : expected min %lu\n", data_size, sizeof(tcaphdr_t));
-		return;
-	}
+		if (!pdata || data_size < (signed)(sizeof(tcaphdr_t))) {
+			ERRORPRINT("Invalid ring buffer callback size seen %d : expected min %lu\n", data_size, sizeof(tcaphdr_t));
+			return;
+		}
 
-	tcaphdr_t			event, *pevent = &event;
+		tcaphdr_t			event, *pevent = &event;
 
-	std::memcpy(&event, pdata, sizeof(event));
-	
-	if ((uint32_t)data_size != pevent->len + sizeof(*pevent)) {
-		ERRORPRINT("Invalid ring buffer callback size seen %d : expected size %lu\n", data_size, sizeof(tcaphdr_t) + pevent->len);
-		return;
-	}
-	
-	bool				bret;
-
-	if (pevent->is_inbound) {
-		bret = pwriter->write_tcp_pkt(clktime.get_timeval(pevent->ts_ns/1000), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr.cli6addr, pevent->tuple.cliaddr.cli4addr, pevent->tuple.ipver == 6)), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr.ser6addr, pevent->tuple.seraddr.ser4addr, pevent->tuple.ipver == 6)), 
-					pevent->tuple.cliport, pevent->tuple.serport,
-					pevent->get_src_seq_start(), pevent->nxt_ser_seq, 
-					pevent->tcp_flags, (const uint8_t *)pdata + sizeof(*pevent), pevent->get_act_payload_len());
-	}
-	else {
-		// Outbound
-		bret = pwriter->write_tcp_pkt(clktime.get_timeval(pevent->ts_ns/1000), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr.ser6addr, pevent->tuple.seraddr.ser4addr, pevent->tuple.ipver == 6)), 
-					GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr.cli6addr, pevent->tuple.cliaddr.cli4addr, pevent->tuple.ipver == 6)), 
-					pevent->tuple.serport, pevent->tuple.cliport,
-					pevent->get_src_seq_start(), pevent->nxt_cli_seq, 
-					pevent->tcp_flags, (const uint8_t *)pdata + sizeof(*pevent), pevent->get_act_payload_len());
+		std::memcpy(&event, pdata, sizeof(event));
 		
-	}
+		if ((uint32_t)data_size != pevent->len + sizeof(*pevent)) {
+			ERRORPRINT("Invalid ring buffer callback size seen %d : expected size %lu\n", data_size, sizeof(tcaphdr_t) + pevent->len);
+			return;
+		}
+		
+		bool				bret;
 
-	if (!bret) {
-		ERRORPRINT("Failed to write packet to pcap file %s\n", pwriter->get_filename());
+		if (pevent->is_inbound) {
+			bret = pwriter->write_tcp_pkt(clktime.get_timeval(pevent->ts_ns/1000), 
+						GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr.cli6addr, pevent->tuple.cliaddr.cli4addr, pevent->tuple.ipver == 6)), 
+						GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr.ser6addr, pevent->tuple.seraddr.ser4addr, pevent->tuple.ipver == 6)), 
+						pevent->tuple.cliport, pevent->tuple.serport,
+						pevent->get_src_seq_start(), pevent->nxt_ser_seq, 
+						pevent->tcp_flags, (const uint8_t *)pdata + sizeof(*pevent), pevent->get_act_payload_len());
+		}
+		else {
+			// Outbound
+			bret = pwriter->write_tcp_pkt(clktime.get_timeval(pevent->ts_ns/1000), 
+						GY_IP_ADDR(IPv4_v6(pevent->tuple.seraddr.ser6addr, pevent->tuple.seraddr.ser4addr, pevent->tuple.ipver == 6)), 
+						GY_IP_ADDR(IPv4_v6(pevent->tuple.cliaddr.cli6addr, pevent->tuple.cliaddr.cli4addr, pevent->tuple.ipver == 6)), 
+						pevent->tuple.serport, pevent->tuple.cliport,
+						pevent->get_src_seq_start(), pevent->nxt_cli_seq, 
+						pevent->tcp_flags, (const uint8_t *)pdata + sizeof(*pevent), pevent->get_act_payload_len());
+			
+		}
+
+		if (!bret) {
+			ERRORPRINT("Failed to write packet to pcap file %s\n", pwriter->get_filename());
+		}
 	}
+	GY_CATCH_MSG("Exception seen in BPF callback ");
 }	
 
 

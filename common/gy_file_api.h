@@ -195,6 +195,8 @@ int 		get_proc_ns_inodes(pid_t pid, const char * nsstr[], ino_t nsinode[], size_
 // Returns inode number on success or 0 on failure
 ino_t 		get_proc_ns_inode(pid_t pid, const char * nsstr, int proc_dir_fd = -1, pid_t tid = -1) noexcept; 
 
+ino_t 		get_curr_mountns_inode() noexcept;
+
 int 		get_proc_stat(pid_t pid, pid_t & task_ppid, char & task_state, uint32_t & task_flags, uint64_t & starttimeusec, int64_t & task_priority, \
 			int64_t & task_nice, uint32_t & task_rt_priority, uint32_t & task_sched_policy, int proc_dir_fd = -1, bool is_tgid = true, pid_t tid = 0) noexcept;
 
