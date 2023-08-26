@@ -99,7 +99,7 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 
 	if (libtype == SSL_LIB_UNKNOWN) {
 		// Check if its a statically linked lib
-		char			buf[GY_PATH_MAX];
+		char			buf[GY_PATH_MAX], *ptmp;
 
 		sret = get_task_exe_path(pid, buf, sizeof(buf) - 1, -1, &is_deleted);
 
@@ -108,6 +108,16 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 			snprintf(errorbuf, sizeof(errorbuf), "Failed to get PID %d exe info : %s", pid, gy_get_perror().get());
 			return ssluniq;
 		}
+
+		ptmp = strrchr(buf, '/');
+		if (ptmp) {
+			ptmp++;
+		}	
+		else {
+			ptmp = buf;
+		}	
+
+		GY_STRNCPY(filepath, ptmp, sizeof(filepath));
 
 		if (!is_deleted) {
 			GY_STRNCPY(pathbuf, get_ns_safe_file_path(pid, buf, errbuf, &newmount).get(), sizeof(pathbuf));
