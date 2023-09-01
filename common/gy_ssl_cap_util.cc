@@ -64,6 +64,7 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 		}	
 		else {
 			if (plibpath <= pline) {
+				is_error = true;
 				return CB_BREAK_LOOP;
 			}	
 
@@ -81,6 +82,11 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 			snprintf(pathbuf, sizeof(pathbuf), "/proc/%d/map_files/%s", pid, buf);
 			is_deleted = true;
 		}	
+
+		if (libtype != SSL_LIB_OPENSSL) {
+			// We scan further libs to see if openssl is used
+			return CB_OK;
+		}
 
 		return CB_BREAK_LOOP;
 	};	
