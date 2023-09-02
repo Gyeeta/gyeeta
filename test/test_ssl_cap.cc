@@ -98,6 +98,7 @@ public :
 	
 		bpf_map__set_max_entries(obj_.get()->maps.ssl_conn_map, 8192);
 		bpf_map__set_max_entries(obj_.get()->maps.ssl_unmap, 2048);
+		bpf_map__set_max_entries(obj_.get()->maps.ssl_initmap, 2048);
 		bpf_map__set_max_entries(obj_.get()->maps.ssl_tcp_unmap, 2048);
 		bpf_map__set_max_entries(obj_.get()->maps.ssl_write_args_map, 2048);
 		bpf_map__set_max_entries(obj_.get()->maps.ssl_read_args_map, 2048);
@@ -341,6 +342,28 @@ public :
 			}	
 
 			vec.emplace_back(plink);
+
+
+			if (pssllib->is_static_lib() && string_ends_with(pssllib->get_file_path(), "node")) {
+				INFOPRINTCOLOR(GY_COLOR_GREEN, "Enabling node SSL probes..\n");
+
+				offset = pssllib->get_func_offset("SSL_set_ex_data");
+
+				if (offset == 0) {
+					ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_set_ex_data offset for PID %d\n\n", pid);
+					return -1;
+				}	
+
+				plink = bpf_program__attach_uprobe(obj_.get()->progs.node_ssl_set_ex_data, false /* retprobe */, -1, path, offset);
+				
+				if (!plink) {
+					ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_set_ex_data for PID %d due to %s\n", pid, gy_get_perror());
+					return -1;
+				}	
+
+				vec.emplace_back(plink);
+				
+			}
 			
 		}	
 		else if (libtype == SSL_LIB_GNUTLS) {

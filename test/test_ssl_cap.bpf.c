@@ -7,7 +7,7 @@
 #include 		<bpf/bpf_tracing.h>
 #include 		<bpf/bpf_endian.h>
 
-// #define			GY_BPF_DEBUG
+/*#define			GY_BPF_DEBUG*/
 
 #include		"test_ssl_cap.h"
 
@@ -24,6 +24,13 @@ struct {
 	__uint(value_size, sizeof(u32));
 	__uint(max_entries, 1);
 } ssl_unmap SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
+	__uint(key_size, sizeof(struct tssl_key));
+	__uint(value_size, sizeof(u32));
+	__uint(max_entries, 1);
+} ssl_initmap SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
@@ -200,7 +207,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 {
 	struct tssl_conn_info 		*psslinfo 	= pcleararg->psslinfo;
 	struct tssl_rw_args 		*pargs		= pcleararg->pargs;
-	int 				nbytes		= pcleararg->nbytes;
+	const int 			nbytes		= pcleararg->nbytes;
 	u32 				pid		= pcleararg->pid;
 	u8 				tcp_flags	= pcleararg->tcp_flags;
 	bool				is_write	= pcleararg->is_write;
@@ -261,6 +268,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 	}	
 
 	uint32_t			nleft = (nbytes < TMAX_TOTAL_PAYLOAD_LEN ? nbytes : TMAX_TOTAL_PAYLOAD_LEN), nloops = nleft/TMAX_ONE_PAYLOAD_LEN + 1;
+	uint32_t			nskipped = nbytes - nleft, startsrcseq_end = startsrcseq + nbytes;
 	const uint8_t			*porigsrc = pargs->buf, *pend = porigsrc + nleft, *psrc = porigsrc;
 
 	for (uint32_t i = 0; i < nloops && i < TMAX_TOTAL_PAYLOAD_LEN/TMAX_ONE_PAYLOAD_LEN + 1 && psrc <= pend; ++i) {
@@ -274,7 +282,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 
 		if (!pring) {
 			gy_bpf_printk("ERROR : Failed to reserve Ring Buffer : nleft %u bytes\n", nleft);
-			break;
+			goto done1;
 		}	
 
 		startsrcseq			+= rd;
@@ -301,7 +309,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 			if (err) {
 				gy_bpf_printk("ERROR : SSL user bytes read failed err = %d : rd %u bytes : nleft %u bytes\n", err, rd, nleft);
 				bpf_ringbuf_discard(pring, 0);
-				break;
+				goto done1;
 			}	
 		}
 
@@ -316,6 +324,53 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 			break;
 		}	
 	}	
+
+	if (nskipped > 0) {
+		uint32_t			rd, npad;
+		const uint32_t			nring = 64 + sizeof(struct tcaphdr_t);
+
+		rd				= (nskipped > 64 ? 64 : nskipped);
+		npad 				= nring - (sizeof(struct tcaphdr_t) + rd);
+
+		uint8_t				*pring = bpf_ringbuf_reserve(&sslcapring, nring, 0);
+
+		if (!pring) {
+			gy_bpf_printk("ERROR : Failed to reserve Trailing Ring Buffer : nleft %u bytes\n", rd);
+			goto done1;
+		}	
+
+		struct tcaphdr_t		*phdr;
+		
+		phdr 				= (struct tcaphdr_t *)pring;
+
+		phdr->ts_ns			= ts_ns;
+
+		__builtin_memcpy(&phdr->tuple, &psslinfo->tup, sizeof(phdr->tuple));
+
+		phdr->len			= nring - sizeof(*phdr);
+		phdr->pid			= pid;
+		phdr->nxt_cli_seq		= !is_resp ? startsrcseq_end : nxt_dst_seq;
+		phdr->nxt_ser_seq		= !is_resp ? nxt_dst_seq : startsrcseq_end;
+		phdr->is_inbound		= !is_resp;
+		phdr->tcp_flags			= tcp_flags;
+		phdr->npadbytes			= npad;
+
+		psrc 				= porigsrc + nbytes - rd;
+
+		int				err = bpf_probe_read_user(pring + sizeof(*phdr), rd, psrc);
+
+		if (err) {
+			gy_bpf_printk("ERROR : SSL Trailing user bytes read failed err = %d : rd %u bytes : skipped %u bytes\n", err, rd, nskipped);
+			bpf_ringbuf_discard(pring, 0);
+			goto done1;
+		}	
+
+		bpf_ringbuf_submit(pring, 0);
+
+		gy_bpf_printk("SUCCESS : Trailing SSL user bytes read success rd %u bytes : skipped %u bytes\n", rd, nskipped);
+	}	
+
+done1 :
 
 	return nleft == 0;
 }
@@ -336,6 +391,9 @@ static void ssl_rw_probe(void *ssl, void *buffer, size_t *pwritten, bool is_writ
 	if (0 == bpf_map_delete_elem(&ssl_unmap, &tkey)) {
 		// Need to populate ssl_tcp_unmap
 		struct tssl_tcp_val		*pval;
+		bool				is_init;
+
+		is_init = (0 == bpf_map_delete_elem(&ssl_initmap, &tkey));
 
 		pval = bpf_map_lookup_elem(&ssl_tcp_unmap, &pidtid);
 
@@ -343,7 +401,7 @@ static void ssl_rw_probe(void *ssl, void *buffer, size_t *pwritten, bool is_writ
 			struct tssl_tcp_val	val = {};
 
 			val.tkey		= tkey;
-			val.is_init		= false;
+			val.is_init		= is_init;
 
 			bpf_map_update_elem(&ssl_tcp_unmap, &pidtid, &val, BPF_ANY);
 		}	
@@ -579,6 +637,9 @@ int BPF_UPROBE(ssl_shutdown, void *ssl)
 
 	psslinfo = bpf_map_lookup_elem(&ssl_conn_map, &tkey);
 	if (!psslinfo) {
+		bpf_map_delete_elem(&ssl_unmap, &tkey);
+		bpf_map_delete_elem(&ssl_initmap, &tkey);
+
 		return 0;
 	}
 
@@ -604,6 +665,33 @@ int BPF_UPROBE(ssl_shutdown, void *ssl)
 
 	return 0;
 }
+
+SEC("uprobe")
+void BPF_UPROBE(node_ssl_set_ex_data, void *ssl) 
+{
+	u64 				pidtid = bpf_get_current_pid_tgid(), pid = pidtid >> 32;
+
+	if (!valid_cap_pid(pid, true /* checkppid */)) {
+		return;
+	}	
+
+	struct tssl_conn_info		*pssl;
+	struct tssl_key			tkey = {};
+
+	tkey.ssl			= ssl;
+	tkey.pid			= pid;
+
+	pssl = bpf_map_lookup_elem(&ssl_conn_map, &tkey);
+
+	if (!pssl) {
+		u32				tval = 0;
+		
+		bpf_map_update_elem(&ssl_unmap, &tkey, &tval, BPF_ANY);
+		bpf_map_update_elem(&ssl_initmap, &tkey, &tval, BPF_ANY);
+	}	
+
+	gy_bpf_printk("SSL_set_ex_data : SSL ctx %p : Conn Map conn %p\n", ssl, pssl);
+}	
 
 SEC("fentry/tcp_sendmsg")
 int BPF_PROG(fentry_tcp_sendmsg_entry, struct sock *sk)
