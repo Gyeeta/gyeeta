@@ -109,13 +109,7 @@ public :
 
 	void detach_bpf()
 	{
-		int			ret;
-
-		ret = T::detach(pobj_);
-
-		if (ret) {
-			GY_THROW_SYS_EXCEPTION("Failed to detach BPF Object %s", name_.data());
-		}	
+		T::detach(pobj_);
 	}	
 	
 	static std::string_view elf_bytes()
@@ -198,6 +192,45 @@ public :
 	GY_EBPF_CB			cb_			{nullptr};
 	void				*pcb_cookie_		{nullptr};
 };	
+
+/*
+ * XXX Do not call bpf_map_delete_elem() in the walk callback. Call delete after the walk is over...
+ */
+template <typename FCB> 
+int walk_bpf_map_keys(int map_fd, uint32_t key_size, const void *invalid_key, FCB & walk) noexcept(noexcept(walk(nullptr, 0)))
+{
+	alignas(8) uint8_t		key[key_size], next_key[key_size];
+	uint32_t			cnt, tcnt = 0, n0 = 0;
+	int				err;
+	CB_RET_E			cret;
+
+	if (map_fd < 0 || !invalid_key) {
+		return -1;
+	}
+
+	memcpy(key, invalid_key, key_size);
+
+	while (true) {
+		err = bpf_map_get_next_key(map_fd, key, next_key);
+
+		if (err && errno != ENOENT) {
+			return -1;
+		} 
+		else if (err) {
+			return tcnt;
+		}
+
+		memcpy(key, next_key, key_size);
+
+		cret = walk((void *)key, tcnt++);
+
+		if (cret == CB_BREAK_LOOP) {
+			return tcnt;
+		}	
+	}
+
+	return tcnt;
+}
 
 } // namespace gyeeta
 

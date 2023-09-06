@@ -327,9 +327,9 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 
 	if (nskipped > 0) {
 		uint32_t			rd, npad;
-		const uint32_t			nring = 64 + sizeof(struct tcaphdr_t);
+		const uint32_t			nring = 256 + sizeof(struct tcaphdr_t);
 
-		rd				= (nskipped > 64 ? 64 : nskipped);
+		rd				= (nskipped > 256 ? 256 : nskipped);
 		npad 				= nring - (sizeof(struct tcaphdr_t) + rd);
 
 		uint8_t				*pring = bpf_ringbuf_reserve(&sslcapring, nring, 0);
@@ -667,7 +667,7 @@ int BPF_UPROBE(ssl_shutdown, void *ssl)
 }
 
 SEC("uprobe")
-void BPF_UPROBE(node_ssl_set_ex_data, void *ssl) 
+void BPF_UPROBE(ssl_set_ex_data, void *ssl) 
 {
 	u64 				pidtid = bpf_get_current_pid_tgid(), pid = pidtid >> 32;
 

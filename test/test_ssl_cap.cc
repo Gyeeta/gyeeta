@@ -78,58 +78,55 @@ class TSSLCAP
 public :
 	using TSSLCAP_OBJ			= GY_LIBBPF_OBJ<test_ssl_cap_bpf>;
 	using LINK_VEC				= std::vector<UNIQ_BPF_LINK_PTR>;
-	using LINK_PATH_MAP			= folly::F14NodeMap<std::string, LINK_VEC, FollyTransparentStringHash, FollyTransparentStringEqual>;
+
+	struct LinkSharedVec
+	{
+		LINK_VEC			vec_;
+		std::atomic<int64_t>		shrcnt_		{1};
+
+		LinkSharedVec(LINK_VEC && vec) noexcept
+			: vec_(std::move(vec))
+		{}	
+
+		int64_t get_shr_cnt() const noexcept
+		{
+			return shrcnt_.load(mo_acquire);
+		}	
+
+		void add_shr_cnt_locked() noexcept
+		{
+			shrcnt_.fetch_add(1, mo_relaxed);
+		}	
+
+		int64_t del_shr_cnt_locked() noexcept
+		{
+			return shrcnt_.fetch_sub(1, mo_relaxed) - 1;
+		}	
+
+	};	
+
+	enum SSL_PROBESTATE : uint8_t
+	{
+		SSL_PROBE_UNUINIT		= 0,
+		SSL_PROBE_DETACHED,
+		SSL_PROBE_ATTACHED,
+	};	
+
+	using LINK_PATH_MAP			= folly::F14NodeMap<std::string, LinkSharedVec, FollyTransparentStringHash, FollyTransparentStringEqual>;
+	using PID_PATH_MAP			= std::unordered_map<pid_t, std::string, GY_JHASHER<pid_t>>;
 	
 	TSSLCAP()				= default;
 
 	~TSSLCAP() noexcept			= default;
 
-	void start_collection(void *pwriter)
-	{
-		SCOPE_GY_MUTEX			sc(statemutex_);
-
-		if (true == is_init_.load(mo_relaxed)) {
-			return;
-		}
-
-		int				ret;
-
-		INFOPRINTCOLOR(GY_COLOR_GREEN, "Starting init of SSL collection...\n");
-	
-		bpf_map__set_max_entries(obj_.get()->maps.ssl_conn_map, 8192);
-		bpf_map__set_max_entries(obj_.get()->maps.ssl_unmap, 2048);
-		bpf_map__set_max_entries(obj_.get()->maps.ssl_initmap, 2048);
-		bpf_map__set_max_entries(obj_.get()->maps.ssl_tcp_unmap, 2048);
-		bpf_map__set_max_entries(obj_.get()->maps.ssl_write_args_map, 2048);
-		bpf_map__set_max_entries(obj_.get()->maps.ssl_read_args_map, 2048);
-		bpf_map__set_max_entries(obj_.get()->maps.pid_map, 4096);
-		bpf_map__set_max_entries(obj_.get()->maps.sslcapring, 8 * 1024 * 1024);
-
-		obj_.load_bpf();
-
-		obj_.attach_bpf();
-
-		pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), handle_data, pwriter);
-
-		is_init_.store(true, mo_release);
-	}	
-
-	int poll(int timeout_ms) noexcept
-	{
-		if (pdatapool_) {
-			return pdatapool_->poll(timeout_ms);
-		}
-
-		return -1;
-	}	
 
 	int add_procs(void *pwriter, pid_t pid)
 	{
-		if (false == is_init_.load(mo_acquire)) {
-			start_collection(pwriter);
-		}
-
+		GY_MT_COLLECT_PROFILE(5, "Adding PIDs for SSL probes");
+		
 		int 				ret, fd;
+
+		init_collection(pwriter);
 
 		fd = bpf_map__fd(obj_.get()->maps.pid_map);
 
@@ -150,6 +147,118 @@ public :
 		return 0;
 	}
 	
+	void del_procs(void *pwriter, pid_t *pidarr, size_t npids)
+	{
+		if (!probes_attached()) {
+			return;
+		}	
+
+		GY_MT_COLLECT_PROFILE(5, "Deleting PIDs for SSL probes");
+
+		int 				ret, fd;
+
+		fd = bpf_map__fd(obj_.get()->maps.pid_map);
+
+		if (fd < 0) {
+			GY_THROW_SYS_EXCEPTION("Failed to find fd of libbpf pid_map");
+		}	
+
+		for (ssize_t i = 0; i < (ssize_t)npids; ++i) {
+			u32			key = pidarr[i];
+
+			bpf_map_delete_elem(fd, &key);
+		}
+
+		SCOPE_GY_MUTEX		sc(statemutex_);
+
+		for (ssize_t i = 0; i < (ssize_t)npids; ++i) {
+			pid_t			pid = pidarr[i];
+			auto			itp = pidpathmap_.find(pid);
+
+			if (itp != pidpathmap_.end()) {
+
+				auto			it = linkpathmap_.find(itp->second);
+
+				if (it != linkpathmap_.end()) {
+					auto			iret = it->second.del_shr_cnt_locked();
+
+					if (iret <= 0) {
+						INFOPRINTCOLOR(GY_COLOR_GREEN, "Stopped SSL Capture for PID %d and removing probes as attached count is %ld : Path (%s)\n", 
+							pid, iret, it->first.data());
+
+						linkpathmap_.erase(it);
+					}
+					else {
+						INFOPRINTCOLOR(GY_COLOR_GREEN, "Stopped SSL Capture for PID %d but keeping probes as attached count is %ld : Path (%s)\n", 
+							pid, iret, it->first.data());
+					}	
+				}	
+
+				pidpathmap_.erase(itp);
+			}
+		}
+
+		if (linkpathmap_.empty()) {
+			detach_all_probes_locked();
+		}	
+	}
+	
+	int poll(int timeout_ms) noexcept
+	{
+		if (pdatapool_) {
+			return pdatapool_->poll(timeout_ms);
+		}
+
+		return -1;
+	}	
+
+	bool probes_attached() const noexcept
+	{
+		SCOPE_GY_MUTEX			sc(statemutex_);
+
+		return (state_ == SSL_PROBE_ATTACHED);
+	}
+
+protected :
+
+	void init_collection(void *pwriter)
+	{
+		SCOPE_GY_MUTEX			sc(statemutex_);
+
+		if (state_ == SSL_PROBE_ATTACHED) {
+			return;
+		}
+
+		int				ret;
+
+		if (state_ == SSL_PROBE_UNUINIT) {
+			INFOPRINTCOLOR(GY_COLOR_GREEN, "Starting init of SSL collection...\n");
+		
+			bpf_map__set_max_entries(obj_.get()->maps.ssl_conn_map, 8192);
+			bpf_map__set_max_entries(obj_.get()->maps.ssl_unmap, 2048);
+			bpf_map__set_max_entries(obj_.get()->maps.ssl_initmap, 2048);
+			bpf_map__set_max_entries(obj_.get()->maps.ssl_tcp_unmap, 2048);
+			bpf_map__set_max_entries(obj_.get()->maps.ssl_write_args_map, 2048);
+			bpf_map__set_max_entries(obj_.get()->maps.ssl_read_args_map, 2048);
+			bpf_map__set_max_entries(obj_.get()->maps.pid_map, 4096);
+			bpf_map__set_max_entries(obj_.get()->maps.sslcapring, 8 * 1024 * 1024);
+
+			obj_.load_bpf();
+
+			pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), handle_data, pwriter);
+		}
+
+		if (state_ == SSL_PROBE_DETACHED) {
+			INFOPRINTCOLOR(GY_COLOR_GREEN, "Attaching probes for SSL collection now...\n");
+		}
+
+		state_ = SSL_PROBE_DETACHED;
+
+		obj_.attach_bpf();
+
+		state_ = SSL_PROBE_ATTACHED;
+	}	
+
 	int attach_uprobes(pid_t pid)
 	{
 		char				errbuf[256];
@@ -191,7 +300,12 @@ public :
 			auto			it = linkpathmap_.find(hashview);
 
 			if (it != linkpathmap_.end()) {
-				INFOPRINTCOLOR(GY_COLOR_GREEN, "SSL Capture already enabled for PID %d as path %s already attached (%s)\n", pid, path, hashbuf.get());
+				it->second.add_shr_cnt_locked();
+
+				pidpathmap_.try_emplace(pid, hashview.data(), hashview.size());
+
+				INFOPRINTCOLOR(GY_COLOR_GREEN, "SSL Capture already enabled for PID %d as path %s already attached %ld times (%s)\n", 
+					pid, path, it->second.get_shr_cnt(), hashbuf.get());
 				return 0;
 			}	
 		}	
@@ -343,27 +457,21 @@ public :
 
 			vec.emplace_back(plink);
 
+			offset = pssllib->get_func_offset("SSL_set_ex_data");
 
-			if (pssllib->is_static_lib() && string_ends_with(pssllib->get_file_path(), "node")) {
-				INFOPRINTCOLOR(GY_COLOR_GREEN, "Enabling node SSL probes..\n");
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_set_ex_data offset for PID %d\n\n", pid);
+				return -1;
+			}	
 
-				offset = pssllib->get_func_offset("SSL_set_ex_data");
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_set_ex_data, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_set_ex_data for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
 
-				if (offset == 0) {
-					ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_set_ex_data offset for PID %d\n\n", pid);
-					return -1;
-				}	
-
-				plink = bpf_program__attach_uprobe(obj_.get()->progs.node_ssl_set_ex_data, false /* retprobe */, -1, path, offset);
-				
-				if (!plink) {
-					ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_set_ex_data for PID %d due to %s\n", pid, gy_get_perror());
-					return -1;
-				}	
-
-				vec.emplace_back(plink);
-				
-			}
+			vec.emplace_back(plink);
 			
 		}	
 		else if (libtype == SSL_LIB_GNUTLS) {
@@ -372,20 +480,48 @@ public :
 
 		SCOPE_GY_MUTEX		sc(statemutex_);
 
-		linkpathmap_.try_emplace(hashview, std::move(vec));
+		pidpathmap_.try_emplace(pid, hashview.data(), hashview.size());
+
+		auto [it, added] 	= linkpathmap_.try_emplace(hashview, std::move(vec));
+
+		if (it != linkpathmap_.end()) {
+			if (!added) {
+				it->second.add_shr_cnt_locked();
+
+				INFOPRINTCOLOR(GY_COLOR_GREEN, "SSL Capture already enabled for PID %d as path %s already attached %ld times (%s)\n", 
+					pid, path, it->second.get_shr_cnt(), hashbuf.get());
+				return 0;
+			}	
+		}	
 
 		INFOPRINTCOLOR(GY_COLOR_GREEN, "SSL Capture enabled for PID %d : Attached File path %s Hash Path (%s)\n", pid, path, hashbuf.get());
 
 		return 0;
 	}	
 
+	void detach_all_probes_locked()
+	{
+		if (state_ < SSL_PROBE_ATTACHED) {
+			return;
+		}
+
+		INFOPRINTCOLOR(GY_COLOR_CYAN, "Detaching all SSL Capture probes now...\n");
+
+		obj_.detach_bpf();
+
+		state_ = SSL_PROBE_DETACHED;
+	}	
+
+	mutable GY_MUTEX			statemutex_;
+
 	GY_BTF_INIT				btf_;
 	TSSLCAP_OBJ				obj_			{"SSL Cap bpf"};
+
 	std::optional<GY_RING_BUFPOOL>		pdatapool_;
-	GY_MUTEX				statemutex_;
+
 	LINK_PATH_MAP				linkpathmap_;
-	std::unordered_set<std::string>		pathset_;
-	std::atomic<bool>			is_init_		{false};
+	PID_PATH_MAP				pidpathmap_;
+	SSL_PROBESTATE				state_			{ SSL_PROBE_UNUINIT };
 };
 
 
@@ -494,6 +630,51 @@ int main(int argc, char *argv[])
 			GY_CATCH_MSG("Exception seen while adding PID for ssl capture");
 
 			gy_nanosleep(2, 0);
+		}
+
+		for (int niter = 0; niter < 10; ++niter) {
+			if (gsig_rcvd.load(mo_relaxed)) {
+				break;
+			}
+
+			gy_msecsleep(60 * 1000);
+
+			if (gsig_rcvd.load(mo_relaxed)) {
+				break;
+			}
+
+			INFOPRINTCOLOR(GY_COLOR_BLUE, "Now pausing capture for 30 sec. Will resume thereafter...\n\n");
+
+			for (int i = 2; i < argc; ++i) {
+				try {
+					pid_t			pid = atoi(argv[i]);
+
+					phdlr->del_procs(&wrpcap, &pid, 1);
+				}
+				GY_CATCH_MSG("Exception seen while adding PID for ssl capture");
+
+				gy_nanosleep(2, 0);
+			}
+
+			INFOPRINTCOLOR(GY_COLOR_BLUE, "Paused capture. Will resume after 30 sec...\n\n");
+
+			if (gsig_rcvd.load(mo_relaxed)) {
+				break;
+			}
+			gy_nanosleep(30, 0);
+
+			if (gsig_rcvd.load(mo_relaxed)) {
+				break;
+			}
+
+			for (int i = 2; i < argc; ++i) {
+				try {
+					phdlr->add_procs(&wrpcap, atoi(argv[i]));
+				}
+				GY_CATCH_MSG("Exception seen while re-adding PID for ssl capture");
+
+				gy_nanosleep(2, 0);
+			}
 		}
 
 		pthread_join(thrid, nullptr);
