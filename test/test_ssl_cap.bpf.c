@@ -281,7 +281,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		uint8_t				*pring = bpf_ringbuf_reserve(&sslcapring, nring, 0);
 
 		if (!pring) {
-			gy_bpf_printk("ERROR : Failed to reserve Ring Buffer : nleft %u bytes\n", nleft);
+			gy_bpf_printk("ERROR : Failed to reserve Ring Buffer : nleft %u bytes for Conn Map conn %p\n", nleft, psslinfo);
 			goto done1;
 		}	
 
@@ -318,7 +318,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		nleft				-= rd;
 		psrc				+= rd;
 
-		gy_bpf_printk("SUCCESS : SSL user bytes read success rd %u bytes : nleft %u bytes\n", rd, nleft);
+		gy_bpf_printk("SUCCESS : SSL user bytes read success rd %u bytes : nleft %u bytes for Conn Map conn %p\n", rd, nleft, psslinfo);
 
 		if ((nleft == 0) || (psrc >= pend)) {
 			break;
@@ -335,7 +335,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		uint8_t				*pring = bpf_ringbuf_reserve(&sslcapring, nring, 0);
 
 		if (!pring) {
-			gy_bpf_printk("ERROR : Failed to reserve Trailing Ring Buffer : nleft %u bytes\n", rd);
+			gy_bpf_printk("ERROR : Failed to reserve Trailing Ring Buffer : nleft %u bytes for Conn Map conn %p\n", rd, psslinfo);
 			goto done1;
 		}	
 
@@ -367,7 +367,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 
 		bpf_ringbuf_submit(pring, 0);
 
-		gy_bpf_printk("SUCCESS : Trailing SSL user bytes read success rd %u bytes : skipped %u bytes\n", rd, nskipped);
+		gy_bpf_printk("SUCCESS : Trailing SSL user bytes read success rd %u bytes : skipped %u bytes for Conn Map conn %p\n", rd, nskipped, psslinfo);
 	}	
 
 done1 :
@@ -383,28 +383,34 @@ static void ssl_rw_probe(void *ssl, void *buffer, size_t *pwritten, bool is_writ
 		return;
 	}	
 
+	struct tssl_conn_info		*psslinfo;
 	struct tssl_key			tkey = {};
 
 	tkey.ssl			= ssl;
 	tkey.pid			= pid;
 
 	if (0 == bpf_map_delete_elem(&ssl_unmap, &tkey)) {
-		// Need to populate ssl_tcp_unmap
-		struct tssl_tcp_val		*pval;
-		bool				is_init;
 
-		is_init = (0 == bpf_map_delete_elem(&ssl_initmap, &tkey));
+		psslinfo = bpf_map_lookup_elem(&ssl_conn_map, &tkey);
 
-		pval = bpf_map_lookup_elem(&ssl_tcp_unmap, &pidtid);
+		if (!psslinfo) {
+			// Need to populate ssl_tcp_unmap
+			struct tssl_tcp_val		*pval;
+			bool				is_init;
 
-		if (!pval || pval->tkey.ssl != ssl) {
-			struct tssl_tcp_val	val = {};
+			is_init = (0 == bpf_map_delete_elem(&ssl_initmap, &tkey));
 
-			val.tkey		= tkey;
-			val.is_init		= is_init;
+			pval = bpf_map_lookup_elem(&ssl_tcp_unmap, &pidtid);
 
-			bpf_map_update_elem(&ssl_tcp_unmap, &pidtid, &val, BPF_ANY);
-		}	
+			if (!pval || pval->tkey.ssl != ssl) {
+				struct tssl_tcp_val	val = {};
+
+				val.tkey		= tkey;
+				val.is_init		= is_init;
+
+				bpf_map_update_elem(&ssl_tcp_unmap, &pidtid, &val, BPF_ANY);
+			}	
+		}
 	}
 
 	struct tssl_rw_args		args = {};
@@ -556,7 +562,7 @@ void BPF_URETPROBE(ssl_ret_write_ex, int rc)
 SEC("uprobe")
 void BPF_UPROBE(ssl_read, void *ssl, void *buffer, int num) 
 {
-	gy_bpf_printk("SSL_read : SSL ctx %p : Buffer %p : Bytes %d\n", ssl, buffer, num);
+	gy_bpf_printk("SSL_read : SSL ctx %p\n", ssl);
 
 	ssl_rw_probe(ssl, buffer, NULL, false /* is_write */);
 }
@@ -570,7 +576,7 @@ void BPF_URETPROBE(ssl_ret_read, int rc)
 SEC("uprobe")
 void BPF_UPROBE(ssl_read_ex, void *ssl, void *buffer, size_t num, size_t *readbytes) 
 {
-	gy_bpf_printk("SSL_read_ex : SSL ctx %p : Buffer %p : Bytes %d\n", ssl, buffer, num);
+	gy_bpf_printk("SSL_read_ex : SSL ctx %p\n", ssl);
 
 	ssl_rw_probe(ssl, buffer, readbytes, false /* is_write */);
 }
@@ -617,6 +623,8 @@ static int upd_tcp_sock(void *ctx, struct sock *sk)
 		get_cleartext(ctx, &clearargs);
 	}
 
+	gy_bpf_printk("upd_tcp_sock adding ne Conn Map entry for SSL ctx %p\n", pval->tkey.ssl);
+
 	bpf_map_update_elem(&ssl_conn_map, &pval->tkey, &sslinfo, BPF_ANY);
 
 done :
@@ -659,9 +667,9 @@ int BPF_UPROBE(ssl_shutdown, void *ssl)
 
 	get_cleartext(ctx, &clearargs);
 
-	bpf_map_delete_elem(&ssl_conn_map, &tkey);
-
 	gy_bpf_printk("SSL_shutdown : SSL ctx %p : Conn Map conn %p\n", ssl, psslinfo);
+
+	bpf_map_delete_elem(&ssl_conn_map, &tkey);
 
 	return 0;
 }

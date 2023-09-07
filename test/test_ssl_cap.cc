@@ -632,7 +632,7 @@ int main(int argc, char *argv[])
 			gy_nanosleep(2, 0);
 		}
 
-		for (int niter = 0; niter < 10; ++niter) {
+		for (int niter = 0; niter < 2; ++niter) {
 			if (gsig_rcvd.load(mo_relaxed)) {
 				break;
 			}
