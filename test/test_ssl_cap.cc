@@ -279,7 +279,7 @@ protected :
 
 		auto				libtype = pssllib->get_lib_type();
 
-		if (!((libtype == SSL_LIB_OPENSSL) || (libtype == SSL_LIB_GNUTLS))) {
+		if (!((libtype == SSL_LIB_OPENSSL) || (libtype == SSL_LIB_GNUTLS) || (libtype == SSL_LIB_BORINGSSL))) {
 
 			ERRORPRINTCOLOR(GY_COLOR_RED, "Internal Error : Invalid SSL Lib Type %d seen for PID %d\n\n", libtype, pid);
 			return -1;
@@ -474,7 +474,7 @@ protected :
 			vec.emplace_back(plink);
 			
 		}	
-		else if (libtype == SSL_LIB_GNUTLS) {
+		else if (libtype == SSL_LIB_GNUTLS || libtype == SSL_LIB_BORINGSSL) {
 			// TODO
 		}
 

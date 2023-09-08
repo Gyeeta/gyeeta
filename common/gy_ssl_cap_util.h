@@ -15,6 +15,7 @@ enum SSL_LIB_TYPE : uint8_t
 	SSL_LIB_UNKNOWN			= 0,
 	SSL_LIB_OPENSSL,
 	SSL_LIB_GNUTLS,
+	SSL_LIB_BORINGSSL,
 };
 
 class SSL_LIB_INFO
@@ -40,7 +41,6 @@ public :
 	bool				newmount_				{false};
 
 	static constexpr const char	openssl_libname[]			{"libssl.so"};
-	static constexpr const char	gnutls_libname[]			{"libgnutls.so"};
 
 	static constexpr const char	*opensslfuncs[] = {
 		"SSL_do_handshake", "SSL_read", "SSL_read_ex", "SSL_write", "SSL_write_ex", "SSL_shutdown",
@@ -49,17 +49,9 @@ public :
 
 	static_assert(GY_ARRAY_SIZE(opensslfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");
 
-	static constexpr const char	*gnutlsfuncs[] = {
-		"gnutls_handshake", "gnutls_transport_set_int2", "gnutls_transport_set_ptr", "gnutls_transport_set_ptr2",
-		"gnutls_record_recv", "gnutls_record_send", "gnutls_bye", "gnutls_deinit",
-	};
-
-	static_assert(GY_ARRAY_SIZE(gnutlsfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");
-	
 	static const char *		ssl_libtype_to_string(SSL_LIB_TYPE libtype) noexcept
 	{
 		if (libtype == SSL_LIB_OPENSSL) return openssl_libname;
-		else if (libtype == SSL_LIB_GNUTLS) return gnutls_libname;
 
 		return "unknown";
 	}	

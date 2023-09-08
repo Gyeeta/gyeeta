@@ -20,7 +20,7 @@ static bool verifyfuncs(const char *funcarr[], size_t nfuncs, off_t offsetarr[])
 
 std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&errorbuf)[256])
 {
-	constexpr uint32_t		maxfunc 		{GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs) + GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs)};
+	constexpr uint32_t		maxfunc 		{GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs)};
 	const char 			*funcarr[maxfunc]	{};
 	off_t				offsetarr[maxfunc]	{};
 	uint32_t			nfuncs			{0};
@@ -42,12 +42,6 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 			
 			nfuncs		= GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs); 
 			std::memcpy(funcarr, SSL_LIB_INFO::opensslfuncs, sizeof(SSL_LIB_INFO::opensslfuncs));
-		}	
-		else if (string_starts_with(plibname, SSL_LIB_INFO::gnutls_libname, false, sizeof(SSL_LIB_INFO::gnutls_libname) - 1)) {
-			libtype		= SSL_LIB_GNUTLS;
-
-			nfuncs		= GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs); 
-			std::memcpy(funcarr, SSL_LIB_INFO::gnutlsfuncs, sizeof(SSL_LIB_INFO::gnutlsfuncs));
 		}	
 		else {
 			return CB_OK;
@@ -140,9 +134,8 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 		}	
 
 		std::memcpy(funcarr, SSL_LIB_INFO::opensslfuncs, sizeof(SSL_LIB_INFO::opensslfuncs));
-		std::memcpy(funcarr + GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs), SSL_LIB_INFO::gnutlsfuncs, sizeof(SSL_LIB_INFO::gnutlsfuncs));
 
-		nfuncs = GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs) + GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs);
+		nfuncs = GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs);
 	}	
 
 	GY_ELF_UTIL			elf(pathbuf, ret, errbuf);
@@ -173,15 +166,10 @@ std::unique_ptr<SSL_LIB_INFO> get_pid_ssl_lib(pid_t pid, int & retcode, char (&e
 
 		bret = verifyfuncs(funcarr, GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs), offsetarr);
 		if (!bret) {
-			bret = verifyfuncs(&funcarr[GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs)], GY_ARRAY_SIZE(SSL_LIB_INFO::gnutlsfuncs), 
-						offsetarr + GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs));
-			if (!bret) {
-				retcode = 0;
-				*errorbuf = 0;
+			retcode = 0;
+			*errorbuf = 0;
 
-				return ssluniq;
-			}	
-			libtype = SSL_LIB_GNUTLS;
+			return ssluniq;
 		}	
 		else {
 			libtype = SSL_LIB_OPENSSL;
