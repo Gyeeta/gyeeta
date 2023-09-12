@@ -120,13 +120,13 @@ public :
 	~TSSLCAP() noexcept			= default;
 
 
-	int add_procs(void *pwriter, pid_t pid)
+	int add_procs(pid_t pid, GY_EBPF_CB cb, void *pcb_cookie)
 	{
 		GY_MT_COLLECT_PROFILE(5, "Adding PIDs for SSL probes");
 		
 		int 				ret, fd;
 
-		init_collection(handle_data, pwriter);
+		init_collection(cb, pcb_cookie);
 
 		fd = bpf_map__fd(obj_.get()->maps.pid_map);
 
@@ -625,7 +625,7 @@ int main(int argc, char *argv[])
 
 		for (int i = 2; i < argc; ++i) {
 			try {
-				phdlr->add_procs(&wrpcap, atoi(argv[i]));
+				phdlr->add_procs(atoi(argv[i]), handle_data, &wrpcap);
 			}
 			GY_CATCH_MSG("Exception seen while adding PID for ssl capture");
 
@@ -669,7 +669,7 @@ int main(int argc, char *argv[])
 
 			for (int i = 2; i < argc; ++i) {
 				try {
-					phdlr->add_procs(&wrpcap, atoi(argv[i]));
+					phdlr->add_procs(atoi(argv[i]), handle_data, &wrpcap);
 				}
 				GY_CATCH_MSG("Exception seen while re-adding PID for ssl capture");
 
