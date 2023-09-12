@@ -126,7 +126,7 @@ public :
 		
 		int 				ret, fd;
 
-		init_collection(pwriter);
+		init_collection(handle_data, pwriter);
 
 		fd = bpf_map__fd(obj_.get()->maps.pid_map);
 
@@ -221,7 +221,7 @@ public :
 
 protected :
 
-	void init_collection(void *pwriter)
+	void init_collection(GY_EBPF_CB cb, void *pcb_cookie)
 	{
 		SCOPE_GY_MUTEX			sc(statemutex_);
 
@@ -245,7 +245,7 @@ protected :
 
 			obj_.load_bpf();
 
-			pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), handle_data, pwriter);
+			pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), cb, pcb_cookie);
 		}
 
 		if (state_ == SSL_PROBE_DETACHED) {

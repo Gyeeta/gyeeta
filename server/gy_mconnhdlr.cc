@@ -1282,23 +1282,24 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 	/*
 	 * NOTE : We limit the max Partha Hosts Count to a low value as otherwise multi host querying will
 	 * take more time. This does have a side-effect that we may miss some short lived TCP connection
-	 * flow evaluations (> 15 sec and < 30 sec) durations...
+	 * flow evaluations (> 15 sec and < 30 sec) durations but this should be handled by the Shyama
+	 * flow aggregator...
 	 */
 
 	if (maxcore >= 16 && maxmem >= GY_UP_GB(32 - 1)) {
-		max_partha_allowed_	= 400;
-	}	
-	else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
 		max_partha_allowed_	= 200;
 	}	
-	else if (maxcore >= 4 && maxmem >= GY_UP_GB(16 - 1)) {
-		max_partha_allowed_	= 150;
+	else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
+		max_partha_allowed_	= 125;
 	}	
-	else if (maxcore >= 4 && maxmem >= GY_UP_GB(8 - 1)) {
+	else if (maxcore >= 4 && maxmem >= GY_UP_GB(16 - 1)) {
 		max_partha_allowed_	= 100;
 	}	
+	else if (maxcore >= 4 && maxmem >= GY_UP_GB(8 - 1)) {
+		max_partha_allowed_	= 75;
+	}	
 	else {
-		WARNPRINT_OFFLOAD("Max Processor cores allowed (%lu) and Memory (%lu GB) is too low : Postgres/Madhava Response times may be affected...\n",
+		WARNPRINT_OFFLOAD("Max Processor cores allowed (%lu) and Memory (%lu GB) is too low : Madhava Response times may be affected...\n",
 			maxcore, GY_DOWN_GB(maxmem));
 		max_partha_allowed_	= 40;
 	}	

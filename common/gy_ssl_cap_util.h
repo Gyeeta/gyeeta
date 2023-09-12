@@ -10,6 +10,10 @@ namespace gyeeta {
 
 static constexpr size_t			MAX_LIB_UPROBE_FUNCS			{24};
 
+/*
+ * TODO : Handle more Native Libs such as libgnutls, boringssl.
+ * Also handle java and go SSL decryption...
+ */
 enum SSL_LIB_TYPE : uint8_t
 {
 	SSL_LIB_UNKNOWN			= 0,
