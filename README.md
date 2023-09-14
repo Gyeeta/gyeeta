@@ -3,7 +3,7 @@
 <p align="center"><a href="https://gyeeta.io"><img src="https://gyeeta.io/img/gyeeta.png" alt="Gyeeta" width="96" /></a></p>
 
 
-[***Gyeeta***](https://gyeeta.io) is a non intrusive, *100% Open Source (GPLv3)* and *Free* Infrastructure, Services and Process Level monitor (*Linux* only).  
+[***Gyeeta***](https://gyeeta.io) is a *100% Open Source (GPLv3)* and *Free* Infrastructure, Services and Process Level monitor (*Linux* only).  
 
 
 ## Key Observability Capabilities
@@ -46,7 +46,7 @@ The image below shows the high level overview of how the different components in
 
 ## Install Options for Gyeeta components
 
-Gyeeta components can be installed using any of the following methods :
+Gyeeta is a self-hosted Observability product. Gyeeta components can be installed using any of the following methods :
 
 - Bash Script based Installation and Configuration (Easiest install option)
 - Kubernetes Helm Chart
@@ -116,7 +116,7 @@ We provide a Docker container for building this repo source.
 docker pull ghcr.io/gyeeta/gyeeta-devel:latest
 ```
 
-Note that the container is of 5 GB size. 
+Note that the container is over 5 GB size. 
 
 Users can run the container optionally passing a Volume mount for the git source.
 
