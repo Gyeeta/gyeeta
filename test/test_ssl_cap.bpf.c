@@ -318,7 +318,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		nleft				-= rd;
 		psrc				+= rd;
 
-		gy_bpf_printk("SUCCESS : SSL user bytes read success rd %u bytes : nleft %u bytes for Conn Map conn %p\n", rd, nleft, psslinfo);
+		gy_bpf_printk("SSL Cleartext : SSL user bytes read rd %u bytes : nleft %u bytes for Conn Map conn %p\n", rd, nleft, psslinfo);
 
 		if ((nleft == 0) || (psrc >= pend)) {
 			break;
@@ -367,7 +367,7 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 
 		bpf_ringbuf_submit(pring, 0);
 
-		gy_bpf_printk("SUCCESS : Trailing SSL user bytes read success rd %u bytes : skipped %u bytes for Conn Map conn %p\n", rd, nskipped, psslinfo);
+		gy_bpf_printk("SSL Cleartext : Trailing SSL user bytes read rd %u bytes : skipped %u bytes for Conn Map conn %p\n", rd, nskipped, psslinfo);
 	}	
 
 done1 :

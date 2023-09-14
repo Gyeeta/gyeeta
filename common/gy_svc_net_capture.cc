@@ -1342,12 +1342,12 @@ void NETNS_CAP_ONE::restart_capture()
 	
 	slowlock.unlock();
 
-	const auto pcapcb = [this](const uint8_t * pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_cap) noexcept
+	auto pcapcb = [this](const uint8_t * pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_cap) noexcept
 	{
 		return process_pkt(pframe, caplen, origlen, linktype, tv_cap);
 	};
 
-	const auto timeoutcb = [this, setns_called = false, next_stats_time = tstart_ + 300](const PCAP_NET_CAP *pnetcap) mutable noexcept
+	auto timeoutcb = [this, setns_called = false, next_stats_time = tstart_ + 300](const PCAP_NET_CAP *pnetcap) mutable noexcept
 	{
 		if (!pnetcap) return;
 
