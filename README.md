@@ -76,7 +76,7 @@ components.
 | Fedora | 28 & higher |
 | OpenSUSE, SUSE Linux | 15 & higher |
 
-Other Linux distributions based on Debian/Ubuntu or RHEL are supported as long as the base Linux Kernel is 4.4+
+Other Linux distributions based on Debian/Ubuntu or RHEL are supported as long as the base Linux Kernel is 4.14+
 
 Container Platforms such as Kubernetes or Docker Swarm are also supported using Helm Charts or Docker containers.
 
