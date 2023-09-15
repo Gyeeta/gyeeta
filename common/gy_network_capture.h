@@ -47,12 +47,15 @@ public :
 	bool				rcu_offline_after_read_	{false};
 	bool				timeoutcb_defined_	{false};
 
+private :	
 	bpf_program			*pfilter_code_		{nullptr};
+	GY_MUTEX			filtmutex_;
 	std::string			filter_string_;
 		
 	time_t				tstart_ 		{0}; 
 	std::atomic<CAP_CMD_E>		cap_cmd_ 		{CAP_CMD_NONE};
 
+public :
 	/*
 	 * The callback func is called for each packet.
 	 * The timeout_cb is called at start of Capture thread run and then at every timeout_msec.

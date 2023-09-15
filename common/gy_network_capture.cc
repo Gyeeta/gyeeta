@@ -72,7 +72,11 @@ PCAP_NET_CAP::~PCAP_NET_CAP()
 			pcap_breakloop(pd_);
 		}	
 
+		SCOPE_GY_MUTEX			scope(filtmutex_);
+
 		INFOPRINT_OFFLOAD("pcap Capture for \'%s\' on device %s destructor called. Waiting for thread exit...\n", filter_string_.c_str(), ifname_);
+
+		scope.unlock();
 
 		gy_pthread_join(loop_tid_, nullptr, 200 /* max_millsecs_to_wait_at_start */, true); 
 		
@@ -150,6 +154,8 @@ void PCAP_NET_CAP::set_capture_params()
 		WARNPRINT_OFFLOAD("pcap capture on %s : %s : (%s)\n", ifname_, pcap_statustostr(ret), pcap_geterr(pd_));
 	}
 
+	SCOPE_GY_MUTEX			scopemutex(filtmutex_);
+
 	if (pcap_compile(pd_, pfilter_code_, filter_string_.c_str(), 1 /* Optimize filter */, 0xFFFFFFFF) < 0) {
 		GY_THROW_EXCEPTION("Error in setting pcap filter for capturing on device %s : %s", ifname_, pcap_geterr(pd_));
 	}	
@@ -178,6 +184,8 @@ void PCAP_NET_CAP::set_capture_params()
 	
 	INFOPRINT_OFFLOAD("Started Network pcap capture on device %s for filter \'%s\'\n", ifname_, filter_string_.c_str());
 
+	scopemutex.unlock();
+
 	tstart_ = time(nullptr);
 
 	auto			cap = cap_cmd_.exchange(CAP_CMD_START);
@@ -196,7 +204,11 @@ void PCAP_NET_CAP::restart_capture_signal(const char *newfilter, size_t lenfilte
 		GY_THROW_EXCEPTION("pcap Capture restart called while capture not active");
 	}	
 	
+	SCOPE_GY_MUTEX			scopemutex(filtmutex_);
+
 	filter_string_.assign(newfilter, lenfilter);
+
+	scopemutex.unlock();
 
 	if (buffersize) {
 		cap_bufsize_ = buffersize;
