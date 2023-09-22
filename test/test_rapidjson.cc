@@ -434,7 +434,7 @@ static void ext_writer_test()
 
 static void stack_reader_writer()
 {
-	STACK_JSON_PRETTY_WRITER<8192, 4096>	smallwriter;
+	STACK_JSON_PRETTY_WRITER<11000, 1400>	smallwriter;
 	
 	smallwriter.StartObject();
 

@@ -106,6 +106,8 @@ GY_BTF_INIT::GY_BTF_INIT(libbpf_print_fn_t printfn)
 GY_PERF_BUFPOOL::GY_PERF_BUFPOOL(const char *name, int map_fd, size_t page_cnt, GY_EBPF_CB cb, void *pcb_cookie, GY_EBPF_LOST_CB lost_cb, GY_SCHEDULER * plost_cb_scheduler)
 	: cb_(cb), pcb_cookie_(pcb_cookie), lost_cb_(lost_cb), name_(name ? name : "perf buffer pool"), plost_cb_scheduler_(plost_cb_scheduler)
 {
+	assert(cb_);
+
 	pbufpool_ = perf_buffer__new(map_fd, page_cnt, perf_cb_fn, perf_lost_cb_fn, this, nullptr);
 
 	if (!pbufpool_) {
@@ -156,6 +158,8 @@ GY_PERF_BUFPOOL::~GY_PERF_BUFPOOL() noexcept
 GY_RING_BUFPOOL::GY_RING_BUFPOOL(const char *name, int map_fd, GY_EBPF_CB cb, void *pcb_cookie)
 	: cb_(cb), pcb_cookie_(pcb_cookie)
 {
+	assert(cb_);
+
 	pbufpool_ = ring_buffer__new(map_fd, ring_cb_fn, this, nullptr);
 
 	if (!pbufpool_) {
