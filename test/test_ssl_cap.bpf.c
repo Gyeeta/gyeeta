@@ -114,9 +114,10 @@ static bool valid_cap_pid(u32 pid, bool checkppid)
 	return false;
 }	
 
-static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * pis_client)
+static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * pis_client, bool is_write)
 {
 	struct inet_sock 		*sockp;
+	u32				sk_max_ack_backlog = 0;
 	u16 				family, port1, port2;
 	bool				is_inbound;
 
@@ -128,6 +129,8 @@ static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * 
 		return false;
 	}	
 
+	BPF_CORE_READ_INTO(&sk_max_ack_backlog, sk, sk_max_ack_backlog);
+
 	port1					= bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
 	port2 					= bpf_ntohs(BPF_CORE_READ(sockp, inet_sport));
 
@@ -135,13 +138,25 @@ static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * 
 		return false;
 	}	
 
-	if (port1 > port2) {
-		is_inbound			= false;
-		*pis_client			= false;
-	}	
+	if (sk_max_ack_backlog > 0) {
+		if (is_write) {
+			is_inbound			= false;
+			*pis_client			= false;
+		}	
+		else {
+			is_inbound			= true;
+			*pis_client			= true;
+		}	
+	}
 	else {
-		is_inbound			= true;
-		*pis_client			= true;
+		if (!is_write) {
+			is_inbound			= false;
+			*pis_client			= false;
+		}	
+		else {
+			is_inbound			= true;
+			*pis_client			= true;
+		}
 	}	
 
 	if (family == AF_INET) {
@@ -587,7 +602,7 @@ void BPF_URETPROBE(ssl_ret_read_ex, int rc)
 	ssl_ret_rw_probe(ctx, rc, false /* is_write */);
 }
 
-static int upd_tcp_sock(void *ctx, struct sock *sk)
+static int upd_tcp_sock(void *ctx, struct sock *sk, bool is_write)
 {
 	u64 				pidtid = bpf_get_current_pid_tgid();
 	struct tssl_tcp_val		*pval;
@@ -600,7 +615,7 @@ static int upd_tcp_sock(void *ctx, struct sock *sk)
 	struct tssl_conn_info		sslinfo = {};
 	bool				bret;
 
-	bret = read_addr_tuple(&sslinfo.tup, sk, &sslinfo.is_client);
+	bret = read_addr_tuple(&sslinfo.tup, sk, &sslinfo.is_client, is_write);
 	if (!bret) {
 		goto done;
 	}	
@@ -704,7 +719,7 @@ void BPF_UPROBE(ssl_set_ex_data, void *ssl)
 SEC("fentry/tcp_sendmsg")
 int BPF_PROG(fentry_tcp_sendmsg_entry, struct sock *sk)
 {
-	return upd_tcp_sock(ctx, sk);
+	return upd_tcp_sock(ctx, sk, true /* is_write */);
 }
 
 SEC("tracepoint/syscalls/sys_enter_execve")
