@@ -20,8 +20,10 @@ using GlobIDInodeMap			= std::unordered_map<ino_t, std::vector<std::pair<uint64_
 
 enum class DirPacket : uint8_t
 {
-	DIR_INBOUND		= 0,
-	DIR_OUTBOUND,
+	DIR_UNKNOWN		= 0,
+
+	DIR_INBOUND		= 1,	/* Inbound to a Service i.e. From Client to Server */
+	DIR_OUTBOUND		= 2,	/* Outbound : From Server to Client */
 };	
 
 
@@ -166,6 +168,7 @@ public :
 	uint32_t 			last_npkts_rcvd_	{0};
 	uint32_t			last_npkts_drops_ 	{0};
 	gy_atomic<uint16_t>		max_listen_port_	{0};
+	gy_atomic<uint16_t>		min_listen_port_	{0};
 	bool				parse_api_calls_	{false};
 	bool				is_rootns_		{false};
 	bool				forcerestart_		{false};

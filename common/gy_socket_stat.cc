@@ -1313,7 +1313,7 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 			}	
 		}	
 
-		pnewlistener = new TCP_LISTENER(laddr, pevent->lport, pevent->netns, pevent->pid, pevent->backlog, task_weak, listen_table, pevent->comm, 
+		pnewlistener = new TCP_LISTENER(laddr, pevent->lport, pevent->netns, pevent->pid, hash_nsipport, pevent->backlog, task_weak, listen_table, pevent->comm, 
 				nullptr /* pcmdline */, false /* is_pre_existing */, curr_tusec);
 
 		try {
@@ -1769,12 +1769,12 @@ void TCP_CONN::set_notify_elem(comm::TCP_CONN_NOTIFY *pnot, uint64_t close_usec_
 }
 
 
-TCP_LISTENER::TCP_LISTENER(const GY_IP_ADDR & addr, uint16_t port, ino_t nsinode, pid_t pid, int backlog, std::weak_ptr <TASK_STAT> task, \
+TCP_LISTENER::TCP_LISTENER(const GY_IP_ADDR & addr, uint16_t port, ino_t nsinode, pid_t pid, uint32_t listen_hash, int backlog, std::weak_ptr <TASK_STAT> task, \
 			std::shared_ptr <SHR_TASK_HASH_TABLE> listen_table, const char *pcomm, const char *pcmdline, bool is_pre_existing, uint64_t curr_tusec)
 		: 
 		ns_ip_port_(addr, port, nsinode), is_any_ip_(addr.is_any_address()), is_root_netns_(SYS_HARDWARE::get_root_ns_inodes()->net_inode == nsinode),
 		task_weak_(std::move(task)), listen_task_table_(std::move(listen_table)), pid_(pid), backlog_(backlog),  
-		clock_usec_(get_usec_clock()), start_clock_usec_(clock_usec_.load(std::memory_order_relaxed)), tstart_usec_(curr_tusec),
+		clock_usec_(get_usec_clock()), start_clock_usec_(clock_usec_.load(std::memory_order_relaxed)), tstart_usec_(curr_tusec), listen_hash_(listen_hash),
 		last_query_clock_(get_sec_clock()), qps_hist_(last_query_clock_), last_conn_clock_(last_query_clock_), active_conn_hist_(last_query_clock_),
 		resp_cache_v4_(&resp_hist_), is_pre_existing_(is_pre_existing), resp_cache_v6_(&resp_hist_)
 {
@@ -3579,6 +3579,23 @@ int TCP_SOCK_HANDLER::update_cli_conn_info_madhava(const comm::MP_CLI_TCP_INFO *
 		return -1;
 	);
 }	
+
+static int match_listen_shr(struct cds_lfht_node *pht_node, const void *pkey) noexcept
+{
+	const std::shared_ptr<TCP_LISTENER> 	*pshrlisten = (const std::shared_ptr<TCP_LISTENER> *)pkey;
+	TCP_LISTENER_ELEM_TYPE			*pwrap = GY_CONTAINER_OF(pht_node, TCP_LISTENER_ELEM_TYPE, cds_node_);
+	const auto				plistener = pwrap->get_cref().get();
+
+	return (*pshrlisten).get() == plistener;
+};
+
+
+bool TCP_SOCK_HANDLER::is_listener_deleted(const std::shared_ptr<TCP_LISTENER> & shrlisten) const noexcept
+{
+	const NS_IP_PORT		*pdummy = (const NS_IP_PORT *)(void *)&shrlisten;
+
+	return !(bool(shrlisten) && listener_tbl_.template lookup_single_elem<RCU_LOCK_SLOW, match_listen_shr>(*pdummy, shrlisten->listen_hash_));
+}
 
 static int match_ser_conn(struct cds_lfht_node *pht_node, const void *pkey) noexcept
 {
@@ -7219,7 +7236,7 @@ int TCP_SOCK_HANDLER::add_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 		std::shared_ptr <TASK_STAT>	taskshr;
 		std::shared_ptr <SHR_TASK_HASH_TABLE>	listen_task_table;
 		
-		pnewlistener = new TCP_LISTENER(lhs_addr, lhs_port, pnetns->get_ns_inode(), it->second.pid_, pdiag_msg->idiag_wqueue /* backlog */, 
+		pnewlistener = new TCP_LISTENER(lhs_addr, lhs_port, pnetns->get_ns_inode(), it->second.pid_, lhash, pdiag_msg->idiag_wqueue /* backlog */, 
 						it->second.task_weak_, listen_task_table, it->second.comm_, nullptr, !only_listen /* is_pre_existing */);
 
 		if (lhs_addr.is_ipv4_addr()) {

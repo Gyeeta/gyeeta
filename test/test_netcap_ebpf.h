@@ -7,8 +7,8 @@
 
 #define					TCAP_PROTO_UNKNOWN		0
 
-#define					TDIR_INBOUND			0
-#define					TDIR_OUTBOUND			1
+#define					TDIR_INBOUND			1
+#define					TDIR_OUTBOUND			2
 
 typedef uint8_t 			u8;
 typedef uint16_t 			u16;

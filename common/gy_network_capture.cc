@@ -276,11 +276,11 @@ int PCAP_NET_CAP::loop_thread() noexcept
 			pthis->callback_(pframe, phdr->caplen, phdr->len, pthis->linktype_, tv_cap);
 
 			// Call timeout_cb_ if no timeouts seen due to continuous traffic
-			if (pthis->next_timeout_sec_ > 0 && pthis->next_timeout_sec_ <= tv_cap.tv_sec) {
+			if (pthis->next_timeout_sec_ <= tv_cap.tv_sec && pthis->next_timeout_sec_ > 0) {
 
 				pthis->next_timeout_sec_ = tv_cap.tv_sec + pthis->timeout_sec_;
 				pthis->timeout_cb_(pthis);
-			}	
+			}
 		}
 		catch(...) {
 		}	

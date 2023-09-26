@@ -18,6 +18,13 @@
 
 #include 			<algorithm>
 
+/*
+ * NOTE : This header provides Single Writer (Thread) based Memory Pools for much faster allocation using a single thread. Optional
+ * fallback to malloc() is provided in case other writers want to allocate. Use folly::IndexedMemPool for
+ * Multi Writer (Thread) allocation pool.
+ */
+
+
 namespace gyeeta {
 
 using GY_BOOST_POOL		= boost::pool<boost::default_user_allocator_malloc_free>;

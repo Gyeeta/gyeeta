@@ -612,6 +612,8 @@ public :
 	uint32_t					last_cli_errors_		{0};
 	uint32_t					last_ser_errors_		{0};
 
+	uint32_t					listen_hash_			{0};
+
 	uint32_t					last_chk_nconn_			{0};
 	uint32_t					last_chk_nconn_active_		{0};
 	uint32_t					last_avg_qps_			{0};
@@ -654,7 +656,7 @@ public :
 	uint32_t					curr_query_v6_			{0};
 	RESP_TO_CONN					resp_conn_v6_;	
 
-	TCP_LISTENER(const GY_IP_ADDR & addr, uint16_t port, ino_t nsinode, pid_t pid, int backlog = 0, std::weak_ptr <TASK_STAT> task = {}, \
+	TCP_LISTENER(const GY_IP_ADDR & addr, uint16_t port, ino_t nsinode, pid_t pid, uint32_t listen_hash, int backlog = 0, std::weak_ptr <TASK_STAT> task = {}, \
 			std::shared_ptr <SHR_TASK_HASH_TABLE> listen_table = {}, const char *pcomm = nullptr, const char *pcmdline = nullptr, bool is_pre_existing = false, \
 			uint64_t curr_tusec = get_usec_time());
 
@@ -1226,6 +1228,8 @@ public :
 
 	int listener_inode_validate(int & nclconfirm) noexcept;
 	int listener_cluster_check() noexcept;
+
+	bool is_listener_deleted(const std::shared_ptr<TCP_LISTENER> & shrlisten) const noexcept;
 
 	std::tuple<int, int, int> listener_stats_update(const std::shared_ptr<SERVER_CONNTRACK> & servshr, bool cpu_issue, bool mem_issue, GlobIDInodeMap &delidmap) noexcept;
 	bool host_status_update(const std::shared_ptr<SERVER_CONNTRACK> & servshr, bool cpu_issue, bool mem_issue, bool severe_cpu_issue, bool severe_mem_issue, \

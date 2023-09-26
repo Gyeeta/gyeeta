@@ -67,10 +67,10 @@ std::pair<SVC_CAP_ONE *, DirPacket> NETNS_CAP_ONE::get_svc_from_tuple_locked(con
 	}	
 
 	SVC_CAP_ONE			*psvc = nullptr;
-	uint16_t			maxport = max_listen_port_.load(std::memory_order_relaxed);
-	uint16_t			minport = std::min(srcport, dstport);
+	uint16_t			maxsvcport = max_listen_port_.load(mo_relaxed), minsvcport = min_listen_port_.load(mo_relaxed);
+	uint16_t			minport = std::min(srcport, dstport), maxport = std::max(srcport, dstport);
 
-	if (minport > maxport) {
+	if (minport > maxsvcport || maxport < minsvcport) {
 		return {};
 	}	
 
@@ -131,23 +131,25 @@ std::pair<SVC_CAP_ONE *, DirPacket> NETNS_CAP_ONE::get_svc_from_tuple_locked(con
 	if (minport == srcport) {
 		svcfind(srcip, srcport);
 		
-		if (!psvc && dstport <= maxport) {
+		if (!psvc && dstport <= maxsvcport) {
 			svcfind(dstip, dstport);
-			return {psvc, DirPacket::DIR_INBOUND};
+
+			return {psvc, psvc ? DirPacket::DIR_INBOUND : DirPacket::DIR_UNKNOWN};
 		}	
 		else {
-			return {psvc, DirPacket::DIR_OUTBOUND};
+			return {psvc, psvc ? DirPacket::DIR_OUTBOUND : DirPacket::DIR_UNKNOWN};
 		}	
 	}
 	else {
 		svcfind(dstip, dstport);
 
-		if (!psvc && srcport <= maxport) {
+		if (!psvc && srcport <= maxsvcport) {
 			svcfind(srcip, srcport);
-			return {psvc, DirPacket::DIR_OUTBOUND};
+
+			return {psvc, psvc ? DirPacket::DIR_OUTBOUND : DirPacket::DIR_UNKNOWN};
 		}	
 		else {
-			return {psvc, DirPacket::DIR_INBOUND};
+			return {psvc, psvc ? DirPacket::DIR_INBOUND : DirPacket::DIR_UNKNOWN};
 		}	
 	}	
 }	
@@ -157,6 +159,7 @@ void SVC_NET_CAPTURE::add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) 
 {
 	try {
 		NetNSMap		& nmap = (!isapicallmap ? errcodemap_ : apicallmap_);
+		STRING_BUFFER<128>	strbuf;
 
 		for (auto & [inode, vecone] : nslistmap) {
 
@@ -166,6 +169,8 @@ void SVC_NET_CAPTURE::add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) 
 				);	
 				return;
 			}
+
+			strbuf.reset();
 
 			try {
 				auto 			[it, success] = nmap.try_emplace(inode, inode, vecone, isapicallmap, inode == rootnsid_);
@@ -200,6 +205,8 @@ void SVC_NET_CAPTURE::add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) 
 						}	
 
 						if (!portused && nports >= MAX_NETNS_PORTS) {
+							strbuf << '\'' << listenshr->comm_ << '\'';
+
 							DEBUGEXECN(1,
 								if (nskipped < 8) {
 									INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Skipping Network Capture for Listener %s as Max Ports Monitored breached %u\n",
@@ -224,8 +231,8 @@ void SVC_NET_CAPTURE::add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) 
 					slowlock.unlock();
 
 					if (nskipped) {
-						WARNPRINT_OFFLOAD("Service Network Capture : Ignored %u Listeners as max Listener Ports per Namespace limit breached %u\n", 
-							nskipped, nports);
+						WARNPRINT_OFFLOAD("Service Network Capture : Ignored %u Listeners as max Listener Ports per Namespace limit breached %u : List of ignored Listeners include %s\n", 
+							nskipped, nports, strbuf.data());
 					}	
 
 					if (torestart) {
@@ -352,6 +359,8 @@ void SVC_NET_CAPTURE::check_netns_listeners() noexcept
 		STRING_BUFFER<2000>		strbuf;
 		);
 
+		const auto			psockhdlr = TCP_SOCK_HANDLER::get_singleton();
+
 		const auto checkmap = [&, tcurr = time(nullptr)](NetNSMap & cmap, size_t & nnetns, size_t & nlisten, size_t & nweb, size_t & nhttp2) 
 		{
 			bool			forcerestart = false;
@@ -369,7 +378,7 @@ void SVC_NET_CAPTURE::check_netns_listeners() noexcept
 
 				assert(pnetone);
 
-				if (!lshr || lshr.use_count() == 1) {
+				if (psockhdlr->is_listener_deleted(lshr)) {
 
 					if (!forcerestart && (1 >= pnetone->port_listen_tbl_.count_duplicate_elems(psvcone->serport_, get_uint32_hash(psvcone->serport_), 2))) {
 						forcerestart = true;
@@ -1255,7 +1264,7 @@ uint32_t NETNS_CAP_ONE::get_filter_string(STR_WR_BUF & strbuf)
 {
 	PortStackSet			portset;
 	PortStackSet			dualportset;
-	uint16_t			maxport = 0, nports = 0;
+	uint16_t			minport = 65535, maxport = 0, nports = 0;
 		
 	const auto pchk = [&, parse_api_calls = this->parse_api_calls_](SVC_CAP_ONE *psvcone, void *arg1) -> CB_RET_E
 	{
@@ -1271,6 +1280,7 @@ uint32_t NETNS_CAP_ONE::get_filter_string(STR_WR_BUF & strbuf)
 			portset.emplace(port);
 
 			if (maxport < port) maxport = port;
+			if (minport > port) minport = port;
 		}	
 
 		return CB_OK;
@@ -1278,15 +1288,20 @@ uint32_t NETNS_CAP_ONE::get_filter_string(STR_WR_BUF & strbuf)
 
 	port_listen_tbl_.walk_hash_table_const(pchk);
 
-	for (uint16_t port : portset) {
-		if (nports++ > 0) strbuf.appendconst(" or ");
+	if (!parse_api_calls_ || (portset.size() < 6) || (maxport - minport > 16)) {
+		for (uint16_t port : portset) {
+			if (nports++ > 0) strbuf.appendconst(" or ");
 
-		if (auto it = dualportset.find(port); it == dualportset.end()) {
-			strbuf.appendfmt("tcp src port %hu", port);
-		}
-		else {
-			strbuf.appendfmt("tcp port %hu", port);
-		}
+			if (auto it = dualportset.find(port); it == dualportset.end()) {
+				strbuf.appendfmt("tcp src port %hu", port);
+			}
+			else {
+				strbuf.appendfmt("tcp port %hu", port);
+			}
+		}	
+	}
+	else {
+		strbuf << "tcp portrange " << minport << '-' << maxport;
 	}	
 
 	if (strbuf.is_overflow() || nports == 0) {
@@ -1295,13 +1310,14 @@ uint32_t NETNS_CAP_ONE::get_filter_string(STR_WR_BUF & strbuf)
 	}	
 
 	max_listen_port_.store(maxport, std::memory_order_relaxed);
+	min_listen_port_.store(minport, std::memory_order_relaxed);
 
 	DEBUGEXECN(1,
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Service Network Capture for Namespace inode %lu : Filter has %u ports with %lu bidirectional ports\n", 
-				netinode_, nports, dualportset.size());
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Service Network Capture for Namespace inode %lu : Filter has %u ports with %lu bidirectional ports : Port Range is %hu-%hu\n", 
+				netinode_, nports, dualportset.size(), minport, maxport);
 	);
 
-	return (dualportset.size() > 0 ? 196 : 128);
+	return (parse_api_calls_ ? 65535 : (dualportset.size() > 0 ? 196 : 128));
 }	
 
 
@@ -1396,7 +1412,7 @@ void NETNS_CAP_ONE::restart_capture()
 
 	if (!is_rootns_) {
 		if (parse_api_calls_) {
-			bufsz = 4 * 1024 * 1024;
+			bufsz = 8 * 1024 * 1024;
 		}	
 		else {
 			bufsz = 2 * 1024 * 1024;
@@ -1404,7 +1420,7 @@ void NETNS_CAP_ONE::restart_capture()
 	}	
 	else {
 		if (parse_api_calls_) {
-			bufsz = 16 * 1024 * 1024;
+			bufsz = 24 * 1024 * 1024;
 		}	
 		else {
 			bufsz = 8 * 1024 * 1024;

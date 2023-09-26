@@ -80,6 +80,7 @@ int main()
 		for ( const auto & n : u ) {
 			std::cout << "\tKey:[" << n.first << "] Value:[" << n.second << "]\n";
 		}
+		std::cout << '\n';
 
 		memuse("Before copy", arena);
 
@@ -152,6 +153,7 @@ int main()
 		for ( const auto & n : u2 ) {
 			std::cout << "\tKey:[" << n.first << "] Value:[" << n.second << "]\n";
 		}
+		std::cout << '\n';
 
 		memuse("Before destruction", arena);
 	}
@@ -200,6 +202,48 @@ int main()
 		for ( const auto & n : u ) {
 			std::cout << "\t[" << n << "]\n";
 		}
+		std::cout << '\n';
+		memuse("Before destruction", arena);
+	}
+
+	{
+		IRPRINT("\n\n");
+
+		INFOPRINTCOLOR(GY_COLOR_CYAN, "Testing Inline Stack Ordered Set...\n");
+
+		using Stackset 		= INLINE_STACK_SET<int, 1024>;
+
+		Stackset			u;
+		auto			 & 	arena = u.get_arena();
+
+		memuse("After construction", arena);
+
+		u.emplace(10);
+		u.emplace(20);
+		u.emplace(-1);
+		u.emplace(24);
+
+		u.emplace(-1);	// Will be rejected
+
+		// Iterate and print 
+		for ( const auto & n : u ) {
+			std::cout << "\t[" << n << "]\n";
+		}
+
+		memuse("After assigns", arena);
+
+		u.clear();
+		memuse("After clear", arena);
+
+		for (int i = 9; i >= 0; --i) {
+			u.emplace(i);
+		}	
+
+		for ( const auto & n : u ) {
+			std::cout << "\t[" << n << "]\n";
+		}
+		std::cout << '\n';
+
 		memuse("Before destruction", arena);
 	}
 
@@ -526,6 +570,8 @@ int main()
 		for ( const auto p : u ) {
 			std::cout << "\t[" << p << "]\n";
 		}
+		std::cout << '\n';
+
 		memuse("Before destruction", arena);
 	}
 	{
@@ -568,6 +614,7 @@ int main()
 		for ( const auto & n : u2 ) {
 			std::cout << "\tKey:[{" << std::get<0>(n.first) << ", " << std::get<1>(n.first) << ", " << std::get<2>(n.first) << "}] Value:[" << n.second << "]\n";
 		}
+		std::cout << '\n';
 
 		memuse("After copy", arena);
 	}

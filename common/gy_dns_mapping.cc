@@ -96,7 +96,7 @@ DNS_MAPPING::DNS_MAPPING(const char * save_entry_pathin)
 
 	for (auto & it : vecnew) {
 		try {
-			const auto pcapcb = [this](const uint8_t * pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_cap) noexcept
+			auto pcapcb = [this](const uint8_t * pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_cap) noexcept
 			{
 				return process_dns_response(pframe, caplen, origlen, linktype, tv_cap);
 			};
@@ -615,7 +615,7 @@ int DNS_MAPPING::check_new_bridge_masters() noexcept
 
 				INFOPRINT_OFFLOAD("New Bridge Master %s seen. Starting Network capture on this device...\n", it.first.c_str());
 
-				const auto pcapcb = [this](const uint8_t * pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_cap) noexcept
+				auto pcapcb = [this](const uint8_t * pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_cap) noexcept
 				{
 					return process_dns_response(pframe, caplen, origlen, linktype, tv_cap);
 				};

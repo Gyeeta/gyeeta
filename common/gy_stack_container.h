@@ -7,6 +7,7 @@
 
 #include		<unordered_set>
 #include		<unordered_map>
+#include		<set>
 #include		<vector>
 #include		<list>
 
@@ -454,6 +455,88 @@ public :
 	{}
 		
 	INLINE_STACK_HASH_SET & operator= (INLINE_STACK_HASH_SET && other)
+	{
+		if (this != &other) {
+			((Set *)this)->~Set();
+			((Arena *)this)->reset();
+
+			Set			*pset = (Set *)this;	
+
+			new (pset) Set(std::move(other), Allocator(*(Arena *)this));
+		}
+
+		return *this;
+	}	
+
+	using Set::size;
+
+	void clear() noexcept
+	{
+		try {
+			((Set *)this)->~Set();
+			((Arena *)this)->reset();
+
+			Set			*pset = (Set *)this;	
+
+			new (pset) Set(Allocator(*(Arena *)this));
+		}
+		GY_CATCH_EXCEPTION(
+			ERRORPRINT("Exception caught while re-init of Stack Set : %s : Leaving in dangling state\n", GY_GET_EXCEPT_STRING);
+		);
+	}	
+
+	const Arena & get_arena() const noexcept
+	{
+		return *this;
+	}	
+};
+
+template <
+	class 		T, 
+	size_t		StackSize = std::min(1024ul, (sizeof(T) + 8) * 64),
+	class 		Compare = std::less<T>
+	>
+class INLINE_STACK_SET : public StackArena<StackSize, alignof(std::max_align_t)>, public std::set<T, Compare, StackAllocator<T, StackSize>>
+{
+public :	
+	using Arena		= StackArena<StackSize, alignof(std::max_align_t)>;
+	using Allocator		= StackAllocator<T, StackSize>;
+	using Set		= std::set<T, Compare, StackAllocator<T, StackSize>>;
+
+	static_assert(StackSize > 2 * (sizeof(T) + 8));
+
+	INLINE_STACK_SET()
+		: Set(Allocator(*(Arena *)this))
+	{}
+
+	explicit INLINE_STACK_SET(size_t bucket_count)
+		: Set(bucket_count, Compare(), Allocator(*(Arena *)this))
+	{}	
+
+	INLINE_STACK_SET(const INLINE_STACK_SET & other)
+		: Set(other,  Allocator(*(Arena *)this))
+	{}
+
+	INLINE_STACK_SET & operator= (const INLINE_STACK_SET & other)
+	{
+		if (this != &other) {
+			((Set *)this)->~Set();
+			((Arena *)this)->reset();
+
+			Set			*pset = (Set *)this;	
+
+			new (pset) Set(other, Allocator(*(Arena *)this));
+		}
+
+		return *this;
+	}	
+
+	// Not noexcept
+	INLINE_STACK_SET(INLINE_STACK_SET && other)
+		: Set(std::move(other),  Allocator(*(Arena *)this))
+	{}
+		
+	INLINE_STACK_SET & operator= (INLINE_STACK_SET && other)
 	{
 		if (this != &other) {
 			((Set *)this)->~Set();
