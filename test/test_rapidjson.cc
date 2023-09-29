@@ -411,7 +411,7 @@ static void ext_writer_test()
 	smallwriter.KeyConst("MultiLine");
 	smallwriter.StringConst(R"(
 		This is a \" multiline
-		string with \\ aaa
+		string with \\ नमस्ते aaa
 		...)");
 
 	char				tbuf[256];

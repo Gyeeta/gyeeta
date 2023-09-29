@@ -401,7 +401,6 @@ void SVC_NET_CAPTURE::check_netns_listeners() noexcept
 					((tcurr >= psvcone->tfirstresp_ + 10 && psvcone->nconfirm_noweb_ >= 3) ||
 					(tcurr >= psvcone->tfirstresp_ + 60 && psvcone->nconfirm_noweb_ >= 1 && psvcone->nmaybe_noweb_ > 100 && psvcone->nsess_chks_ > 6) ||
 					(tcurr >= psvcone->tfirstresp_ + 100 && psvcone->nmaybe_noweb_ > 1000 && psvcone->nsess_chks_ > 6))) ||
-
 					(psvcone->npkts_data_ > 1000'000 && psvcone->nsess_chks_ > 2 && tcurr > psvcone->tfirstreq_ + 600 && tcurr > psvcone->tfirstresp_ + 600))) {
 
 					strbuf.appendfmt("Listener %s ID %016lx Port %hu NetNS %lu  does not seem to be a HTTP Service. Stopping Network Capture for it...\n", 
