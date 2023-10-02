@@ -181,15 +181,15 @@ static bool read_addr_tuple(struct taddr_tuple *ptuple, struct sock *sk, bool * 
 	else if (family == AF_INET6) {
 
 		if (is_inbound) {
-			ptuple->seraddr.ser6addr 	= BPF_CORE_READ(sk, __sk_common.skc_daddr);
-			ptuple->cliaddr.cli6addr 	= BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr);
+			BPF_CORE_READ_INTO(&ptuple->seraddr.ser6addr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+			BPF_CORE_READ_INTO(&ptuple->cliaddr.cli6addr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
 
 			ptuple->serport			= port1;
 			ptuple->cliport 		= port2;
 		}
 		else {
-			ptuple->cliaddr.cli6addr 	= BPF_CORE_READ(sk, __sk_common.skc_daddr);
-			ptuple->seraddr.ser6addr 	= BPF_CORE_READ(sk, __sk_common.skc_rcv_saddr);
+			BPF_CORE_READ_INTO(&ptuple->cliaddr.cli6addr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr32);
+			BPF_CORE_READ_INTO(&ptuple->seraddr.ser6addr, sk, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr32);
 
 			ptuple->cliport			= port1;
 			ptuple->serport 		= port2;
@@ -638,7 +638,7 @@ static int upd_tcp_sock(void *ctx, struct sock *sk, bool is_write)
 		get_cleartext(ctx, &clearargs);
 	}
 
-	gy_bpf_printk("upd_tcp_sock adding ne Conn Map entry for SSL ctx %p\n", pval->tkey.ssl);
+	gy_bpf_printk("upd_tcp_sock adding new Conn Map entry for SSL ctx %p : IP Version %d : Server Port %d\n", pval->tkey.ssl, (int)sslinfo.tup.ipver, (int)sslinfo.tup.serport);
 
 	bpf_map_update_elem(&ssl_conn_map, &pval->tkey, &sslinfo, BPF_ANY);
 

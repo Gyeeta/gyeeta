@@ -18,16 +18,7 @@ class TCP_LISTENER;
 using SvcInodeMap			= std::unordered_map<ino_t, std::vector<std::shared_ptr<TCP_LISTENER>>, GY_JHASHER<ino_t>>;
 using GlobIDInodeMap			= std::unordered_map<ino_t, std::vector<std::pair<uint64_t, uint16_t>>, GY_JHASHER<ino_t>>;
 
-enum class DirPacket : uint8_t
-{
-	DIR_UNKNOWN		= 0,
-
-	DIR_INBOUND		= 1,	/* Inbound to a Service i.e. From Client to Server */
-	DIR_OUTBOUND		= 2,	/* Outbound : From Server to Client */
-};	
-
-
-class SVC_CAP_ONE
+class HTTP_ERR_SVC
 {
 public :
 	struct SessInfo
@@ -54,7 +45,7 @@ public :
 
 	static constexpr size_t			MaxCliHash			{0xF};
 
-	RCU_HASH_CLASS_MEMBERS(uint16_t, SVC_CAP_ONE);
+	RCU_HASH_CLASS_MEMBERS(uint16_t, HTTP_ERR_SVC);
 
 	std::shared_ptr<TCP_LISTENER> 		listenshr_;
 	time_t					tstart_				{0};
@@ -69,18 +60,19 @@ public :
 	uint8_t					nsess_chks_			{0};
 	tribool					is_http2_			{indeterminate};
 	bool					web_confirm_			{false};
-	bool					parse_api_calls_		{false};
 	bool					is_rootns_			{false};
 	
-	SVC_CAP_ONE(std::shared_ptr<TCP_LISTENER> && listenshr, bool parse_api_calls, bool is_rootns, time_t tstart = time(nullptr)) noexcept; 
+	static constexpr bool			parse_api_calls_		{false};
 
-	SVC_CAP_ONE(const SVC_CAP_ONE &)		= delete;
-	SVC_CAP_ONE(SVC_CAP_ONE &&) noexcept		= default;
+	HTTP_ERR_SVC(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)) noexcept; 
+
+	HTTP_ERR_SVC(const HTTP_ERR_SVC &)		= delete;
+	HTTP_ERR_SVC(HTTP_ERR_SVC &&) noexcept		= default;
 	
-	SVC_CAP_ONE & operator=(const SVC_CAP_ONE &)	= delete;
-	SVC_CAP_ONE & operator=(SVC_CAP_ONE &&)		= default;
+	HTTP_ERR_SVC & operator=(const HTTP_ERR_SVC &)	= delete;
+	HTTP_ERR_SVC & operator=(HTTP_ERR_SVC &&)	= default;
 	
-	~SVC_CAP_ONE() noexcept				= default;
+	~HTTP_ERR_SVC() noexcept			= default;
 
 	SessInfo * get_session_inbound(const GY_IP_ADDR & cliip, uint16_t cliport, const GY_TCP_HDR & tcp, time_t tpkt) noexcept;
 
@@ -153,10 +145,10 @@ public :
 	bool is_retranmit(uint32_t ser_seq, uint32_t cli_seq, uint16_t cli_port) noexcept;
 };	
 
-class NETNS_CAP_ONE
+class NETNS_HTTP_CAP1
 {
 public :
-	using PortListenHashTbl		= RCU_HASH_TABLE <uint16_t, SVC_CAP_ONE>;
+	using PortListenHashTbl		= RCU_HASH_TABLE <uint16_t, HTTP_ERR_SVC>;
 
 	PortListenHashTbl		port_listen_tbl_	{32, 32, 0, false, false};
 	ino_t				netinode_		{0};
@@ -169,45 +161,109 @@ public :
 	uint32_t			last_npkts_drops_ 	{0};
 	gy_atomic<uint16_t>		max_listen_port_	{0};
 	gy_atomic<uint16_t>		min_listen_port_	{0};
-	bool				parse_api_calls_	{false};
 	bool				is_rootns_		{false};
 	bool				forcerestart_		{false};
 
-	NETNS_CAP_ONE(ino_t netinode, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool parse_api_calls, bool is_rootns = false);
+	static constexpr bool		parse_api_calls_	{false};
+
+	NETNS_HTTP_CAP1(ino_t netinode, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
 
 	uint32_t get_filter_string(STR_WR_BUF & strbuf); 
 
 	void restart_capture();
 
-	SVC_CAP_ONE * find_svc_by_globid_locked(uint64_t globid, uint16_t port, bool & portused) const noexcept;
+	HTTP_ERR_SVC * find_svc_by_globid_locked(uint64_t globid, uint16_t port, bool & portused) const noexcept;
 
-	std::pair<SVC_CAP_ONE *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
+	std::pair<HTTP_ERR_SVC *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
 
 	int process_pkt(const uint8_t *pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_pkt) const noexcept;
 	
-	bool handle_req_err_locked(SVC_CAP_ONE & svc, const GY_IP_ADDR & cliip, uint16_t cliport, const GY_TCP_HDR & tcp, const uint8_t *pdata, \
+	bool handle_req_err_locked(HTTP_ERR_SVC & svc, const GY_IP_ADDR & cliip, uint16_t cliport, const GY_TCP_HDR & tcp, const uint8_t *pdata, \
 					uint32_t datalen, uint32_t caplen, struct timeval tv_pkt) const;
 
-	bool handle_resp_err_locked(SVC_CAP_ONE & svc, const GY_IP_ADDR & cliip, uint16_t cliport, const GY_TCP_HDR & tcp, const uint8_t *pdata, \
+	bool handle_resp_err_locked(HTTP_ERR_SVC & svc, const GY_IP_ADDR & cliip, uint16_t cliport, const GY_TCP_HDR & tcp, const uint8_t *pdata, \
 					uint32_t datalen, uint32_t caplen, struct timeval tv_pkt) const;
-
-	static tribool check_http1_req(const uint8_t *pdata, uint32_t caplen, uint32_t datalen) noexcept;
-
-	static bool get_http1_status_resp(const uint8_t *pdata, uint32_t caplen, bool & is_cli_err, bool & is_ser_err) noexcept;
 
 };
+
+class SVC_API_PARSER
+{
+public :
+	RCU_HASH_CLASS_MEMBERS(uint16_t, SVC_API_PARSER);
+
+	std::shared_ptr<TCP_LISTENER> 		listenshr_;
+	time_t					tstart_			{0};
+	time_t					tfirstreq_		{0};
+	time_t					tfirstresp_		{0};
+	uint16_t				serport_		{0};
+	bool					is_rootns_		{false};
+	
+	static constexpr bool			parse_api_calls_	{true};
+
+	SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)) noexcept; 
+
+	SVC_API_PARSER(const SVC_API_PARSER &)			= delete;
+	SVC_API_PARSER(SVC_API_PARSER &&) noexcept		= default;
+	
+	SVC_API_PARSER & operator=(const SVC_API_PARSER &)	= delete;
+	SVC_API_PARSER & operator=(SVC_API_PARSER &&)		= default;
+	
+	~SVC_API_PARSER() noexcept				= default;
+
+	void reset_stats(time_t tcurr) noexcept;
+
+	bool operator== (uint16_t sport) const noexcept;
+
+};	
+
+class NETNS_API_CAP1
+{
+public :
+	using PortListenHashTbl		= RCU_HASH_TABLE <uint16_t, SVC_API_PARSER>;
+
+	PortListenHashTbl		port_listen_tbl_	{32, 32, 0, false, false};
+	ino_t				netinode_		{0};
+	std::unique_ptr<PCAP_NET_CAP>	netcap_;
+	time_t				tstart_ 		{0};
+	time_t				tlast_check_ 		{0};
+	int				nerror_retries_		{0};
+	uint32_t 			last_npkts_rcvd_	{0};
+	uint32_t			last_npkts_drops_ 	{0};
+	gy_atomic<uint16_t>		max_listen_port_	{0};
+	gy_atomic<uint16_t>		min_listen_port_	{0};
+	bool				is_rootns_		{false};
+	bool				forcerestart_		{false};
+
+	static constexpr bool		parse_api_calls_	{true};
+
+	NETNS_API_CAP1(ino_t netinode, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
+
+	uint32_t get_filter_string(STR_WR_BUF & strbuf); 
+
+	void restart_capture();
+
+	SVC_API_PARSER * find_svc_by_globid_locked(uint64_t globid, uint16_t port, bool & portused) const noexcept;
+
+	std::pair<SVC_API_PARSER *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
+
+	int process_pkt(const uint8_t *pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_pkt) const noexcept;
+
+};
+
+
 
 class SVC_NET_CAPTURE
 {
 public :
-	using NetNSMap			= std::unordered_map<ino_t, NETNS_CAP_ONE, GY_JHASHER<ino_t>>;
+	using ErrNSMap			= std::unordered_map<ino_t, NETNS_HTTP_CAP1, GY_JHASHER<ino_t>>;
+	using ApiNSMap			= std::unordered_map<ino_t, NETNS_API_CAP1, GY_JHASHER<ino_t>>;
 
 	static constexpr uint32_t	MAX_NETNS_CAP 		{128};
 	static constexpr uint32_t	MAX_NETNS_PORTS		{64};
 
 private :
-	NetNSMap			errcodemap_;		// Map of captures for only http errors : To be accessed only from the schedthr_
-	NetNSMap			apicallmap_;		// Map of captures for API calls & errors : To be accessed only from the schedthr_
+	ErrNSMap			errcodemap_;		// Map of captures for only http errors : To be accessed only from the schedthr_
+	ApiNSMap			apicallmap_;		// Map of captures for API calls : To be accessed only from the schedthr_
 	ino_t				rootnsid_		{0};		
 	GY_SCHEDULER			schedthr_		{true /* allow_catchup */};
 
@@ -226,13 +282,17 @@ public :
 
 private :
 
-	void add_listeners(SvcInodeMap & nslistmap, bool isapicallmap) noexcept;
+	void add_err_listeners(SvcInodeMap & nslistmap) noexcept;
 
-	void del_listeners(const GlobIDInodeMap & nslistmap) noexcept;
+	void del_err_listeners(const GlobIDInodeMap & nslistmap) noexcept;
 
-	void check_netns_listeners() noexcept;
+	void add_api_listeners(SvcInodeMap & nslistmap) noexcept;
 
-	void print_netns_stats(NetNSMap & cmap, const char * prefix) const noexcept;
+	void del_api_listeners(const GlobIDInodeMap & nslistmap) noexcept;
+
+	void check_netns_err_listeners() noexcept;
+
+	void check_netns_api_listeners() noexcept;
 };	
 
 

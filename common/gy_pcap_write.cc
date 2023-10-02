@@ -49,7 +49,7 @@ bool GY_PCAP_WRITER::write_tcp_pkt(struct timeval tv, const GY_IP_ADDR & cip, co
 	iov[0].iov_base			= &hdr;
 	iov[0].iov_len			= sizeof(hdr);
 
-	if (false == cip.is_ipv6_addr()) {
+	if (false == cip.is_pure_ipv6()) {
 		std::memset(&ipv4, 0, sizeof(ipv4));
 
 		// Set the IPv4 header

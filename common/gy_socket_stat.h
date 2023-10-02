@@ -550,13 +550,15 @@ public :
 	uint64_t					glob_id_			{0};
 	uint64_t					aggr_glob_id_			{0};
 
-	std::atomic<tribool>				net_cap_started_		{indeterminate};
-	tribool						is_http_svc_			{indeterminate};
-
-	static_assert(decltype(net_cap_started_)::is_always_lock_free == true, "Boost Tribool Atomics not lock free!");
-	
 	const bool					is_any_ip_;
 	const bool					is_root_netns_;
+
+	tribool						is_http_svc_			{indeterminate};
+	std::atomic<tribool>				httperr_cap_started_		{indeterminate};
+
+	static_assert(decltype(httperr_cap_started_)::is_always_lock_free == true, "Boost Tribool Atomics not lock free!");
+	
+	std::atomic<tribool>				api_cap_started_		{indeterminate};
 
 	uint32_t					last_qps_count_			{0};
 

@@ -1274,7 +1274,7 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 			std::memcpy(plistener->orig_comm_, plistener->comm_, sizeof(plistener->orig_comm_));
 
 			// Reset Service Network Capture : Currently if restart happens within 30 sec we keep the old state...
-			plistener->net_cap_started_.store(indeterminate, std::memory_order_relaxed);
+			plistener->httperr_cap_started_.store(indeterminate, std::memory_order_relaxed);
 			plistener->is_http_svc_ = indeterminate;
 
 			ptask_handler_->get_task(pevent->pid, newtaskcb);
@@ -3933,7 +3933,7 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 					// XXX Don't send to Madhava : Do we need to send STATE_DOWN message if ntasks_associated_ == 0 ?
 
 					if (stale_dur2) {
-						if (true == plistener->net_cap_started_.load(std::memory_order_relaxed)) {
+						if (true == plistener->httperr_cap_started_.load(std::memory_order_relaxed)) {
 							ino_t			inode = plistener->ns_ip_port_.inode_;
 							uint16_t		port = plistener->ns_ip_port_.ip_port_.port_;
 							
@@ -6760,13 +6760,13 @@ int TCP_SOCK_HANDLER::upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 			if (success) {
 				plistener->uid_ 	= uid;
 
-				if (indeterminate(plistener->net_cap_started_.load(std::memory_order_relaxed)) && capture_errcode_) {
+				if (indeterminate(plistener->httperr_cap_started_.load(std::memory_order_relaxed)) && capture_errcode_) {
 					ino_t			inode = plistener->ns_ip_port_.inode_;
 					uint16_t		port = plistener->ns_ip_port_.ip_port_.port_;
 
 					if (true == typeinfo::not_http_service(port, plistener->comm_, plistener->cmdline_)) {
 
-						plistener->net_cap_started_.store(false, std::memory_order_relaxed);
+						plistener->httperr_cap_started_.store(false, std::memory_order_relaxed);
 						plistener->is_http_svc_ = false;
 					}
 					else if (svcnetcap_.listen_cap_allowed(false /* isapicall */)) {
