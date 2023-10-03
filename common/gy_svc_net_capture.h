@@ -176,14 +176,19 @@ public :
 
 	std::pair<HTTP_ERR_SVC *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
 
-	int process_pkt(const uint8_t *pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_pkt) const noexcept;
-	
 	bool handle_req_err_locked(HTTP_ERR_SVC & svc, const GY_IP_ADDR & cliip, uint16_t cliport, const GY_TCP_HDR & tcp, const uint8_t *pdata, \
 					uint32_t datalen, uint32_t caplen, struct timeval tv_pkt) const;
 
 	bool handle_resp_err_locked(HTTP_ERR_SVC & svc, const GY_IP_ADDR & cliip, uint16_t cliport, const GY_TCP_HDR & tcp, const uint8_t *pdata, \
 					uint32_t datalen, uint32_t caplen, struct timeval tv_pkt) const;
 
+	void print_stats(uint32_t npkts_received, uint32_t npkts_kernel_drops) const noexcept
+	{
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Service Network Stats for Network Namespace %lu in last few minutes : "
+					"%u packets %u drops #Listeners %lu Retransitted Errors %lu\n", 
+					netinode_, npkts_received, npkts_kernel_drops, port_listen_tbl_.approx_count_fast(), 
+					retranchk_ ? gy_diff_counter(retranchk_->nretrans_, retranchk_->last_nretrans_) : 0);
+	}	
 };
 
 class SVC_API_PARSER
@@ -246,8 +251,10 @@ public :
 
 	std::pair<SVC_API_PARSER *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
 
-	int process_pkt(const uint8_t *pframe, uint32_t caplen, uint32_t origlen, int linktype, struct timeval tv_pkt) const noexcept;
-
+	void print_stats(uint32_t npkts_received, uint32_t npkts_kernel_drops) const noexcept
+	{
+		// TODO
+	}	
 };
 
 
