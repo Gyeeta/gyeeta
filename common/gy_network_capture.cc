@@ -78,7 +78,7 @@ PCAP_NET_CAP::~PCAP_NET_CAP()
 
 		scope.unlock();
 
-		gy_pthread_join(loop_tid_, nullptr, 200 /* max_millsecs_to_wait_at_start */, true); 
+		gy_pthread_join(loop_tid_, nullptr, 200 /* max_millsecs_to_wait_at_start */, true /* use_signal_after_timeout */, true /* wait_indefinitely_if_timeout */); 
 		
 		loop_tid_ = 0;
 	}	

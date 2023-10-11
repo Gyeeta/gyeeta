@@ -117,6 +117,8 @@ TCP_SOCK_HANDLER::TCP_SOCK_HANDLER(uint8_t resp_sampling_percent, bool capture_e
 	auto schedshr = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION);
 	auto schedshrmain = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_MAINTENANCE);
 
+	svcnetcap_.emplace(SYS_HARDWARE::get_root_ns_inodes()->net_inode);
+
 	schedshr->add_schedule(1400, 1000, 0, "Check for NAT from cache", 
 	[this] { 
 		nat_check_cache();
@@ -179,9 +181,9 @@ TCP_SOCK_HANDLER::TCP_SOCK_HANDLER(uint8_t resp_sampling_percent, bool capture_e
 
 		next_imp_procs = !next_imp_procs;
 
-		if (delidmap.size() > 0) {
+		if (delidmap.size() > 0 && bool(svcnetcap_)) {
 			try {
-				svcnetcap_.sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listeners %ld", time(nullptr)).get(), std::move(delidmap));
+				svcnetcap_->sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listeners %ld", time(nullptr)).get(), std::move(delidmap));
 			}
 			catch(...) {
 			}	
@@ -4667,7 +4669,7 @@ int TCP_SOCK_HANDLER::listener_inode_validate(int & nclconfirm) noexcept
 					is_uniq = aggradd(plistener);
 
 					/*
-					 * XXX TODO : Currently we do not fetch the prior Listener stats (prior to Listener start).
+					 * XXX : Currently we do not fetch the prior Listener stats (prior to Listener start).
 					 * Delete the following line if needed...
 					 */
 					is_uniq = false; plistener->server_stats_updated_ = true; 
@@ -5014,7 +5016,7 @@ int TCP_SOCK_HANDLER::listener_inode_validate(int & nclconfirm) noexcept
 													is_uniq = aggradd(plistener);
 
 													/*
-													 * XXX TODO : Currently we do not fetch the prior Listener stats (prior to Listener start).
+													 * XXX : Currently we do not fetch the prior Listener stats (prior to Listener start).
 													 * Delete the following line if needed...
 													 */
 													is_uniq = false; plistener->server_stats_updated_ = true; 
@@ -6769,13 +6771,11 @@ int TCP_SOCK_HANDLER::upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 						plistener->httperr_cap_started_.store(false, std::memory_order_relaxed);
 						plistener->is_http_svc_ = false;
 					}
-					else if (svcnetcap_.listen_cap_allowed(false /* isapicall */)) {
+					else if (bool(svcnetcap_) && svcnetcap_->is_svc_cap_allowed(false /* isapicall */)) {
 						auto		[it, success] = svcinodemap_.try_emplace(inode);
 						auto		& vec = it->second;
 
 						vec.emplace_back(plistener->shared_from_this());
-
-						// XXX TODO Add capture_api_call_ once implemented
 					}
 				}	
 			}
@@ -8532,9 +8532,9 @@ int TCP_SOCK_HANDLER::inet_diag_thread() noexcept
 					treemap.clear();
 				}	
 
-				if (svcinodemap_.size() > 0) {
+				if (svcinodemap_.size() > 0 && bool(svcnetcap_)) {
 					// Need to send svc net captures
-					svcnetcap_.sched_add_listeners(0, "Service Network Capture Add Listeners", std::move(svcinodemap_), capture_api_call_);
+					svcnetcap_->sched_add_listeners(0, "Service Network Capture Add Listeners", std::move(svcinodemap_), capture_api_call_);
 				}
 				
 				CONDEXEC( 

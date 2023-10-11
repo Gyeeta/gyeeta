@@ -223,7 +223,12 @@ extern int 			gdebugexecn;
 	size_t		_len = (len);								\
 	size_t 		_dlen = (_len > 1 ? _len - 1 : 0);					\
 												\
-	if (_dlen) std::strncpy(_dest, _src, _dlen);						\
+	if (!(_src >= _dest && _src < _dest + _dlen)) {						\
+		if (_dlen) std::strncpy(_dest, _src, _dlen);					\
+	}											\
+	else {											\
+		std::memmove(_dest, _src, _dlen);						\
+	}											\
 	_dest[_dlen] = 0;									\
 	_dest;											\
 })	
@@ -1334,7 +1339,7 @@ public :
 };
 
 
-template <size_t szbuf_, size_t align_bytes = 8, bool memset_trail_bytes = true>
+template <size_t szbuf_, size_t align_bytes = 8, bool memset_trail_bytes = false>
 class UCHAR_BUF
 {
 protected :	

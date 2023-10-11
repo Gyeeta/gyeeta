@@ -8,7 +8,7 @@ static constexpr int	MAX_OUTER = 1'000'000;
 
 static int64_t		firstdiff;
 
-void bench_strncpy(const std::unique_ptr<char []> * __restrict__ pstrarr, char *pbuf, size_t szbuf)
+void bench_strncpy(const std::unique_ptr<char []> * pstrarr, char *pbuf, size_t szbuf)
 {
 	// First touch the addresses to prevent page faults
 	for (int i = 0; i < 10; ++i) {
@@ -34,7 +34,7 @@ void bench_strncpy(const std::unique_ptr<char []> * __restrict__ pstrarr, char *
 	INFOPRINTCOLOR(GY_COLOR_GREEN, "Total Time for %d strncpy is %lu nsec (Avg %lu nsec)\n", MAX_OUTER * 10, ensec - cnsec, (ensec - cnsec)/MAX_OUTER/10);
 }	
 
-void bench_gy_strncpy(const std::unique_ptr<char []> * __restrict__ pstrarr, char *pbuf, size_t szbuf)
+void bench_gy_strncpy(const std::unique_ptr<char []> * pstrarr, char *pbuf, size_t szbuf)
 {
 	// First touch the addresses to prevent page faults
 	for (int i = 0; i < 10; ++i) {
@@ -61,9 +61,36 @@ void bench_gy_strncpy(const std::unique_ptr<char []> * __restrict__ pstrarr, cha
 		MAX_OUTER * 10, secdiff, secdiff/MAX_OUTER/10, ((secdiff - firstdiff) * 100.0)/firstdiff, secdiff <= firstdiff ? "faster" : "slower"); 
 }	
 
+void bench_strncpy_0(const std::unique_ptr<char []> * pstrarr, char *pbuf, size_t szbuf)
+{
+	// First touch the addresses to prevent page faults
+	for (int i = 0; i < 10; ++i) {
+		strncpy(pbuf, pstrarr[i].get(), szbuf - 1);
+		pbuf[szbuf - 1] = 0;
+	}	
+	
+	auto			cnsec = gyeeta::get_nsec_clock(), ensec = 0ul;
+
+	for (int j = 0; j < MAX_OUTER; ++j) {
+		for (int i = 0; i < 10; ++i) {
+			GY_STRNCPY_0(pbuf, pstrarr[i].get(), szbuf - 1);
+			pbuf[szbuf - 1] = 0;
+
+			GY_CC_BARRIER();
+		}	
+	}
+
+	ensec = gyeeta::get_nsec_clock();
+
+	firstdiff = ensec - cnsec;
+
+	INFOPRINTCOLOR(GY_COLOR_GREEN, "Total Time for %d GY_STRNCPY_0 is %lu nsec (Avg %lu nsec)\n", MAX_OUTER * 10, ensec - cnsec, (ensec - cnsec)/MAX_OUTER/10);
+}	
+
+
 void test_both(size_t max_src_strlen, char *pbuf, size_t szbuf)
 {
-	std::unique_ptr<char []>		uniqarr[20];
+	std::unique_ptr<char []>		uniqarr[30];
 
 	INFOPRINTCOLOR(GY_COLOR_CYAN, "Testing both using source strlen %lu and max dest length of %lu\n", max_src_strlen, szbuf);
 
@@ -86,6 +113,9 @@ void test_both(size_t max_src_strlen, char *pbuf, size_t szbuf)
 
 	t2.join();
 
+	std::thread		t3(bench_strncpy_0, uniqarr + 20, pbuf, szbuf);
+
+	t3.join();
 }
 
 int main()

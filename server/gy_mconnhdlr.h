@@ -146,7 +146,7 @@ public :
 			case comm::HOST_PARTHA :	
 				if (true) {
 					auto pshrp = std::get_if<std::shared_ptr<PARTHA_INFO>>(&host_shr_);
-					if (pshrp) {
+					if (pshrp && *pshrp) {
 						size_t nconn = (*pshrp)->del_conn(this, host_type_);
 
 						if (nconn == 0) {
@@ -165,7 +165,7 @@ public :
 			case comm::HOST_MADHAVA :	
 				if (true) {
 					auto pshrp = std::get_if<std::shared_ptr<MADHAVA_INFO>>(&host_shr_);
-					if (pshrp) {
+					if (pshrp && *pshrp) {
 						(*pshrp)->del_conn(this, host_type_);
 					}	
 				}	
@@ -174,7 +174,7 @@ public :
 			case comm::HOST_NODE_WEB :	
 				if (true) {
 					auto pshrp = std::get_if<std::shared_ptr<NODE_INFO>>(&host_shr_);
-					if (pshrp) {
+					if (pshrp && *pshrp) {
 						(*pshrp)->del_conn(this, host_type_);
 					}	
 				}	

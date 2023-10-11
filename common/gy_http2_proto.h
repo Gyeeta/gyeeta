@@ -7,6 +7,13 @@
 
 namespace gyeeta {
 
+class http2_sessinfo
+{
+public :
+
+};
+
+
 class http2_proto 
 {
 public :

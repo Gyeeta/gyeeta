@@ -1056,7 +1056,7 @@ public :
 	int64_t					last_listener_nat_tsec_	{get_sec_time()};
 
 	SvcInodeMap				svcinodemap_;		// Only updated by inet_diag_thr_
-	SVC_NET_CAPTURE				svcnetcap_		{SYS_HARDWARE::get_root_ns_inodes()->net_inode};
+	std::optional<SVC_NET_CAPTURE>		svcnetcap_;
 	bool					capture_errcode_	{true};
 	bool					capture_api_call_	{false};
 

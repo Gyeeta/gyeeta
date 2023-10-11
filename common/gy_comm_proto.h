@@ -32,7 +32,7 @@ static constexpr uint64_t		MAX_COMM_JSON_DATA_SZ 		{GY_UP_GB(4)};		// Will span 
 static constexpr uint64_t		MAX_JSON_RECORDS		{10'000'000};		// Max Records that can fetched per query	
 
 static constexpr size_t			MAX_MADHAVA_PER_SHYAMA		{1024};
-static constexpr size_t			MAX_PARTHA_PER_MADHAVA		{1024};
+static constexpr size_t			MAX_PARTHA_PER_MADHAVA		{512};
 
 
 /*

@@ -549,11 +549,15 @@ int test_scheduler()
 				INFOPRINTCOLOR(GY_COLOR_GREEN, "startnum = %d...\n", startnum++);
 			});	
 
-		int 		nchk = 1;
+		schedule.add_schedule(0, 1000, 5, "Check for schedule function from a function callback",
+			[&, nchk = 1] () mutable {	
+				INFOPRINTCOLOR(GY_COLOR_GREEN, "Adding Schedule function %d from within a callback...\n", nchk++);
 
-		schedule.add_schedule(0, 1000, 5, "Check for finite count of scheduled function",
-			[&] () {	
-				INFOPRINTCOLOR(GY_COLOR_GREEN, "nchk = %d...\n", nchk++);
+				schedule.add_oneshot_schedule(500, "schedule from within func",
+					[] {
+						INFOPRINTCOLOR(GY_COLOR_BOLD_GREEN, "Testing Schedule within schedule...\n"); 
+					});	
+
 			});	
 
 

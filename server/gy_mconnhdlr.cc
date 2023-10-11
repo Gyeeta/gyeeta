@@ -1265,7 +1265,7 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 	size_t 				maxmem		= CPU_MEM_INFO::get_singleton()->get_total_memory();	// No need to check mems_allowed as this is advisory
 	auto 				psettings 	= pmadhava_->psettings_;
 
-	static_assert(comm::MAX_PARTHA_PER_MADHAVA > 1000);
+	static_assert(comm::MAX_PARTHA_PER_MADHAVA > 500);
 
 	if (psettings->set_max_hosts > 5 && psettings->set_max_hosts <= comm::MAX_PARTHA_PER_MADHAVA) {
 		if (psettings->set_max_hosts > 80 && (maxcore < 2 || maxmem <= GY_UP_GB(4 - 1))) {

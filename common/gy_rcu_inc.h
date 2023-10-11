@@ -2381,6 +2381,38 @@ public :
 	}		
 
 	/*
+	 * Count number of single/duplicate elems with Key as per key and Hash as per hash. Will also return the first elem.
+	 * Assumes already under RCU Lock.
+	 * If duplicates are present, is an O(N Duplicates) operation.
+	 * Specify break_after_nelems if you want to check min number of elems
+	 */
+	template <RCU_MATCH_CB pcbmatch = MatchFP>
+	std::pair<size_t, T *> count_duplicates_lookup_first_locked(const KeyType & key, uint64_t hash, uint32_t break_after_nelems = ~0u - 1) const noexcept
+	{
+		struct cds_lfht_iter 		iter;
+		size_t				nelems = 0;
+		auto				pkey = &key;
+		T 				*pdatanode, *pfirst = nullptr;
+
+		assert(true == gy_thread_rcu().is_rcu_in_read_lock());
+
+		cds_lfht_for_each_entry_duplicate(phtable_, hash, pcbmatch, pkey, &iter, pdatanode, cds_node_) {
+
+			if (!pfirst) {
+				pfirst = pdatanode;
+			}	
+
+			nelems++;
+
+			if (nelems >= break_after_nelems) {
+				break;
+			}	
+		}
+
+		return { nelems, pfirst };	
+	}		
+
+	/*
 	 * Delete single element within Hash table after copying to copyelem.
 	 * On success with find and delete returns true
 	 *
