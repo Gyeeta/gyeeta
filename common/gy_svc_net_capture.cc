@@ -64,7 +64,7 @@ SvcType * find_by_globid_locked(const NetNsType & netns, uint64_t globid, uint16
 	{
 		portused = true;
 
-		if (pcap && pcap->listenshr_ && pcap->listenshr_->glob_id_ == globid) {
+		if (pcap && pcap->listenshr_ && pcap->glob_id_ == globid) {
 			pret = pcap;
 			return CB_BREAK_LOOP;
 		}	
@@ -209,7 +209,7 @@ void SVC_NET_CAPTURE::add_err_listeners(SvcInodeMap & nslistmap) noexcept
 			strbuf.reset();
 
 			try {
-				auto 			[it, success] = errcodemap_.try_emplace(inode, inode, vecone, inode == rootnsid_);
+				auto 			[it, success] = errcodemap_.try_emplace(inode, inode, *this, vecone, inode == rootnsid_);
 				auto			& nsone = it->second;
 				bool			torestart = false;
 
@@ -322,7 +322,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 			strbuf.reset();
 
 			try {
-				auto 			[it, success] = apicallmap_.try_emplace(inode, inode, vecone, inode == rootnsid_);
+				auto 			[it, success] = apicallmap_.try_emplace(inode, inode, *this, vecone, inode == rootnsid_);
 				auto			& nsone = it->second;
 				bool			torestart = false;
 
@@ -911,8 +911,8 @@ bool SVC_NET_CAPTURE::sched_del_listeners(uint64_t start_after_msec, const char 
 }	
 
 SVC_ERR_HTTP::SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart) noexcept
-		: listenshr_(std::move(listenshr)), tstart_(tstart), serport_(bool(listenshr_) ? listenshr_->ns_ip_port_.ip_port_.port_ : 0),
-		is_rootns_(is_rootns)
+		: listenshr_(std::move(listenshr)), glob_id_(bool(listenshr_) ? listenshr_->glob_id_ : 0),
+		tstart_(tstart), serport_(bool(listenshr_) ? listenshr_->ns_ip_port_.ip_port_.port_ : 0), is_rootns_(is_rootns)
 {
 	if (listenshr_) {
 		listenshr_->httperr_cap_started_.store(true, std::memory_order_relaxed);
@@ -920,8 +920,8 @@ SVC_ERR_HTTP::SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_r
 }
 
 SVC_API_PARSER::SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart) noexcept
-		: listenshr_(std::move(listenshr)), tstart_(tstart), serport_(bool(listenshr_) ? listenshr_->ns_ip_port_.ip_port_.port_ : 0),
-		is_rootns_(is_rootns)
+		: listenshr_(std::move(listenshr)), glob_id_(bool(listenshr_) ? listenshr_->glob_id_ : 0),
+		tstart_(tstart), serport_(bool(listenshr_) ? listenshr_->ns_ip_port_.ip_port_.port_ : 0), is_rootns_(is_rootns)
 {
 	if (listenshr_) {
 		listenshr_->api_cap_started_.store(true, std::memory_order_relaxed);
@@ -1127,8 +1127,8 @@ bool SEQ_ERR_RETRAN::is_retranmit(uint32_t ser_seq, uint32_t cli_seq, uint16_t c
 }	
 
 
-NETNS_HTTP_CAP1::NETNS_HTTP_CAP1(ino_t netinode, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns)
-		: netinode_(netinode), is_rootns_(is_rootns)
+NETNS_HTTP_CAP1::NETNS_HTTP_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns)
+		: netinode_(netinode), svccap_(svccap), is_rootns_(is_rootns)
 {
 	PortStackSet			portset;
 	time_t				tcurr = time(nullptr);
@@ -1202,8 +1202,8 @@ NETNS_HTTP_CAP1::NETNS_HTTP_CAP1(ino_t netinode, std::vector<std::shared_ptr<TCP
 	restart_capture();
 }
 
-NETNS_API_CAP1::NETNS_API_CAP1(ino_t netinode, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns)
-		: netinode_(netinode), is_rootns_(is_rootns)
+NETNS_API_CAP1::NETNS_API_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns)
+		: netinode_(netinode), svccap_(svccap), is_rootns_(is_rootns)
 {
 	PortStackSet			portset;
 	time_t				tcurr = time(nullptr);
@@ -1641,6 +1641,8 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 			return 1;
 		}	
 
+		std::optional<MSG_PKT_SVCCAP>	msghdr;
+
 		if (dir == DirPacket::DIR_INBOUND) {
 			if constexpr (netns.parse_api_calls_ == false) {
 				bret = netns.handle_req_err_locked(*psvc, srcip, tcp.source, tcp, pdata, data_len, caplen, tv_pkt);
@@ -1649,7 +1651,9 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 				}	
 			}
 			else {
-				// TODO
+				if (psvc->svcinfocap_) {
+					netns.set_api_msghdr(msghdr, *psvc, srcip, dstip, tcp.source, tcp.dest, tcp, pdata, data_len, caplen, tv_pkt, dir);
+				}	
 			}	
 		}
 		else {
@@ -1660,8 +1664,18 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 				}	
 			}	
 			else {
-				// TODO
+				if (psvc->svcinfocap_) {
+					netns.set_api_msghdr(msghdr, *psvc, dstip, srcip, tcp.dest, tcp.source, tcp, pdata, data_len, caplen, tv_pkt, dir);
+				}	
 			}	
+		}	
+
+		fastlock.unlock();
+
+		if constexpr (netns.parse_api_calls_) {
+			if (bool(msghdr)) {
+				netns.nmissed_total_ += !netns.svccap_.apihdlr_->send_pkt_to_parser(*msghdr, pdata, caplen);
+			}
 		}	
 
 		return 0;
@@ -1676,7 +1690,7 @@ uint32_t NETNS_HTTP_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 {
 	PortStackSet			portset;
 	PortStackSet			dualportset;
-	uint16_t			minport = 65535, maxport = 0, nports = 0;
+	uint16_t			minport = 65535, maxport = 0, nports = 0, tports;
 		
 	const auto pchk = [&](SVC_ERR_HTTP *psvcone, void *arg1) -> CB_RET_E
 	{
@@ -1698,7 +1712,7 @@ uint32_t NETNS_HTTP_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 		return CB_OK;
 	};	
 
-	port_listen_tbl_.walk_hash_table_const(pchk);
+	tports = (uint16_t)port_listen_tbl_.walk_hash_table_const(pchk);
 
 	for (uint16_t port : portset) {
 		if (nports++ > 0) strbuf.appendconst(" or ");
@@ -1711,9 +1725,9 @@ uint32_t NETNS_HTTP_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 		}
 	}	
 
-	if (strbuf.is_overflow() || nports == 0) {
+	if (strbuf.is_overflow() || tports == 0) {
 		GY_THROW_EXCEPTION("Service Error Network Capture filter error : Internal buffer overflow or 0 ports seen : filter buffer length %lu : #ports %hu",
-			strbuf.size(), nports);
+			strbuf.size(), tports);
 	}	
 
 	max_listen_port_.store(maxport, std::memory_order_relaxed);
@@ -1721,7 +1735,7 @@ uint32_t NETNS_HTTP_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 
 	DEBUGEXECN(1,
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Service Error Network Capture for Namespace inode %lu : Filter has %u ports with %lu bidirectional ports : Port Range is %hu-%hu\n", 
-				netinode_, nports, dualportset.size(), minport, maxport);
+				netinode_, tports, dualportset.size(), minport, maxport);
 	);
 
 	return (dualportset.size() > 0 ? 196 : 128);
@@ -1731,7 +1745,7 @@ uint32_t NETNS_HTTP_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 uint32_t NETNS_API_CAP1::get_filter_string(STR_WR_BUF & strbuf) 
 {
 	PortStackSet			portset;
-	uint16_t			minport = 65535, maxport = 0, nports = 0;
+	uint16_t			minport = 65535, maxport = 0, nports = 0, tports;
 		
 	const auto pchk = [&](SVC_API_PARSER *psvcone, void *arg1) -> CB_RET_E
 	{
@@ -1749,9 +1763,9 @@ uint32_t NETNS_API_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 		return CB_OK;
 	};	
 
-	port_listen_tbl_.walk_hash_table_const(pchk);
+	tports = (uint16_t)port_listen_tbl_.walk_hash_table_const(pchk);
 
-	if ((portset.size() < 6) || (maxport - minport > 16)) {
+	if ((portset.size() < 6) || (maxport - minport > 16 && maxport - minport > 1.5 * tports)) {
 		for (uint16_t port : portset) {
 			if (nports++ > 0) strbuf.appendconst(" or ");
 
@@ -1762,9 +1776,9 @@ uint32_t NETNS_API_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 		strbuf << "tcp portrange "sv << minport << '-' << maxport;
 	}	
 
-	if (strbuf.is_overflow() || nports == 0) {
+	if (strbuf.is_overflow() || tports == 0) {
 		GY_THROW_EXCEPTION("Service API Network Capture filter error : Internal buffer overflow or 0 ports seen : filter buffer length %lu : #ports %hu",
-			strbuf.size(), nports);
+			strbuf.size(), tports);
 	}	
 
 	max_listen_port_.store(maxport, std::memory_order_relaxed);
@@ -1772,7 +1786,7 @@ uint32_t NETNS_API_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 
 	DEBUGEXECN(1,
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Service API Network Capture for Namespace inode %lu : Filter has %u ports : Port Range is %hu-%hu\n", 
-				netinode_, nports, minport, maxport);
+				netinode_, tports, minport, maxport);
 	);
 
 	return 65535;
@@ -1869,7 +1883,7 @@ void netns_restart_capture(NetNsType & netns)
 
 	if (!netns.is_rootns_) {
 		if constexpr (netns.parse_api_calls_) {
-			bufsz = 8 * 1024 * 1024;
+			bufsz = 10 * 1024 * 1024;
 		}	
 		else {
 			bufsz = 2 * 1024 * 1024;
@@ -1877,7 +1891,7 @@ void netns_restart_capture(NetNsType & netns)
 	}	
 	else {
 		if constexpr (netns.parse_api_calls_) {
-			bufsz = 24 * 1024 * 1024;
+			bufsz = 32 * 1024 * 1024;
 		}	
 		else {
 			bufsz = 8 * 1024 * 1024;
@@ -1885,7 +1899,7 @@ void netns_restart_capture(NetNsType & netns)
 	}	
 
 	netns.netcap_ = std::make_unique<PCAP_NET_CAP>("any", filstr.buffer(), filstr.length(), std::move(pcapcb), bufsz, snaplen, false /* use_promiscuous */, 1024 * 1024 /* thr_stacksz */,
-							1 /* timeout_sec */, std::move(timeoutcb), 1000, true /* rcu_offline_after_read */);
+							1 /* timeout_sec */, std::move(timeoutcb), 1000 /* ring_max_pkts */, true /* rcu_offline_after_read */);
 }	
 
 void NETNS_HTTP_CAP1::restart_capture()
@@ -1898,6 +1912,46 @@ void NETNS_API_CAP1::restart_capture()
 	netns_restart_capture(*this);
 }	
 
+inline void NETNS_API_CAP1::set_api_msghdr(std::optional<MSG_PKT_SVCCAP> & msghdr, SVC_API_PARSER & svc, const GY_IP_ADDR & cliip, const GY_IP_ADDR & serip, 
+						uint16_t cliport, uint16_t serport, const GY_TCP_HDR & tcp, 
+						const uint8_t *pdata, uint32_t datalen, uint32_t caplen, struct timeval tv_pkt, DirPacket dir) const noexcept
+{
+	msghdr.emplace();
+
+	auto			& hdr = msghdr->hdr_;
+
+	msghdr->psvc_		= svc.svcinfocap_.get();
+	msghdr->glob_id_	= svc.glob_id_;
+
+	hdr.tv_			= tv_pkt;
+	hdr.cliip_		= cliip;
+	hdr.serip_		= serip;
+	hdr.datalen_		= caplen;
+	hdr.wirelen_		= datalen;
+
+	if (dir == DirPacket::DIR_INBOUND) { 
+		hdr.nxt_cli_seq_	= tcp.next_expected_src_seq(datalen);
+		hdr.start_cli_seq_	= tcp.seq;
+
+		hdr.nxt_ser_seq_	= tcp.ack_seq;
+		hdr.start_ser_seq_	= tcp.ack_seq;
+	}
+	else {
+		hdr.nxt_cli_seq_	= tcp.ack_seq;
+		hdr.start_cli_seq_	= tcp.ack_seq;
+
+		hdr.nxt_ser_seq_	= tcp.next_expected_src_seq(datalen);
+		hdr.start_ser_seq_	= tcp.seq;
+	}	
+
+	hdr.cliport_		= cliport;
+	hdr.serport_		= serport;
+	hdr.dir_		= dir;
+	hdr.tcpflags_		= tcp.tcpflags;
+	hdr.istcp_		= true;
+	hdr.src_		= SRC_PCAP;
+}	
+
 void SVC_NET_CAPTURE::init_api_cap_handler()
 {
 	if (apihdlr_) {
@@ -1906,7 +1960,7 @@ void SVC_NET_CAPTURE::init_api_cap_handler()
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Initializing API Capture Data structures : API Captures can be initiated thereafter...\n");
 
-	apihdlr_.reset(new API_PARSE_HDLR());
+	apihdlr_.reset(new API_PARSE_HDLR(*this));
 	
 	auto lam1 = []() { return true; };
 
@@ -1933,19 +1987,9 @@ int SVC_NET_CAPTURE::api_parse_thread() noexcept
 
 	api_cond_.cond_wait(waitcb, waitsuc);
 
-	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "API Capture initialized : API Parser thread init completed as well\n");
-	
-try1 :		
-	try {
-		while (true) {
-			
-
-		}
+	while (true) {
+		apihdlr_->api_parse_rd_thr();
 	}
-	GY_CATCH_EXCEPTION(
-		ERRORPRINT_OFFLOAD("Exception caught for API Parser thread : %s\n", GY_GET_EXCEPT_STRING);
-		goto try1;
-	);
 
 	return 1;
 }	

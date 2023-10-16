@@ -105,7 +105,7 @@ public :
 	
 	std::weak_ptr<TCP_LISTENER>		svcweak_;
 	SvcSessMap				sessmap_;
-	uint64_t 				glob_id_			{0};
+	uint64_t 				glob_id_		{0};
 	NS_IP_PORT				ns_ip_port_;
 	char					comm_[TASK_COMM_LEN]	{};
 	gy_atomic<bool>				is_reorder_		{false};
@@ -114,14 +114,6 @@ public :
 
 	SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr);
 
-	struct CapHash
-	{
-		uint64_t operator()(uint64_t key) const noexcept
-		{
-			// key is glob_id_
-			return key;
-		}
-	};	
 };
 
 struct PARSE_PKT_HDR
@@ -134,8 +126,8 @@ struct PARSE_PKT_HDR
 	uint32_t				datalen_		{0};
 	uint32_t				wirelen_		{0};
 	uint32_t				nxt_cli_seq_		{0};
-	uint32_t				nxt_ser_seq_		{0};
 	uint32_t				start_cli_seq_		{0};
+	uint32_t				nxt_ser_seq_		{0};
 	uint32_t				start_ser_seq_		{0};
 	uint32_t 				pid_			{0};
 
@@ -166,6 +158,8 @@ struct MSG_TIMER_SVCCAP
 
 using PARSE_MSG_BUF = std::variant<MSG_TIMER_SVCCAP, MSG_PKT_SVCCAP, MSG_DEL_SVCCAP>;
 
+class SVC_NET_CAPTURE;
+
 class API_PARSE_HDLR
 {
 public :
@@ -173,7 +167,7 @@ public :
 	static constexpr uint32_t		MAX_REORDER_POOL_PKT	{16000};
 	static constexpr uint32_t		MAX_PKT_DATA_LEN	{1600};
 
-	using SvcInfoMap 			= folly::F14NodeMap<uint64_t, std::shared_ptr<SVC_INFO_CAP>, SVC_INFO_CAP::CapHash>;
+	using SvcInfoMap 			= folly::F14NodeMap<uint64_t, std::shared_ptr<SVC_INFO_CAP>, HASH_SAME_AS_KEY<uint64_t>>;
 	using ParMsgPool			= folly::MPMCQueue<PARSE_MSG_BUF>;
 	using ParserMemPool 			= folly::IndexedMemPool<UCHAR_BUF<MAX_PKT_DATA_LEN>, 8, 200, std::atomic, 
 										folly::IndexedMemPoolTraitsLazyRecycle<UCHAR_BUF<MAX_PKT_DATA_LEN>>>;
@@ -181,9 +175,20 @@ public :
 	ParserMemPool				parsepool_		{MAX_PARSE_POOL_PKT};
 	ParserMemPool				reorderpool_		{MAX_REORDER_POOL_PKT};
 	ParMsgPool				msgpool_		{MAX_PARSE_POOL_PKT + 1000};
+	SvcInfoMap				reordermap_;		// Only updated by parser thread
+
+	SVC_NET_CAPTURE				&svcnet_;
 
 	GY_MUTEX				svcmutex_;
-	SvcInfoMap				svcinfomap_;
+	SvcInfoMap				svcinfomap_;		// Updated by Capture threads
+
+	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet)
+		: svcnet_(svcnet)
+	{}	
+
+	bool send_pkt_to_parser(MSG_PKT_SVCCAP & msghdr, const uint8_t *pdata, uint32_t len);
+
+	void api_parse_rd_thr() noexcept;
 
 	static bool is_valid_pool_idx(uint32_t idx, bool is_reorder) noexcept
 	{

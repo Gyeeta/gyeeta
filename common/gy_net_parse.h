@@ -51,29 +51,35 @@ struct GY_TCP_HDR
 	uint32_t		seq;
 	uint32_t		ack_seq;
 
+	union {
+		uint16_t		tcpflags;
+
+		struct {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__		
-	uint16_t		res1:4,
-				doff:4,
-				fin:1,
-				syn:1,
-				rst:1,
-				psh:1,
-				ack:1,
-				urg:1,
-				ece:1,
-				cwr:1;
+		uint16_t		res1:4,
+					doff:4,
+					fin:1,
+					syn:1,
+					rst:1,
+					psh:1,
+					ack:1,
+					urg:1,
+					ece:1,
+					cwr:1;
 #else
-	uint16_t		doff:4,
-				res1:4,
-				cwr:1,
-				ece:1,
-				urg:1,
-				ack:1,
-				psh:1,
-				rst:1,
-				syn:1,
-				fin:1;
+		uint16_t		doff:4,
+					res1:4,
+					cwr:1,
+					ece:1,
+					urg:1,
+					ack:1,
+					psh:1,
+					rst:1,
+					syn:1,
+					fin:1;
 #endif	
+		};
+	};
 
 	uint16_t		window;
 	uint16_t		check;

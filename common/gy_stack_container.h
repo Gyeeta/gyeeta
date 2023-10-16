@@ -300,10 +300,10 @@ template <
 using 	GY_STACK_LIST = std::list<T, StackAllocator<T, StackSize>>;
 
 /*
- * Destroy and reconstruct the Container and reset Arena. 
+ * Destroy and reconstruct the Container and reset Arena with init bucket count. 
  */
-template <typename Container>
-static void reinit_with_arena_reset(Container & cont, size_t bucket_count = 0)
+template <typename Container, std::enable_if_t<std::is_member_function_pointer<decltype(&Container::max_bucket_count)>::value, int> = 0>
+static void reinit_with_arena_reset(Container & cont, size_t bucket_count)
 {
 	auto		alloc = cont.get_allocator();
 	auto		& arena = alloc.get_allocator_arena();
@@ -319,6 +319,20 @@ static void reinit_with_arena_reset(Container & cont, size_t bucket_count = 0)
 	}	
 }	
 
+/*
+ * Destroy and reconstruct the Container and reset Arena for containers not having bucket size argument.
+ */
+template <typename Container>
+static void reinit_with_arena_reset(Container & cont)
+{
+	auto		alloc = cont.get_allocator();
+	auto		& arena = alloc.get_allocator_arena();
+
+	cont.~Container();
+	arena.reset();
+
+	new (&cont) Container(alloc);
+}
 
 /*
  * Stack containers with inline Arena. On container clear() the container will be destroyed and constructed again and Arena reset(). 

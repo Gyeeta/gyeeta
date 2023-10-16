@@ -888,8 +888,8 @@ public :
  * Use for a Multi Reader scenario as it provides Lock Free Reader.
  * Mutex Locking is done internally for adding or deleting elements. 
  *
- * Deleting elements uses the walk_list_locked() method. Users need to pass the callback which can be used to delete.
- * The walk_list_locked() will lock the  entire List while scanning each element although concurrent reads (walk_list_const()) are allowed. 
+ * Deleting elements uses the walk_list_to_delete() method. Users need to pass the callback which can be used to delete.
+ * The walk_list_to_delete() will lock the  entire List while scanning each element although concurrent reads (walk_list_const()) are allowed. 
  * Please sparingly use this method.
  *
  * Note : This container is recommended if inserts/deletes constitute a much smaller % of the accesses and multiple
@@ -1057,8 +1057,11 @@ public :
 	}		
 
 	/*
-	 * List walker to be used to delete elements. Users need to define the following lambda which returns a CB_RET_E type.
-	 * The lambda should return CB_OK in normal case, CB_DELETE_ELEM to delete the element and CB_BREAK_LOOP to break out of the walk.
+	 * List walker to be used to delete elements. Will Mutex Lock the list to prevent concurrent inserts/deletes...
+	 * 
+	 * Users need to define the following lambda which returns a CB_RET_E type.
+	 *
+	 * The lambda should return CB_OK if no action needed, CB_DELETE_ELEM to delete the element and CB_BREAK_LOOP to break out of the walk.
 	 *
 	 * Please keep the walker lambda small as the walk is under rcu read lock as well as the mutex lock
 	 *
@@ -1088,7 +1091,7 @@ public :
 	 */ 
 
 	template <typename FCB, typename LockType = RCU_LOCK_SLOW>
-	size_t walk_list_locked(FCB & walk, void *arg = nullptr) 
+	size_t walk_list_to_delete(FCB & walk, void *arg = nullptr) 
 	{
 		uint32_t			niters = 0, ndelelem = 0;
 		T				*pdatanode, *ptmpnode;
@@ -1139,7 +1142,7 @@ public :
 
 	/*
 	 * List walker to be used to read/manipulate elements without deleting them.
-	 * Use the same type of Lambda as walk_list_locked() but the lambda must not return CB_DELETE_ELEM
+	 * Use the same type of Lambda as walk_list_to_delete() but the lambda must not return CB_DELETE_ELEM
 	 *
 	 * Only RCU Read Locking used and no mutex locked...
 	 *
@@ -1179,7 +1182,7 @@ public :
 			return CB_DELETE_ELEM;
 		};
 		
-		walk_list_locked(lbd);	
+		walk_list_to_delete(lbd);	
 	}
 		
 	template <typename FCB>
@@ -1551,7 +1554,7 @@ public :
 
  	MY_CLASS_C(pid_t pid, const char *pname);
 
-  	friend bool operator== (const MY_CLASS_C & lhs, const pid_t & pid) noexcept
+  	friend bool operator== (const MY_CLASS_C & lhs, pid_t pid) noexcept
 	{
 		return lhs.pid == pid;
 	}

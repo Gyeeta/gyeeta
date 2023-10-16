@@ -49,6 +49,7 @@ public :
 	RCU_HASH_CLASS_MEMBERS(uint16_t, SVC_ERR_HTTP);
 
 	std::shared_ptr<TCP_LISTENER> 		listenshr_;
+	uint64_t				glob_id_			{0};
 	time_t					tstart_				{0};
 	time_t					tfirstreq_			{0};
 	time_t					tfirstresp_			{0};
@@ -146,6 +147,8 @@ public :
 	bool is_retranmit(uint32_t ser_seq, uint32_t cli_seq, uint16_t cli_port) noexcept;
 };	
 
+class SVC_NET_CAPTURE;
+
 class NETNS_HTTP_CAP1
 {
 public :
@@ -153,12 +156,11 @@ public :
 
 	PortListenHashTbl		port_listen_tbl_	{32, 32, 0, false, false};
 	ino_t				netinode_		{0};
+	SVC_NET_CAPTURE			&svccap_;
 	std::unique_ptr<SEQ_ERR_RETRAN>	retranchk_;
 	time_t				tstart_ 		{0};
 	time_t				tlast_check_ 		{0};
 	int				nerror_retries_		{0};
-	uint32_t 			last_npkts_rcvd_	{0};
-	uint32_t			last_npkts_drops_ 	{0};
 	gy_atomic<uint16_t>		max_listen_port_	{0};
 	gy_atomic<uint16_t>		min_listen_port_	{0};
 	bool				is_rootns_		{false};
@@ -169,7 +171,7 @@ public :
 
 	static constexpr bool		parse_api_calls_	{false};
 
-	NETNS_HTTP_CAP1(ino_t netinode, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
+	NETNS_HTTP_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
 
 	uint32_t get_filter_string(STR_WR_BUF & strbuf); 
 
@@ -187,7 +189,7 @@ public :
 
 	void print_stats(uint32_t npkts_received, uint32_t npkts_kernel_drops) const noexcept
 	{
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Service Network Stats for Network Namespace %lu in last few minutes : "
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Service Error Capture Network Stats for Namespace %lu in last few minutes : "
 					"%u packets %u drops #Listeners %lu Retransitted Errors %lu\n", 
 					netinode_, npkts_received, npkts_kernel_drops, port_listen_tbl_.approx_count_fast(), 
 					retranchk_ ? gy_diff_counter(retranchk_->nretrans_, retranchk_->last_nretrans_) : 0);
@@ -200,6 +202,7 @@ public :
 	RCU_HASH_CLASS_MEMBERS(uint16_t, SVC_API_PARSER);
 
 	std::shared_ptr<TCP_LISTENER> 		listenshr_;
+	uint64_t				glob_id_		{0};
 	time_t					tstart_			{0};
 	time_t					tfirstreq_		{0};
 	time_t					tfirstresp_		{0};
@@ -232,11 +235,14 @@ public :
 
 	PortListenHashTbl		port_listen_tbl_	{32, 32, 0, false, false};
 	ino_t				netinode_		{0};
+	SVC_NET_CAPTURE			&svccap_;
 	time_t				tstart_ 		{0};
 	time_t				tlast_check_ 		{0};
+
+	uint64_t			nmissed_total_		{0};
+	mutable uint64_t		nlast_missed_		{0};
 	int				nerror_retries_		{0};
-	uint32_t 			last_npkts_rcvd_	{0};
-	uint32_t			last_npkts_drops_ 	{0};
+	
 	gy_atomic<uint16_t>		max_listen_port_	{0};
 	gy_atomic<uint16_t>		min_listen_port_	{0};
 	bool				is_rootns_		{false};
@@ -247,7 +253,7 @@ public :
 
 	static constexpr bool		parse_api_calls_	{true};
 
-	NETNS_API_CAP1(ino_t netinode, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
+	NETNS_API_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
 
 	uint32_t get_filter_string(STR_WR_BUF & strbuf); 
 
@@ -257,9 +263,15 @@ public :
 
 	std::pair<SVC_API_PARSER *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
 
+	inline void set_api_msghdr(std::optional<MSG_PKT_SVCCAP> & msghdr, SVC_API_PARSER & svc, const GY_IP_ADDR & cliip, const GY_IP_ADDR & serip, uint16_t cliport, uint16_t serport, \
+					const GY_TCP_HDR & tcp, const uint8_t *pdata, uint32_t datalen, uint32_t caplen, struct timeval tv_pkt, DirPacket dir) const noexcept;
+
 	void print_stats(uint32_t npkts_received, uint32_t npkts_kernel_drops) const noexcept
 	{
-		// TODO
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Service API Capture Network Stats for Namespace %lu in last few minutes : "
+					"%u packets, %u drops, %lu missed, %lu #Listeners (%lu Total missed)\n", 
+					netinode_, npkts_received, npkts_kernel_drops, nmissed_total_ - nlast_missed_, port_listen_tbl_.approx_count_fast(), nmissed_total_);
+		nlast_missed_ = nmissed_total_;
 	}	
 };
 

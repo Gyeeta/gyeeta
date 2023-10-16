@@ -1177,6 +1177,22 @@ public :
 	}
 };
 
+template <typename T = uint64_t>
+struct HASH_SAME_AS_KEY
+{
+	static_assert(std::is_integral<T>::value || std::is_pointer<T>::value, "Integral or Pointer data type required.");
+
+	uint64_t operator()(T key) const noexcept
+	{
+		if constexpr (std::is_pointer<T>::value) {
+			return (uint64_t)(uintptr_t)key;
+		}
+		else {
+			return (uint64_t)key;
+		}	
+	}
+};	
+
 
 template <size_t szbuf_, size_t align_bytes = 8>
 class CHAR_BUF

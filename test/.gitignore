@@ -50,6 +50,7 @@ test_gy_pool
 test_strncpy
 test_sso_string
 test2_rcu_hashtable
+test_intrusivelist
 test_rapidjson
 test_bufcache
 test_pg1

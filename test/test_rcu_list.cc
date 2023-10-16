@@ -124,7 +124,7 @@ void * writer_thread(RCU_LIST <T> *plist)
 			max_del_num = 1000;
 			currelem = 0;
 
-			plist->walk_list_locked(lbd);
+			plist->walk_list_to_delete(lbd);
 
 			gy_nanosleep(0, GY_NSEC_PER_MSEC * 2); 
 
@@ -142,7 +142,7 @@ void * writer_thread(RCU_LIST <T> *plist)
 			plist->template walk_list_const<decltype(constlam), RCU_LOCK_FAST>(constlam);
 
 			currelem = 0;
-			plist->walk_list_locked(lbd);
+			plist->walk_list_to_delete(lbd);
 
 			gy_nanosleep(0, GY_NSEC_PER_MSEC * 2); 
 
@@ -157,7 +157,7 @@ void * writer_thread(RCU_LIST <T> *plist)
 			max_del_num = 10000000;
 			currelem = 0;
 
-			plist->template walk_list_locked<decltype(lbd), RCU_LOCK_FAST>(lbd);
+			plist->template walk_list_to_delete<decltype(lbd), RCU_LOCK_FAST>(lbd);
 			
 			gy_thread_rcu().gy_rcu_thread_offline();
 
@@ -238,7 +238,7 @@ void * reader_thread(RCU_LIST <T> *plist)
 		max_upd_num = 1000;
 
 		currelem = 0;
-		plist->walk_list_locked(lbd);
+		plist->walk_list_to_delete(lbd);
 
 		gy_nanosleep(0, GY_NSEC_PER_MSEC * 2); 
 
