@@ -559,6 +559,8 @@ public :
 	static_assert(decltype(httperr_cap_started_)::is_always_lock_free == true, "Boost Tribool Atomics not lock free!");
 	
 	std::atomic<tribool>				api_cap_started_		{indeterminate};
+	std::atomic<tribool>				api_is_ssl_			{indeterminate};
+	std::atomic<PROTO_TYPES>			api_proto_			{PROTO_UNINIT};
 
 	uint32_t					last_qps_count_			{0};
 

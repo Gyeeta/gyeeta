@@ -206,8 +206,11 @@ int test_follylist()
 	mylist2.push_back(y2);
 	mylist2.push_back(y3);
 	mylist2.push_back(*foo.get());
+	
 	mylist2.pop_front();
+
 	mylist2.erase(mylist2.iterator_to(*foo.get()));
+	
 
 	std::cout << "\n\nFolly CountedIntrusiveList size() = " << mylist2.size() << '\n';
 	for (const auto& node : mylist2) {

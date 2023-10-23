@@ -25,7 +25,7 @@
 namespace gyeeta {
 namespace partha {
 
-using STATS_STR_MAP	= std::unordered_map<const char *, int64_t>;
+using STATS_STR_MAP	= std::unordered_map<const char *, int64_t, GY_JHASHER<const char *>>;
 
 class PARTHA_C;
 

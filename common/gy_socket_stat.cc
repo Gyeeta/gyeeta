@@ -1275,9 +1275,13 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 			GY_STRNCPY(plistener->comm_, pevent->comm, sizeof(plistener->comm_));
 			std::memcpy(plistener->orig_comm_, plistener->comm_, sizeof(plistener->orig_comm_));
 
-			// Reset Service Network Capture : Currently if restart happens within 30 sec we keep the old state...
+			// Reset Service Error and API Network Capture : Currently if restart happens within 30 sec we keep the old state...
 			plistener->httperr_cap_started_.store(indeterminate, std::memory_order_relaxed);
 			plistener->is_http_svc_ = indeterminate;
+
+			plistener->api_cap_started_.store(indeterminate, std::memory_order_relaxed);
+			plistener->api_is_ssl_.store(indeterminate, std::memory_order_relaxed);
+			plistener->api_proto_.store(PROTO_UNINIT, std::memory_order_relaxed);
 
 			ptask_handler_->get_task(pevent->pid, newtaskcb);
 

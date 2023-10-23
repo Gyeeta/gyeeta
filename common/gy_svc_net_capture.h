@@ -66,7 +66,7 @@ public :
 	
 	static constexpr bool			parse_api_calls_		{false};
 
-	SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)) noexcept; 
+	SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)); 
 
 	SVC_ERR_HTTP(const SVC_ERR_HTTP &)		= delete;
 	SVC_ERR_HTTP(SVC_ERR_HTTP &&) noexcept		= default;
@@ -171,7 +171,7 @@ public :
 
 	static constexpr bool		parse_api_calls_	{false};
 
-	NETNS_HTTP_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
+	NETNS_HTTP_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, bool is_rootns = false);
 
 	uint32_t get_filter_string(STR_WR_BUF & strbuf); 
 
@@ -212,7 +212,7 @@ public :
 	
 	static constexpr bool			parse_api_calls_	{true};
 
-	SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)) noexcept; 
+	SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)); 
 
 	SVC_API_PARSER(const SVC_API_PARSER &)			= delete;
 	SVC_API_PARSER(SVC_API_PARSER &&) noexcept		= default;
@@ -239,6 +239,7 @@ public :
 	time_t				tstart_ 		{0};
 	time_t				tlast_check_ 		{0};
 
+	STRING_BUFFER<128>		printbuf_;
 	uint64_t			nmissed_total_		{0};
 	mutable uint64_t		nlast_missed_		{0};
 	int				nerror_retries_		{0};
@@ -253,7 +254,7 @@ public :
 
 	static constexpr bool		parse_api_calls_	{true};
 
-	NETNS_API_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, std::vector<std::shared_ptr<TCP_LISTENER>> & veclist, bool is_rootns = false);
+	NETNS_API_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, bool is_rootns = false);
 
 	uint32_t get_filter_string(STR_WR_BUF & strbuf); 
 
@@ -263,14 +264,19 @@ public :
 
 	std::pair<SVC_API_PARSER *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
 
-	inline void set_api_msghdr(std::optional<MSG_PKT_SVCCAP> & msghdr, SVC_API_PARSER & svc, const GY_IP_ADDR & cliip, const GY_IP_ADDR & serip, uint16_t cliport, uint16_t serport, \
+	inline void set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr, const GY_IP_ADDR & cliip, const GY_IP_ADDR & serip, uint16_t cliport, uint16_t serport, \
 					const GY_TCP_HDR & tcp, const uint8_t *pdata, uint32_t datalen, uint32_t caplen, struct timeval tv_pkt, DirPacket dir) const noexcept;
 
 	void print_stats(uint32_t npkts_received, uint32_t npkts_kernel_drops) const noexcept
 	{
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Service API Capture Network Stats for Namespace %lu in last few minutes : "
+		char			buf1[128];
+
+		std::memcpy(buf1, printbuf_.get(), sizeof(buf1) - 1);
+		buf1[sizeof(buf1) - 1] = 0;
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Service API Capture Network Stats for Namespace %lu and API Capture Services such as %s in last few minutes : "
 					"%u packets, %u drops, %lu missed, %lu #Listeners (%lu Total missed)\n", 
-					netinode_, npkts_received, npkts_kernel_drops, nmissed_total_ - nlast_missed_, port_listen_tbl_.approx_count_fast(), nmissed_total_);
+					netinode_, buf1, npkts_received, npkts_kernel_drops, nmissed_total_ - nlast_missed_, port_listen_tbl_.approx_count_fast(), nmissed_total_);
 		nlast_missed_ = nmissed_total_;
 	}	
 };
