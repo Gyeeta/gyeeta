@@ -4,13 +4,14 @@
 #pragma				once
 
 #include			"gy_common_inc.h"
+#include			"gy_misc.h"
 
 namespace gyeeta {
 
 class tls_proto
 {
 public :
-	static constexpr size_t			TLS_HDR_SZ			{5};
+	static constexpr size_t			TLS_HDR_SZ		{5};
 
 	enum TYPE_E : uint8_t 
 	{
@@ -26,7 +27,6 @@ public :
 		HS_HelloRequest			= 0,
 		HS_ClientHello			= 1,
 		HS_ServerHello			= 2,
-		HS_NewSessionTicket		= 3,
 		HS_NewSessionTicket		= 4,
 		HS_EncryptedExtensions		= 8,
 		HS_Certificate			= 11,
@@ -40,14 +40,15 @@ public :
 		HS_Max,
 	};	
 
-	static bool is_tls_request_resp(const uint8_t *porigdata, uint32_t origlen, DirPacket dir, bool is_init_msg = false) noexcept
+	static bool is_tls_req_resp(const uint8_t *porigdata, uint32_t origlen, DirPacket dir, bool is_init_msg = false) noexcept
 	{
-		uint8_t				*pdata = porigdata, type = pdata[0], majorv, minorv;
+		const uint8_t			*pdata = porigdata;
+		uint8_t				type = pdata[0], majorv, minorv;
 		int				len = origlen;
 		uint16_t			hdrlen;
 		bool				bret;
 
-		if (len < TLS_HDR_SZ) {
+		if (len < (int)TLS_HDR_SZ) {
 			return false;
 		}	
 	
@@ -91,7 +92,7 @@ public :
 			}
 
 			if (len >= 4) {
-				uint8_t			htype = pdata[0], tbuf[4] = { 0, pdata[1], pdata[2], pdata[3] };
+				uint8_t			tbuf[4] = { 0, pdata[1], pdata[2], pdata[3] }, htype = pdata[0];
 				uint32_t		hlen;
 				
 				if (htype >= HS_Max) {
@@ -100,8 +101,21 @@ public :
 
 				hlen = unaligned_read_be32(tbuf);
 
-				if (hlen > hdrlen - 4) {
+				if (hlen > hdrlen - 4u) {
 					return false;
+				}	
+
+				if (is_init_msg) {
+					if (dir == DirPacket::DirInbound) {
+						if (htype != HS_ClientHello) {
+							return false;
+						}	
+					}	
+					else {
+						if (!(htype == HS_ServerHello || htype == HS_HelloRequest)) {
+							return false;
+						}	
+					}	
 				}	
 			}
 
@@ -109,6 +123,7 @@ public :
 
 		case TYPE_Application :
 		case TYPE_Heartbeat :	
+
 			break;
 
 		default :
@@ -122,9 +137,9 @@ public :
 		pdata += hdrlen;
 		len -= hdrlen;
 
-		if (len > TLS_HDR_SZ) {
+		if (len > (int)TLS_HDR_SZ) {
 			// Check one more msg
-			bret = is_tls_request_resp(pdata, std::min<uint32_t>(len, TLS_HDR_SZ + 4), dir, false);
+			bret = is_tls_req_resp(pdata, std::min<uint32_t>(len, TLS_HDR_SZ + 4), dir, false);
 
 			if (!bret) {
 				return false;

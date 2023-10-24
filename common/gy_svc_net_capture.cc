@@ -161,10 +161,10 @@ std::pair<SvcType *, DirPacket> get_from_tuple_locked(const NetNsType & netns, c
 		if (!psvc && dstport <= maxsvcport) {
 			svcfind(dstip, dstport);
 
-			return {psvc, psvc ? DirPacket::DIR_INBOUND : DirPacket::DIR_UNKNOWN};
+			return {psvc, psvc ? DirPacket::DirInbound : DirPacket::DirUnknown};
 		}	
 		else {
-			return {psvc, psvc ? DirPacket::DIR_OUTBOUND : DirPacket::DIR_UNKNOWN};
+			return {psvc, psvc ? DirPacket::DirOutbound : DirPacket::DirUnknown};
 		}	
 	}
 	else {
@@ -173,10 +173,10 @@ std::pair<SvcType *, DirPacket> get_from_tuple_locked(const NetNsType & netns, c
 		if (!psvc && srcport <= maxsvcport) {
 			svcfind(srcip, srcport);
 
-			return {psvc, psvc ? DirPacket::DIR_OUTBOUND : DirPacket::DIR_UNKNOWN};
+			return {psvc, psvc ? DirPacket::DirOutbound : DirPacket::DirUnknown};
 		}	
 		else {
-			return {psvc, psvc ? DirPacket::DIR_INBOUND : DirPacket::DIR_UNKNOWN};
+			return {psvc, psvc ? DirPacket::DirInbound : DirPacket::DirUnknown};
 		}	
 	}	
 }	
@@ -304,7 +304,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 		static_assert(MAX_SVC_API_CAP < 256);
 
 		STRING_BUFFER<1024>		strbuf;
-		SVC_INFO_CAP			*capcachearr[MAX_SVC_API_CAP];
+		SVC_INFO_CAP			*capcachearr[MAX_SVC_API_CAP * 2];
 		uint32_t			naddsvc = 0, ndelsvc = 0, ncapsvc = ncap_api_svc_.load(mo_relaxed), ncapcache = 0;
 
 		if (allow_api_cap_.load(mo_relaxed) == false) {
@@ -414,7 +414,9 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 					naddsvc++;
 					ncapsvc++;
 
-					capcachearr[ncapcache++] = psvcinfo;
+					if (ncapcache + 1 < GY_ARRAY_SIZE(capcachearr)) {
+						capcachearr[ncapcache++] = psvcinfo;
+					}
 
 					nsone.port_listen_tbl_.insert_duplicate_elem(psvc, get_uint32_hash(port));
 
@@ -1591,7 +1593,7 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 		uint64_t			glob_id = 0;
 		bool				bret;
 		
-		if (dir == DirPacket::DIR_INBOUND) {
+		if (dir == DirPacket::DirInbound) {
 			if constexpr (netns.parse_api_calls_ == false) {
 				bret = netns.handle_req_err_locked(*psvc, srcip, tcp.source, tcp, pdata, data_len, caplen, tv_pkt);
 				if (bret == false) {
@@ -1880,7 +1882,7 @@ inline void NETNS_API_CAP1::set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr
 	hdr.datalen_		= caplen;
 	hdr.wirelen_		= datalen;
 
-	if (dir == DirPacket::DIR_INBOUND) { 
+	if (dir == DirPacket::DirInbound) { 
 		hdr.nxt_cli_seq_	= tcp.next_expected_src_seq(datalen);
 		hdr.start_cli_seq_	= tcp.seq;
 

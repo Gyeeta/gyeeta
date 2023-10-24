@@ -71,3 +71,4 @@ test_pcap_writer
 test_netcap_ebpf
 test_ssl_cap
 test_elf1
+test_tls_proto

@@ -53,10 +53,10 @@ enum CB_STATE_E : uint8_t
 
 enum class DirPacket : uint8_t
 {
-	DIR_UNKNOWN		= 0,
+	DirUnknown		= 0,
 
-	DIR_INBOUND		= 1,	/* Inbound to a Service i.e. From Client to Server */
-	DIR_OUTBOUND		= 2,	/* Outbound : From Server to Client */
+	DirInbound		= 1,	/* Inbound to a Service i.e. From Client to Server */
+	DirOutbound		= 2,	/* Outbound : From Server to Client */
 };	
 
 

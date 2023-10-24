@@ -8,6 +8,7 @@
 #include			"gy_misc.h"
 #include			"gy_http_proto.h"
 #include			"gy_http2_proto.h"
+#include			"gy_tls_proto.h"
 #include			"gy_postgres_proto.h"
 #include			"gy_stack_container.h"
 
@@ -264,7 +265,7 @@ struct PARSE_PKT_HDR
 
 	uint16_t				cliport_		{0};
 	uint16_t				serport_		{0};
-	DirPacket				dir_			{DirPacket::DIR_UNKNOWN};
+	DirPacket				dir_			{DirPacket::DirUnknown};
 	uint8_t					tcpflags_		{0};
 	API_CAP_SRC				src_			{SRC_UNKNOWN};
 

@@ -101,7 +101,7 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 			phdr->datalen_ 		= nbytes;	
 			phdr->wirelen_ 		= nbytes + (i == nfrag - 1 ? msghdr.get_trunc_bytes() : 0);	
 
-			if (phdr->dir_ == DirPacket::DIR_INBOUND) {
+			if (phdr->dir_ == DirPacket::DirInbound) {
 				phdr->start_cli_seq_	= msghdr.start_cli_seq_ + nbytesdone;
 				phdr->nxt_cli_seq_	= phdr->start_cli_seq_ + nbytes + (phdr->tcpflags_ & GY_TH_SYN);
 			}	
@@ -228,7 +228,7 @@ void SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
 	npkts_++;
 	nbytes_		+= hdr.datalen_;
 	
-	if (hdr.dir_ == DirPacket::DIR_INBOUND) {
+	if (hdr.dir_ == DirPacket::DirInbound) {
 		nreqpkts_++;
 		nreqbytes_ += hdr.datalen_;
 	}	
@@ -303,7 +303,7 @@ delsess :
 	}
 	
 
-	if (hdr.dir_ == DirPacket::DIR_INBOUND) {
+	if (hdr.dir_ == DirPacket::DirInbound) {
 		droptype = is_tcp_drop(sess.nxt_cli_seq_, hdr.start_cli_seq_, is_syn, sess.nxt_ser_seq_, hdr.start_ser_seq_);
 	}
 	else {
@@ -327,18 +327,19 @@ delsess :
 	sess.npkts_data_++;
 
 
-	if (hdr.dir_ == DirPacket::DIR_INBOUND) {
+	if (hdr.dir_ == DirPacket::DirInbound) {
 		if (sess.tfirstreq_ == 0) {
 			sess.tfirstreq_ = hdr.tv_.tv_sec;
 		}
 	
-		for (int i = 0; i < PROTO_DETECT::MAX_API_PROTO; ++i) {
-			auto			& apislot = detect.apistats_[i];
+		for (int i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
+			auto			& apislot = sess.apistats_[i];
 
 			if (apislot.proto_ != PROTO_UNINIT && apislot.proto_ < PROTO_UNKNOWN) {
 				switch (apislot.proto_) {
 
-
+				default :
+					break;
 				}	
 			}	
 		}	
@@ -380,7 +381,7 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 
 		if (gy_unlikely(bool(psvc->protodetect_))) {
 
-			if (phdr->dir_ == DirPacket::DIR_INBOUND) {
+			if (phdr->dir_ == DirPacket::DirInbound) {
 				return psvc->detect_svc_req(*phdr, pdata);
 			}
 			else {
