@@ -5,6 +5,7 @@
 #include			"gy_socket_stat.h"
 #include			"gy_net_parse.h"
 #include			"gy_pkt_reorder.h"
+#include			"gy_task_types.h"
 
 namespace gyeeta {
 
@@ -28,25 +29,45 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr)
 	}
 }	
 
-void SVC_INFO_CAP::lazy_init() noexcept
+/*
+ * Called by the SVC_NET_CAPTURE::schedthr_ only
+ */
+void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 {
 	try {
-		bool				nossl = false;
+		tribool				isssl = indeterminate;
 
-		if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_UNKNOWN) {
-
-			nossl = !orig_ssl_;
-			proto_ = orig_proto_;
-
-			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Service API Network Capture for svc '%s\' port %hu set as %s with SSL Capture %s as per prior stats\n",
-				comm_, ns_ip_port_.ip_port_.port_, proto_to_string(proto_), nossl ? "disabled" : "enabled");	
+		if (!svcnet.apihdlr_) {
+			return;
 		}
-		else {
-			protodetect_ = std::make_unique<PROTO_DETECT>();
+
+		auto				& apihdlr = *svcnet.apihdlr_.get();
+		auto				listenshr = svcweak_.lock();
+
+		if (!listenshr) {
+			return;
 		}	
 
-		if (nossl == false) {
-			// TODO 
+		if (proto_ == PROTO_UNINIT) {
+			if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_UNKNOWN) {
+
+				isssl = orig_ssl_;
+				proto_ = orig_proto_;
+
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Service API Network Capture for svc '%s\' port %hu set as %s with SSL Capture %s as per prior stats\n",
+					comm_, ns_ip_port_.ip_port_.port_, proto_to_string(proto_), isssl == true ? "enabled" : "disabled");	
+			}
+			else {
+				protodetect_ = std::make_unique<PROTO_DETECT>();
+			}	
+		}
+
+		if (is_ssl_ == SSL_SVC_E::SSL_UNINIT && indeterminate(isssl)) {
+			isssl =  typeinfo::ssl_enabled_listener(ns_ip_port_.ip_port_.port_, listenshr->comm_, listenshr->cmdline_);
+		}
+
+		if (isssl != false) {
+			schedule_ssl_probe();
 		}	
 	}
 	GY_CATCH_EXPRESSION(
@@ -151,6 +172,7 @@ try1 :
 			MSG_ADD_SVCCAP			*paddsvc;
 			MSG_DEL_SVCCAP			*pdelsvc;
 			MSG_TIMER_SVCCAP		*ptimer;
+			MSG_SVC_SSL_CAP			*pssl;
 			bool				bret;
 
 			PARSE_MSG_BUF			msg;
@@ -202,6 +224,21 @@ try1 :
 
 					handle_parse_timer(*ptimer);
 			
+				case 4 :
+					pssl	= std::get_if<MSG_SVC_SSL_CAP>(&msg);
+
+					if (!pssl) {
+						ASSERT_OR_THROW(false, "Please fix the MSG_SVC_SSL_CAP index");
+					}
+
+					if (pssl->req_ == SSL_REQ_E::SSL_ACTIVE) {
+						handle_ssl_active(*pssl);
+					}
+					else if (pssl->req_ == SSL_REQ_E::SSL_REJECTED) {
+						handle_ssl_rejected(*pssl);
+					}	
+			
+			
 					break;
 
 				default :
@@ -242,11 +279,12 @@ void SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
 	}	
 }
 
-bool SVC_INFO_CAP::detect_svc_req(PARSE_PKT_HDR & hdr, uint8_t *pdata)
+bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
 	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
 	auto				& detect = *protodetect_.get();
-	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST);
+	PROTO_DETECT::SessInfo		*psess = nullptr;
+	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST), skip_parse = false, skipdone = false;
 	DROP_TYPES			droptype;
 
 	auto				it = detect.smap_.find(ipport);
@@ -284,10 +322,13 @@ bool SVC_INFO_CAP::detect_svc_req(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	}	
 	
 	auto			& sess = it->second;
+	psess			= &sess;
 
-	if (is_finrst) {
-delsess :		
-		if (sess.syn_seen_) {
+	const auto delsess = [&]()
+	{
+		if (!psess) return;
+
+		if (psess->syn_seen_) {
 			detect.nsynsess_--;
 		}
 		else {
@@ -295,14 +336,23 @@ delsess :
 		}	
 
 		detect.smap_.erase(it);
+
+		psess = nullptr;
+	};	
+
+	if (is_finrst) {
+		delsess();
 		return true;
 	}	
 
+	if (sess.is_ssl_ && hdr.src_ != SRC_UPROBE_SSL) {
+		return false;
+	}	
+	
 	if (hdr.datalen_ == 0) {
 		return true;
 	}
 	
-
 	if (hdr.dir_ == DirPacket::DirInbound) {
 		droptype = is_tcp_drop(sess.nxt_cli_seq_, hdr.start_cli_seq_, is_syn, sess.nxt_ser_seq_, hdr.start_ser_seq_);
 	}
@@ -311,62 +361,380 @@ delsess :
 	}	
 
 	if (droptype == DROP_TYPES::DROP_NEW_SESS) {
-		goto delsess;
+		delsess();
+		return false;
 	}	
 
 	if (droptype == DROP_TYPES::RETRANSMIT) {
 		return false;
 	}
 
-	if (droptype == DROP_TYPES::DROP_SEEN) {
-		sess.ndrops_++;
-	}	
-
 	sess.nxt_cli_seq_	= hdr.nxt_cli_seq_;
 	sess.nxt_ser_seq_	= hdr.nxt_ser_seq_;
 	sess.npkts_data_++;
 
+	GY_SCOPE_EXIT {
+		if (psess) {
+			psess->lastdir_ = hdr.dir_;
+		}	
+	};
+
+	if (droptype == DROP_TYPES::DROP_SEEN) {
+		// No reorder handling here...
+		if ((sess.tfirstreq_ == 0) || (sess.tfirstresp_ == 0)) {
+			sess.syn_seen_ = false;
+		}
+
+		sess.ndrops_++;
+
+		sess.skip_to_req_after_resp_ = 1;
+		sess.lastdir_ = hdr.dir_;
+
+		return true;
+	}	
 
 	if (hdr.dir_ == DirPacket::DirInbound) {
-		if (sess.tfirstreq_ == 0) {
-			sess.tfirstreq_ = hdr.tv_.tv_sec;
+			
+		if (sess.skip_to_req_after_resp_) {
+			if (sess.skip_to_req_after_resp_ == 2) {
+				sess.skip_to_req_after_resp_ = 0;
+				skipdone = true;
+			}	
+			else {
+				return true;
+			}	
 		}
-	
-		for (int i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
-			auto			& apislot = sess.apistats_[i];
 
-			if (apislot.proto_ != PROTO_UNINIT && apislot.proto_ < PROTO_UNKNOWN) {
-				switch (apislot.proto_) {
+		if (sess.tfirstreq_ == 0) {
 
-				default :
-					break;
+			if (sess.syn_seen_) {
+				// Check if TLS encrypted
+				if (hdr.src_ == SRC_UPROBE_SSL) {
+					sess.ssl_init_req_ = true;
+				}
+
+				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init_msg */)) {
+					sess.ssl_init_req_ = true;
+					skip_parse = true;
 				}	
 			}	
+			else if (skipdone == false) {
+				sess.skip_to_req_after_resp_ = 1;
+				return true;
+			}	
+			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+				sess.ssl_nreq_++;
+				skip_parse = true;
+			}	
+
+			sess.tfirstreq_ = hdr.tv_.tv_sec;
+		}
+		else if (!sess.is_ssl_ && sess.ssl_nreq_ > 0) {
+			if ((hdr.src_ == SRC_UPROBE_SSL) || (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */))) {
+				sess.ssl_nreq_++;
+
+				if (sess.ssl_nresp_ > 1) {
+					sess.is_ssl_ = true;
+					detect.nssl_confirm_++;
+
+					if (sess.syn_seen_) {
+						detect.nssl_confirm_syn_++;
+					}	
+
+					if (detect.nssl_confirm_ > 3 || (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 1)) {
+						schedule_ssl_probe();
+					}	
+				}
+
+				if (hdr.src_ != SRC_UPROBE_SSL) {
+					return true;
+				}
+			}	
 		}	
+
+		if (hdr.src_ == SRC_UPROBE_SSL) {
+			sess.ssl_nreq_++;
+		}
 	}
 	else {
+		if (sess.skip_to_req_after_resp_) {
+			sess.skip_to_req_after_resp_ = 2;
+			return true;
+		}
 
+		if (sess.tfirstresp_ == 0) {
+
+			if (sess.syn_seen_) {
+				// Check if TLS encrypted
+				if (hdr.src_ == SRC_UPROBE_SSL) {
+					sess.ssl_init_resp_ = true;
+					sess.is_ssl_ = true;
+					detect.nssl_confirm_++;
+
+					if (sess.syn_seen_) {
+						detect.nssl_confirm_syn_++;
+					}	
+
+					if (detect.nssl_confirm_ > 3 || (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 1)) {
+						schedule_ssl_probe();
+					}	
+				}
+				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init_msg */)) {
+					sess.ssl_init_resp_ = true;
+					skip_parse = true;
+
+					if (sess.ssl_init_req_) {
+						sess.is_ssl_ = true;
+						detect.nssl_confirm_++;
+						
+						if (sess.syn_seen_) {
+							detect.nssl_confirm_syn_++;
+						}	
+
+						if (detect.nssl_confirm_ > 3 || (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 1)) {
+							schedule_ssl_probe();
+						}	
+					}	
+				}	
+			}	
+			else if (skipdone == false) {
+				sess.skip_to_req_after_resp_ = 1;
+				return true;
+			}	
+			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+				sess.ssl_nresp_++;
+				skip_parse = true;
+			}	
+
+			sess.tfirstresp_ = hdr.tv_.tv_sec;
+		}
+		else if (!sess.is_ssl_ && (sess.ssl_nreq_ > 0 || sess.ssl_nresp_ > 0)) {
+			if (hdr.src_ == SRC_UPROBE_SSL) {
+				if (sess.ssl_nreq_ > 1) {
+					sess.is_ssl_ = true;
+					detect.nssl_confirm_++;
+
+					if (sess.syn_seen_) {
+						detect.nssl_confirm_syn_++;
+					}	
+
+					if (detect.nssl_confirm_ > 3 || (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 1)) {
+						schedule_ssl_probe();
+					}	
+				}
+			}
+			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+				sess.ssl_nresp_++;
+
+				if (sess.ssl_nreq_ > 1) {
+					sess.is_ssl_ = true;
+					detect.nssl_confirm_++;
+
+					if (sess.syn_seen_) {
+						detect.nssl_confirm_syn_++;
+					}	
+
+					if (detect.nssl_confirm_ > 3 || (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 1)) {
+						schedule_ssl_probe();
+					}	
+					return true;
+				}
+
+				skip_parse = true;
+			}	
+			else {
+				sess.ssl_nreq_ = 0;
+				sess.ssl_nresp_ = 0;
+
+				sess.skip_to_req_after_resp_ = 1;
+				skip_parse = true;
+			}	
+		}	
+
+		if (hdr.src_ == SRC_UPROBE_SSL) {
+			sess.ssl_nresp_++;
+		}
 	}
+
+	if (skip_parse) {
+		return true;
+	}	
+
+	auto				& apistat = sess.apistat_;
+	tribool				isvalid;
+
+	if (apistat.proto_ != PROTO_UNINIT && apistat.proto_ < PROTO_UNKNOWN) {
+		switch (apistat.proto_) {
+
+		case PROTO_HTTP1 :
+			if (hdr.dir_ == DirPacket::DirInbound) {
+				isvalid	= http_proto::is_valid_req(pdata, hdr.datalen_, hdr.wirelen_);
+			}
+			else {
+				isvalid = http_proto::is_valid_resp(pdata, hdr.datalen_);
+			}
+			break;
+
+		case PROTO_HTTP2 :
+			isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+
+			break;
+		
+		case PROTO_POSTGRES :
+			if (hdr.dir_ == DirPacket::DirInbound) {
+				isvalid	= postgres_proto::is_valid_req(pdata, hdr.datalen_, hdr.wirelen_);
+			}
+			else {
+				isvalid = postgres_proto::is_valid_resp(pdata, hdr.datalen_);
+			}
+			break;
+			
+		default :
+			isvalid = false;
+			break;
+		}	
+
+		if (isvalid != true) {
+			if (indeterminate(isvalid)) {
+				apistat.nmaybe_not_++;
+
+				if (apistat.nmaybe_not_ > 5) {
+					apistat.nis_not_++;
+					apistat.nmaybe_not_ = 0;
+				}
+			}	
+			else {
+				apistat.nis_not_++;
+			}	
+
+			if (apistat.nis_not_ > 2) {
+				if (apistat.nconfirm_ > 0) {
+					for (int i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
+						if (detect.apistats_[i].proto_ == apistat.proto_) {
+							if (detect.apistats_[i].nconfirm_ > 0) {
+								detect.apistats_[i].nconfirm_--;
+							}
+
+							break;
+						}		
+					}	
+				}
+
+				std::memset((void *)&apistat, 0, sizeof(apistat));
+			}	
+		}	
+		else {
+			if (apistat.nconfirm_ > 0) {
+				if (apistat.nconfirm_ < 10) {
+					apistat.nconfirm_++;
+				}	
+			}
+			else {
+				if (hdr.dir_ == DirPacket::DirInbound) {
+					apistat.nreq_likely_++;
+
+					if (apistat.nresp_likely_ > 0) {
+						apistat.nconfirm_ = 1;
+					}	
+				}	
+				else {
+					apistat.nresp_likely_++;
+
+					if (apistat.nreq_likely_ > 0) {
+						apistat.nconfirm_ = 1;
+					}
+				}	
+
+				if (apistat.nconfirm_ == 1) {
+					int			i;
+
+					for (i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
+						if (detect.apistats_[i].proto_ == apistat.proto_) {
+							if (detect.apistats_[i].nconfirm_ < 250) {
+								detect.apistats_[i].nconfirm_++;
+							}
+
+							break;
+						}		
+					}	
+
+					if (i == (int)PROTO_DETECT::MAX_API_PROTO) {
+						for (i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
+							if (detect.apistats_[i].proto_ == PROTO_UNINIT) {
+
+								detect.apistats_[i].src_ = apistat.src_;
+								detect.apistats_[i].proto_ = apistat.proto_;
+								detect.apistats_[i].nconfirm_ = 1;
+								break;
+							}		
+						}
+					}	
+
+					detect.nconfirm_++;
+
+					if (sess.syn_seen_) {
+						detect.nconfirm_with_syn_++;
+					}	
+
+					if (detect.nconfirm_ > 3 || (detect.nconfirm_ > 1 && detect.nconfirm_with_syn_)) {
+
+						// Also schedule ssl probe for multiplexed proto
+					}	
+				}	
+			}	
+
+		}	
+	}	
+	else {
+		if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+			if (hdr.dir_ == DirPacket::DirInbound) {
+				sess.ssl_nreq_++;
+			}
+			else {
+				sess.ssl_nresp_++;
+			}
+
+			return true;
+		}	
+
+		// TODO Check various proto
+
+	}	
+	
+
 
 	return true;
 }	
 
-bool SVC_INFO_CAP::detect_svc_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
+void SVC_INFO_CAP::analyze_detect_status()
 {
-	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
-	auto				& detect = *protodetect_.get();
+	// TODO
 
-	return true;
 }
+
+void SVC_INFO_CAP::schedule_ssl_probe()
+{
+	if (ssl_req_.load(mo_relaxed) != SSL_REQ_E::SSL_NO_REQ) {
+		return;
+	}	
+
+	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();
+
+	if (!psvcnet) {
+		return;
+	}	
+
+	ssl_req_.store(SSL_REQ_E::SSL_REQUEST_SCHED, mo_relaxed);
+
+	psvcnet->sched_svc_ssl_probe(gy_to_charbuf<256>("SSL Probe for Svc %s %lx", comm_, glob_id_).get(), svcweak_);
+}	
 
 bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 {
 	try {
-		SVC_INFO_CAP			*psvc = msg.psvc_;
-		uint64_t			glob_id = msg.glob_id_;
 		auto				& puniq = msg.pooluniq_;
 
-		if (!psvc || !puniq) {
+		if (!puniq) {
 			return false;
 		}	
 
@@ -377,18 +745,38 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 			return false;
 		}
 
+		uint64_t			glob_id = msg.glob_id_;
+		SVC_INFO_CAP			*psvc = msg.psvc_;
+
+		if (!psvc) {
+			if (phdr->src_ == SRC_PCAP || glob_id != 0) {
+				return false;
+			}	
+
+			auto			it = nsportmap_.find(NS_IP_PORT(phdr->serip_, phdr->serport_, phdr->netns_));
+
+			if (it == nsportmap_.end() || !bool(it->second)) {
+				return false;
+			}	
+
+			psvc = it->second.get();
+			glob_id = psvc->glob_id_;
+		}	
+
+		if (gy_unlikely(psvc->stop_parser_tusec_.load(mo_relaxed) > 0)) {
+			return false;
+		}	
+
 		psvc->stats_.update_pkt_stats(*phdr);
 
 		if (gy_unlikely(bool(psvc->protodetect_))) {
+			psvc->detect_svc_req_resp(*phdr, pdata);
 
-			if (phdr->dir_ == DirPacket::DirInbound) {
-				return psvc->detect_svc_req(*phdr, pdata);
-			}
-			else {
-				return psvc->detect_svc_resp(*phdr, pdata);
-			}	
+			psvc->analyze_detect_status();
+			return true;
 		}	
 
+		// Parse the packets...
 		
 		return true;
 	}
@@ -405,8 +793,6 @@ bool API_PARSE_HDLR::handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept
 			return false;
 		}	
 
-		SCOPE_GY_MUTEX			slock(svcmutex_);
-
 		auto 				[it, success] = svcinfomap_.try_emplace(msg.glob_id_, std::move(msg.svcinfocap_));
 		bool				isreorder = false;
 
@@ -417,7 +803,11 @@ bool API_PARSE_HDLR::handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept
 			it->second = std::move(msg.svcinfocap_);
 		}	
 
-		slock.unlock();
+		auto 				[it2, success2] = nsportmap_.try_emplace(it->second->ns_ip_port_, it->second);
+
+		if (!success2) {
+			it2->second = it->second;
+		}	
 
 		if (!success && isreorder) {
 			reordermap_.erase(msg.glob_id_);
@@ -433,23 +823,34 @@ bool API_PARSE_HDLR::handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept
 bool API_PARSE_HDLR::handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept
 {
 	try {
-		SCOPE_GY_MUTEX			slock(svcmutex_);
+		std::shared_ptr<SVC_INFO_CAP>	svcshr;
 
 		auto 				it = svcinfomap_.find(msg.glob_id_);
-		bool				isreorder = false;
 
 		if (it != svcinfomap_.end()) {
 			if (it->second) {
-				isreorder = it->second->is_reorder_.load(mo_relaxed);
+				svcshr = std::move(it->second);
+				svcshr->stop_parser_tusec_.store(msg.tusec_, mo_relaxed);
 			}	
 
 			svcinfomap_.erase(it);
 		}	
 
-		slock.unlock();
+		reordermap_.erase(msg.glob_id_);
 
-		if (isreorder && it != svcinfomap_.end()) {
-			reordermap_.erase(msg.glob_id_);
+		if (svcshr) {
+			nsportmap_.erase(svcshr->ns_ip_port_);
+			
+			// Deferred cleanup of SVC_INFO_CAP after a 2 sec interval to allow in-flight packets to be handled
+			svcnet_.get_api_scheduler().add_oneshot_schedule(2000, gy_to_charbuf<256>("Deferred Svc Net Capture cleanup for Glob ID %lx", msg.glob_id_).get(),
+				[svcshr = std::move(svcshr)]() mutable 
+				{
+					DEBUGEXECN(1, 
+						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Starting Deferred Clean up of Service API Capture object for %s Glob ID %lx\n", 
+								svcshr->comm_, svcshr->glob_id_);
+					);	
+					svcshr.reset();
+				});
 		}
 
 		return true;
@@ -470,6 +871,49 @@ bool API_PARSE_HDLR::handle_parse_timer(MSG_TIMER_SVCCAP & msg) noexcept
 	return false;
 }	
 
+bool API_PARSE_HDLR::handle_ssl_active(MSG_SVC_SSL_CAP & msg) noexcept
+{
+	try {
+		auto				it = svcinfomap_.find(msg.glob_id_);
+
+		if (it == svcinfomap_.end() || !it->second) {
+			return false;
+		}	
+	
+		it->second->ssl_req_.store(SSL_REQ_E::SSL_ACTIVE, mo_relaxed);
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_GREEN, "SSL Probes active for Service %s ID %lx\n", it->second->comm_, it->second->glob_id_);
+
+		return true;
+	}
+	catch(...) {
+		return false;
+	}	
+}	
+
+bool API_PARSE_HDLR::handle_ssl_rejected(MSG_SVC_SSL_CAP & msg) noexcept
+{
+	try {
+		auto				it = svcinfomap_.find(msg.glob_id_);
+
+		if (it == svcinfomap_.end() || !it->second) {
+			return false;
+		}	
+	
+		it->second->ssl_req_.store(SSL_REQ_E::SSL_REJECTED, mo_relaxed);
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "SSL Probes disabled for Service %s ID %lx\n", it->second->comm_, it->second->glob_id_);
+		
+		// TODO send notification to madhava
+
+		return true;
+	}
+	catch(...) {
+		return false;
+	}	
+}	
+
+
 bool API_PARSE_HDLR::handle_parse_no_msg() noexcept
 {
 	try {
@@ -482,6 +926,5 @@ bool API_PARSE_HDLR::handle_parse_no_msg() noexcept
 }	
 
 
-	
 } // namespace gyeeta
 

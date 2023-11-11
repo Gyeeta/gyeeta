@@ -10,6 +10,7 @@
 #include			"gy_http2_proto.h"
 #include			"gy_tls_proto.h"
 #include			"gy_postgres_proto.h"
+#include			"gy_ssl_cap_common.h"
 #include			"gy_stack_container.h"
 
 #include 			"folly/container/F14Map.h"
@@ -54,6 +55,22 @@ static constexpr const char * proto_to_string(PROTO_TYPES proto) noexcept
 
 	return "Invalid";
 }	
+
+static bool ssl_multiplexed_proto(PROTO_TYPES proto) noexcept
+{
+	switch (proto) {
+	
+	case PROTO_POSTGRES :
+	case PROTO_MYSQL :
+	case PROTO_MONGO :
+	case PROTO_REDIS :
+		return true;
+
+	default :
+		return false;
+	}	
+}
+
 
 enum API_CAP_SRC : uint8_t
 {
@@ -157,12 +174,6 @@ public :
 	void update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept;
 };	
 
-class SSL_SVC_CAP
-{
-public :
-	// TODO
-};	
-
 class PROTO_DETECT
 {
 public :
@@ -176,6 +187,7 @@ public :
 		uint16_t			nresp_likely_		{0};
 		uint16_t			nconfirm_		{0};
 		uint16_t			nmaybe_not_		{0};		
+		uint8_t				nis_not_		{0};
 		API_CAP_SRC			src_			{SRC_UNKNOWN};
 		PROTO_TYPES			proto_			{PROTO_UNINIT};
 	};
@@ -184,13 +196,22 @@ public :
 	{
 		time_t				tstart_			{0};
 		time_t				tfirstreq_		{0};
+		time_t				tfirstresp_		{0};
 		uint32_t			nxt_cli_seq_		{0};
 		uint32_t			nxt_ser_seq_		{0};
 		uint32_t			npkts_data_		{0};
-		ApiStats			apistats_[MAX_API_PROTO];
+		ApiStats			apistat_;
 		uint16_t			ndrops_			{0};
-		uint16_t			nssl_			{0};
+
 		bool				syn_seen_		{false}; 
+		uint8_t				skip_to_req_after_resp_	{0};
+		bool				resp_seen_		{false};
+		bool				is_ssl_			{false};
+		bool				ssl_init_req_		{false};
+		bool				ssl_init_resp_		{false};
+		uint8_t				ssl_nreq_		{0};
+		uint8_t				ssl_nresp_		{0};
+		DirPacket			lastdir_		{DirPacket::DirUnknown};
 		
 		SessInfo(time_t tstart, uint32_t nxt_cli_seq, uint32_t nxt_ser_seq, bool syn_seen) noexcept
 			: tstart_(tstart), nxt_cli_seq_(nxt_cli_seq), nxt_ser_seq_(nxt_ser_seq), syn_seen_(syn_seen)
@@ -202,16 +223,19 @@ public :
 	SessMap					smap_;
 	time_t					tfirstreq_		{0};
 	time_t					tfirstresp_		{0};
-	uint32_t				nreqpkts_		{0};
-	uint32_t				nresppkts_		{0};
+	ApiStats				apistats_[MAX_API_PROTO];
 	uint16_t				nconfirm_		{0};
 	uint16_t				nconfirm_with_syn_	{0};
 	uint16_t				nssl_confirm_		{0};
+	uint16_t				nssl_confirm_syn_	{0};
 	uint8_t					nsynsess_		{0};
 	uint8_t					nmidsess_		{0};
 };	
 
-class SVC_INFO_CAP
+class API_PARSE_HDLR;
+class SVC_NET_CAPTURE;
+
+class SVC_INFO_CAP : public std::enable_shared_from_this<SVC_INFO_CAP>
 {
 public :
 	using SvcSessMap 			= folly::F14NodeMap<IP_PORT, svc_session, IP_PORT::IP_PORT_HASH>;
@@ -224,18 +248,19 @@ public :
 	 * Lazy init fields as the constructor is called under RCU lock
 	 */
 	std::unique_ptr<PROTO_DETECT>		protodetect_;
-	std::unique_ptr<SSL_SVC_CAP>		sslcap_;
 
 	uint64_t 				glob_id_		{0};
 	NS_IP_PORT				ns_ip_port_;
 	char					comm_[TASK_COMM_LEN]	{};
-	gy_atomic<uint64_t>			stop_parser_nsec_	{0};			// Set by Capture Schedule Thread only if Pool is blocked
+	gy_atomic<uint64_t>			stop_parser_tusec_	{0};	
 
 	PROTO_TYPES				proto_			{PROTO_UNINIT};
 	gy_atomic<bool>				is_reorder_		{false};
+	gy_atomic<SSL_REQ_E>			ssl_req_		{SSL_REQ_E::SSL_NO_REQ};
 	
 	bool					is_any_ip_		{false};
 	bool					is_root_netns_		{false};
+	SSL_SVC_E				is_ssl_			{SSL_SVC_E::SSL_UNINIT};
 
 	// Previously set listener info
 	PROTO_TYPES				orig_proto_		{PROTO_UNINIT};
@@ -243,10 +268,13 @@ public :
 
 	SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr);
 
-	void lazy_init() noexcept;
+	void lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept;
 
-	bool detect_svc_req(PARSE_PKT_HDR & hdr, uint8_t *pdata);
-	bool detect_svc_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata);
+	void schedule_ssl_probe();
+
+	bool detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void analyze_detect_status();
 };
 
 struct PARSE_PKT_HDR
@@ -262,7 +290,8 @@ struct PARSE_PKT_HDR
 	uint32_t				nxt_ser_seq_		{0};
 	uint32_t				start_ser_seq_		{0};
 	uint32_t 				pid_			{0};
-
+	uint32_t 				netns_			{0};
+	
 	uint16_t				cliport_		{0};
 	uint16_t				serport_		{0};
 	DirPacket				dir_			{DirPacket::DirUnknown};
@@ -309,6 +338,7 @@ struct MSG_ADD_SVCCAP
 struct MSG_DEL_SVCCAP
 {
 	uint64_t 				glob_id_		{0};
+	uint64_t				tusec_			{get_usec_time()};
 
 	MSG_DEL_SVCCAP(uint64_t glob_id = 0) noexcept
 		: glob_id_(glob_id)
@@ -321,32 +351,55 @@ struct MSG_TIMER_SVCCAP
 };	
 
 
-class SVC_NET_CAPTURE;
+struct MSG_SVC_SSL_CAP
+{
+	uint64_t 				glob_id_		{0};
+	std::unique_ptr<char []>		msguniq_;
+	SSL_REQ_E				req_			{SSL_REQ_E::SSL_NO_REQ};
 
-using PARSE_MSG_BUF	 			= std::variant<MSG_ADD_SVCCAP, MSG_PKT_SVCCAP, MSG_DEL_SVCCAP, MSG_TIMER_SVCCAP>;
+	MSG_SVC_SSL_CAP(uint64_t glob_id, SSL_REQ_E req, const char *msg = nullptr)
+		: glob_id_(glob_id), req_(req)
+	{
+		if (msg && *msg) {
+			size_t			nbytes = strlen(msg) + 1;
+
+			msguniq_.reset(new char [nbytes]);
+			
+			std::memcpy(msguniq_.get(), msg, nbytes);
+		}
+	}
+};
+
+// Do not change the order here 
+using PARSE_MSG_BUF = std::variant<MSG_ADD_SVCCAP, MSG_PKT_SVCCAP, MSG_DEL_SVCCAP, MSG_TIMER_SVCCAP, MSG_SVC_SSL_CAP>;
 
 class API_PARSE_HDLR
 {
 public :
 	static constexpr uint32_t		MAX_REORDER_PKTS	{20000};
 
-	using SvcInfoMap 			= folly::F14NodeMap<uint64_t, std::shared_ptr<SVC_INFO_CAP>, HASH_SAME_AS_KEY<uint64_t>>;
 	using ParMsgPool			= folly::MPMCQueue<PARSE_MSG_BUF>;
+	using SvcInfoIdMap 			= folly::F14NodeMap<uint64_t, std::shared_ptr<SVC_INFO_CAP>, HASH_SAME_AS_KEY<uint64_t>>;
+	using SvcInfoPortMap 			= folly::F14NodeMap<NS_IP_PORT, std::shared_ptr<SVC_INFO_CAP>, NS_IP_PORT::ANY_IP, NS_IP_PORT::ANY_IP>;
 	using StatsStrMap			= std::unordered_map<const char *, int64_t, GY_JHASHER<const char *>>;
 
 	ParserMemPool				parsepool_		{MAX_PARSE_POOL_PKT};
 	ParMsgPool				msgpool_		{MAX_PARSE_POOL_PKT + 1000};
-	
-	// The following section is only updated by parser thread
-	SvcInfoMap				reordermap_;		
-	uint32_t				nreorderpkts_		{0};
-	StatsStrMap				statsmap_;		
-
 	SVC_NET_CAPTURE				&svcnet_;
+	SSL_CAP_SVC				sslcap_;
+	std::atomic<bool>			allow_ssl_probe_	{SSL_CAP_SVC::ssl_uprobes_allowed()};
 
-	GY_MUTEX				svcmutex_;
-	SvcInfoMap				svcinfomap_;		// Updated by Capture threads
+protected :
 
+	// The following section is only accessed by parser thread
+	SvcInfoIdMap				svcinfomap_;
+	SvcInfoIdMap				reordermap_;		
+	SvcInfoPortMap				nsportmap_;
+	StatsStrMap				statsmap_;		
+	uint32_t				nreorderpkts_		{0};
+
+
+public :
 	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet)
 		: svcnet_(svcnet)
 	{}	
@@ -370,6 +423,9 @@ private :
 	bool handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept;
 	bool handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept;
 	bool handle_parse_timer(MSG_TIMER_SVCCAP & msg) noexcept;
+	bool handle_ssl_active(MSG_SVC_SSL_CAP & msg) noexcept;
+	bool handle_ssl_rejected(MSG_SVC_SSL_CAP & msg) noexcept;
+
 	bool handle_parse_no_msg() noexcept;
 
 };	

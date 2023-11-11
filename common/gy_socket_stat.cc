@@ -14,6 +14,7 @@
 #include			"gy_epoll_conntrack.h"
 #include			"gy_netif.h"
 #include			"gy_task_types.h"
+#include			"gy_ssl_cap_common.h"
 
 #include 			<dirent.h>
 #include 			<poll.h>
@@ -1819,6 +1820,82 @@ void TCP_LISTENER::set_aggr_glob_id() noexcept
 
 	aggr_glob_id_ = gy_cityhash64(hashbuf, sizeof(hashbuf));
 }	
+
+size_t TCP_LISTENER::get_pids_for_uprobe(pid_t *pidarr, size_t maxpids) const noexcept
+{
+	try {
+		using PID_HASH_MAP		= INLINE_STACK_HASH_MAP<pid_t, std::pair<int, bool>, 24 * 1024, GY_JHASHER<pid_t>>;
+
+		PID_HASH_MAP			pidmap;
+		auto 				shrlisten = listen_task_table_.load(mo_relaxed);
+
+		if (!shrlisten) {
+			return 0;
+		}
+		
+		auto proc_lambda = [&](SHR_TASK_ELEM_TYPE *pdatanode, void *arg) -> CB_RET_E
+		{
+			auto			ptask = pdatanode->get_cref().get();
+
+			if (ptask && (TASK_STATE_EXITED != ptask->task_valid.load(std::memory_order_relaxed))) {
+				
+				auto			[it, success] = pidmap.try_emplace(ptask->task_pid, 0, true);
+
+				if (!success) {
+					it->second.second = true;
+				}
+
+				if (ptask->parent_pgid > 1 && ptask->is_execv_task == false) {
+					auto			[it2, success2] = pidmap.try_emplace(ptask->parent_pgid, 1, false);				
+
+					if (!success2) {
+						it2->second.first++;
+					}	
+				}	
+				return CB_OK;
+			}
+
+			return CB_OK;
+		};	
+		
+		shrlisten->walk_hash_table_const(proc_lambda); 	
+
+		pid_t				tarr[MAX_SVC_SSL_PROCS] 	{};
+		int				n = 0;
+
+		for (const auto & [key, val] : pidmap) {
+			if (val.second && val.first > 0) {
+				tarr[n] = key;
+
+				if (++n == GY_ARRAY_SIZE(tarr)) {
+					break;
+				}	
+			}	
+		}	
+		
+		if ((unsigned)n < GY_ARRAY_SIZE(tarr) - 1) {
+			for (const auto & [key, val] : pidmap) {
+				if (val.second && val.first == 0) {
+					tarr[n] = key;
+
+					if (++n == GY_ARRAY_SIZE(tarr)) {
+						break;
+					}	
+				}	
+			}	
+		}	
+
+		maxpids = std::min(maxpids, (size_t)n);
+
+		std::memcpy(pidarr, tarr, maxpids * sizeof(*pidarr));
+
+		return maxpids;
+	}
+	GY_CATCH_EXPRESSION(
+		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while checking listener for pids to probe %s\n", GY_GET_EXCEPT_STRING););
+		return 0;
+	);
+}
 
 bool TCP_LISTENER::is_task_issue(uint64_t clock_usec, uint32_t & tasks_delay_usec, uint32_t & tasks_cpudelay_usec, uint32_t & tasks_blkiodelay_usec, bool & is_severe, bool & is_delay, int & ntasks_issue, int & ntasks_noissue, int & tasks_user_cpu, int & tasks_sys_cpu, int & tasks_rss_mb) noexcept
 {

@@ -42,15 +42,17 @@ public :
 
 	static bool is_tls_req_resp(const uint8_t *porigdata, uint32_t origlen, DirPacket dir, bool is_init_msg = false) noexcept
 	{
-		const uint8_t			*pdata = porigdata;
-		uint8_t				type = pdata[0], majorv, minorv;
 		int				len = origlen;
-		uint16_t			hdrlen;
-		bool				bret;
 
 		if (len < (int)TLS_HDR_SZ) {
 			return false;
 		}	
+
+		const uint8_t			*pdata = porigdata;
+		uint8_t				type = pdata[0], majorv, minorv;
+		uint16_t			hdrlen;
+		bool				bret;
+
 	
 		if (!(type >= TYPE_ChangeCipherSpec && type <= TYPE_Heartbeat)) {
 			return false;
@@ -68,6 +70,10 @@ public :
 		}	
 
 		hdrlen = unaligned_read_be16(pdata + 3);
+
+		if (type != TYPE_Application && hdrlen > 16 * 1024) {
+			return false;
+		}	
 
 		pdata += TLS_HDR_SZ;
 		len -= TLS_HDR_SZ;
@@ -101,7 +107,7 @@ public :
 
 				hlen = unaligned_read_be32(tbuf);
 
-				if (hlen > hdrlen - 4u) {
+				if ((int)hlen > hdrlen - 4) {
 					return false;
 				}	
 

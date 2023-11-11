@@ -297,10 +297,11 @@ public :
 	static constexpr uint32_t		MAX_SVC_API_CAP		{32};
 
 private :
-	ErrNSMap				errcodemap_;		// Map of captures for only http errors : To be accessed only from the schedthr_
-	ApiNSMap				apicallmap_;		// Map of captures for API calls : To be accessed only from the schedthr_
+	ErrNSMap				errcodemap_;		// Map of captures for only http errors : To be accessed only from the errschedthr_
+	ApiNSMap				apicallmap_;		// Map of captures for API calls : To be accessed only from the apischedthr_
 	ino_t					rootnsid_		{0};		
-	GY_SCHEDULER				schedthr_		{true /* allow_catchup */};
+	GY_SCHEDULER				errschedthr_		{true /* allow_catchup */};
+	GY_SCHEDULER				apischedthr_		{true /* allow_catchup */};
 	std::atomic<size_t>			last_errmapsize_	{0};
 	std::atomic<size_t>			last_apimapsize_	{0};
 
@@ -324,11 +325,27 @@ public :
 
 	bool sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap);
 
+	bool sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LISTENER> svcweak);
+
 	MAKE_CLASS_FUNC_WRAPPER_NO_ARG(SVC_NET_CAPTURE, api_parse_thread);
 
 	int api_parse_thread() noexcept;
 
 	void init_api_cap_handler();
+
+	GY_SCHEDULER & get_api_scheduler() noexcept
+	{
+		return apischedthr_;
+	}	
+
+	GY_SCHEDULER & get_err_scheduler() noexcept
+	{
+		return errschedthr_;
+	}	
+
+	static void svc_ssl_probe_cb(void *pcb_cookie, void *pdata, int data_size) noexcept;
+
+	static SVC_NET_CAPTURE *		get_singleton() noexcept;
 
 private :
 
@@ -340,6 +357,8 @@ private :
 
 	void check_netns_err_listeners() noexcept;
 	void check_netns_api_listeners() noexcept;
+
+	void handle_probe_cb(void *pdata, int data_size);
 };	
 
 

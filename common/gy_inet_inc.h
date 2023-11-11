@@ -142,6 +142,34 @@ public :
 		return jhash2((uint32_t *)buf1, len / sizeof(uint32_t), 0xceedfead);
 	}	
 
+	class ANY_IP 
+	{
+	public :
+		size_t operator()(const NS_IP_PORT & k) const noexcept
+		{
+			return k.get_hash(true /* ignore_ip */);
+		}
+
+		bool operator()(const NS_IP_PORT &lhs, const NS_IP_PORT &rhs) const noexcept
+		{
+			return NS_IP_PORT::is_equal_any_ip(lhs, rhs);
+		}	
+	};
+
+	class SAME_IP 
+	{
+	public :
+		size_t operator()(const NS_IP_PORT & k) const noexcept
+		{
+			return k.get_hash(false /* ignore_ip */);
+		}
+
+		bool operator()(const NS_IP_PORT &lhs, const NS_IP_PORT &rhs) const noexcept
+		{
+			return lhs == rhs;
+		}	
+	};
+
 	bool is_ephemeral_port() const noexcept
 	{
 		return ip_port_.is_ephemeral_port();
@@ -160,6 +188,11 @@ public :
 		return ((lhs.inode_ == rhs.inode_) && (lhs.ip_port_ == rhs.ip_port_));
 	}
 
+	static bool is_equal_any_ip(const NS_IP_PORT &lhs, const NS_IP_PORT &rhs) noexcept
+	{
+		return ((lhs.inode_ == rhs.inode_) && (lhs.ip_port_.port_ == rhs.ip_port_.port_) && 
+			(lhs.ip_port_.ipaddr_.is_any_address() || rhs.ip_port_.ipaddr_.is_any_address() || lhs.ip_port_.ipaddr_ == rhs.ip_port_.ipaddr_));
+	}
 };
 	
 class PAIR_IP_PORT

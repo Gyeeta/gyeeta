@@ -4,6 +4,7 @@
 #pragma				once
 
 #include			"gy_common_inc.h"
+#include			"gy_misc.h"
 
 namespace gyeeta {
 
@@ -165,6 +166,7 @@ enum SVC_PORTS : uint16_t
 	SVC_KAFKA			= 9092,
 
 	SVC_RABBITMQ			= 5672,
+	SVC_RABBITMQ_TLS		= 5671,
 
 	SVC_CEPH_MON			= 6789,
 	SVC_CEPH_MON2			= 3300,
@@ -290,6 +292,7 @@ static bool not_http_service(uint16_t port, const char *name, const char *cmdlin
 		break;
 
 	case SVC_RABBITMQ :
+	case SVC_RABBITMQ_TLS :
 		if (strstr(name, "rabbitmq")) {
 			return true;
 		}	
@@ -351,7 +354,90 @@ static bool not_http_service(uint16_t port, const char *name, const char *cmdlin
 	return false;
 }
 
+static tribool ssl_enabled_listener(uint16_t port, const char *name, const char *cmdline) noexcept
+{
+	switch (port) {
 
+	case SVC_HTTP :	
+	case SVC_HTTP_ALIAS :		
+		return false;
+
+	case SVC_HTTPS :
+	case SVC_HTTPS_ALIAS :
+		return true;
+
+	/*
+	XXX TODO Add once SSL uprobe for Java, Go Binaries is supported...
+	case SVC_CASSANDRA_CLUST_TLS :
+		if ((strstr(name, "java")) && (strstr(cmdline, "cassandra"))) {
+			return true;
+		}	
+		break;
+	*/
+	
+	case SVC_CONSUL_HTTPS :
+		if (strstr(name, "consul")) {
+			return true;
+		}
+		break;
+
+	case SVC_CONSUL_HTTP :
+		if (strstr(name, "consul")) {
+			return false;
+		}	
+		break;
+
+	/*
+	XXX TODO Add once these protocols parsing supported...
+	case SVC_RABBITMQ :
+		if (strstr(name, "rabbitmq")) {
+			return false;
+		}	
+		break;
+
+	case SVC_RABBITMQ_TLS :
+		if (strstr(name, "rabbitmq")) {
+			return true;
+		}	
+		break;
+	*/
+
+	default	:
+		break;
+	}	
+
+	if (strstr(name, "mysql") && strstr(cmdline, "mysql")) {
+		return indeterminate;
+	}	
+	else if (strstr(name, "redis-server") && strstr(cmdline, "redis-server")) {
+		return indeterminate;
+	}	
+	else if (strstr(name, "postgres") && strstr(cmdline, "postgres")) {
+		return indeterminate;
+	}	
+	else if (strstr(name, "mongo") && strstr(cmdline, "mongo")) {
+		return indeterminate;
+	}	
+	/*
+	else if (strstr(name, "rabbitmq") && strstr(cmdline, "rabbitmq")) {
+		return indeterminate;
+	}
+	*/
+	else if (strstr(name, "cockroach") && strstr(cmdline, "cockroach")) {
+		return indeterminate;
+	}	
+
+	return false;
+}	
+
+/*
+ * Returns true for listeners which can have both unencryoted and TLS encrypted payloads on same port.
+ * Currently we just check a small subset of open source listeners
+ */
+static bool ssl_multiplexed_listener(uint16_t port, const char *name, const char *cmdline) noexcept
+{
+	return true == indeterminate(ssl_enabled_listener(port, name, cmdline));
+}	
 
 enum class SVC_TYPE : uint64_t
 {

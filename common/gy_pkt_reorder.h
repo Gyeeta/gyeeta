@@ -40,11 +40,26 @@ static DROP_TYPES is_tcp_drop(uint32_t exp_seq, uint32_t act_seq, bool is_syn = 
 		}
 	}
 
-	if ((diff < -1024 * 1024) && (is_syn || abs(int(exp_other_seq - act_other_seq)) > 1024 * 1024)) {
+	if ((diff < -100 * 1024 * 1024) || ((diff < -1024 * 1024) && (is_syn || abs(int(exp_other_seq - act_other_seq)) > 1024 * 1024))) {
 		return DROP_TYPES::DROP_NEW_SESS;
 	}
 
 	return DROP_TYPES::DROP_SEEN;
+}	
+
+static uint32_t tcp_drop_bytes(uint32_t exp_seq, uint32_t act_seq, bool is_syn = false, uint32_t exp_other_seq = 0, uint32_t act_other_seq = 0) noexcept
+{
+
+	auto			droptype = is_tcp_drop(exp_seq, act_seq, is_syn, exp_other_seq, act_other_seq);	
+
+	if (droptype == DROP_TYPES::NO_DROP || droptype == DROP_TYPES::RETRANSMIT) {
+		return 0;
+	}	
+	else if (droptype == DROP_TYPES::DROP_NEW_SESS) {
+		return 1024;	// We do not know the extent of the drop. Set a small drop byte count
+	}	
+
+	return abs(int(act_seq - exp_seq));
 }	
 
 

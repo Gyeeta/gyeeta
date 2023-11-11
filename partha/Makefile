@@ -19,9 +19,9 @@ all: $(BINARIES)
 
 COMMON_OBJS := gypartha.o sversion.o gy_ebpf_common.o gy_paconnhdlr.o gy_server_int.o sys_hardware_partha.o
 
-PARTHA_BCC_OBJS := gy_ebpf_bcc.o
+PARTHA_BCC_OBJS := gy_ebpf_bcc.o gy_ssl_cap_bcc.o
 
-PARTHA_BPF_OBJS := gy_ebpf_bpf.o
+PARTHA_BPF_OBJS := gy_ebpf_bpf.o gy_ssl_cap_bpf.o
 
 CXXSRCS = $(COMMON_OBJS:.o=.cc) $(PARTHA_BCC_OBJS:.o=.cc) $(PARTHA_BPF_OBJS:.o=.cc)
 
@@ -40,6 +40,13 @@ gy_ebpf_bpf.o: gy_ebpf_bpf.cc gy_ebpf_kernel.bpf.c
 	$(LLVM_STRIP) -g ./gy_ebpf_mod.bpf.o
 	$(BPFTOOL) gen skeleton ./gy_ebpf_mod.bpf.o > ./gy_ebpf_mod.skel.h
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ gy_ebpf_bpf.cc
+
+gy_ssl_cap_bpf.o: gy_ssl_cap_bpf.cc gy_ssl_cap.bpf.c
+	$(CLANGCC) -g -O2 -Wall -target bpf -D__TARGET_ARCH_x86 -I$(LIBBPF_DIR)/include -I$(LIBBPF_DIR)/include/uapi/ -Wno-unused-function -c gy_ssl_cap.bpf.c -o ./gy_ssl_cap.bpf.o
+	$(LLVM_STRIP) -g ./gy_ssl_cap.bpf.o
+	$(BPFTOOL) gen skeleton ./gy_ssl_cap.bpf.o > ./gy_ssl_cap.skel.h
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o $@ gy_ssl_cap_bpf.cc
+
 
 $(CXXSRCS:.cc=.d):%.d:%.cc
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -MM $< >$@

@@ -694,6 +694,8 @@ public :
 	
 	void set_nat_ip_port(const IP_PORT & nat_ip_port, int64_t tcurr) noexcept;
 
+	size_t get_pids_for_uprobe(pid_t *pidarr, size_t maxpids) const noexcept;
+
 	friend inline bool operator== (const std::shared_ptr<TCP_LISTENER> &lhs, const NS_IP_PORT & ser) noexcept
 	{
 		auto 			pdata = lhs.get();

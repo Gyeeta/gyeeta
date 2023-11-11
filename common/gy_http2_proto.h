@@ -4,6 +4,7 @@
 #pragma				once
 
 #include			"gy_common_inc.h"
+#include			"gy_misc.h"
 
 namespace gyeeta {
 
@@ -82,7 +83,7 @@ public :
 	}	
 
 	// Returns {is_valid, is_pending}
-	static std::pair<bool, bool> is_valid_frame(const uint8_t *pdata, uint32_t datalen, uint32_t caplen, FrameInfo *pframe = nullptr) noexcept
+	static std::pair<bool, bool> is_valid_frame(const uint8_t *pdata, uint32_t caplen, uint32_t datalen, FrameInfo *pframe = nullptr) noexcept
 	{
 		if ((int)caplen < 9) {
 			return {false, false};
@@ -191,10 +192,10 @@ public :
 		return {true, datalen < framelen + 9};
 	}	
 
-	static bool is_settings_response(const uint8_t *pdata, uint32_t datalen, uint32_t caplen) noexcept
+	static bool is_settings_response(const uint8_t *pdata, uint32_t caplen, uint32_t datalen) noexcept
 	{
 		FrameInfo			finfo;
-		auto [is_valid, is_pend]	= is_valid_frame(pdata, datalen, caplen, &finfo);
+		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, datalen, &finfo);
 
 		if (!is_valid) {
 			return false;
@@ -203,9 +204,9 @@ public :
 		return (finfo.type_ == HTYPE_SETTINGS);
 	}	
 
-	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t datalen, uint32_t caplen) noexcept
+	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t datalen, DirPacket dir) noexcept
 	{
-		auto [is_valid, is_pend]	= is_valid_frame(pdata, datalen, caplen);
+		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, datalen);
 
 		return is_valid;
 	}	

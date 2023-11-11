@@ -14,11 +14,18 @@ namespace gyeeta {
 
 using PortStackSet 		= INLINE_STACK_HASH_SET<uint32_t, 1024, GY_JHASHER<uint32_t>>;
 
+static SVC_NET_CAPTURE		*pgsvccap = nullptr;
+
+SVC_NET_CAPTURE * SVC_NET_CAPTURE::get_singleton() noexcept
+{
+	return pgsvccap;
+}	
+
 /*
- * NOTE : The schedthr_ is the main handler for all the captures. Also note that the schedthr_ will
+ * NOTE : The errschedthr_ and apischedthr_ are the main handlers for all the captures. Also note that these threads will
  * keep alternating between the monitored Network Namespaces.
  *
- * Please do not assume the schedthr_ will always run in root Network Namespace
+ * Please do not assume the errschedthr_ or apischedthr_ will always run in root Network Namespace
  */
 SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid)
 	: rootnsid_(rootnsid),
@@ -37,13 +44,26 @@ SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid)
 		}	
 	}
 
-	schedthr_.add_schedule(100'100, 30'000, 0, "Check for netns Listener Deletes and Netns capture errors", 
+	if (nullptr == GY_READ_ONCE(pgsvccap)) {
+		pgsvccap = this;
+	}
+
+	errschedthr_.add_schedule(100'100, 30'000, 0, "Check for netns Listener Deletes and Netns capture errors", 
 	[this] { 
 		check_netns_err_listeners();
+	});
+
+	errschedthr_.add_schedule(5500, 1000, 0, "rcu offline thread", 
+	[] {
+		gy_rcu_offline();
+	});	
+
+	apischedthr_.add_schedule(100'100, 30'000, 0, "Check for netns Listener Deletes and Netns capture errors", 
+	[this] { 
 		check_netns_api_listeners();
 	});
 
-	schedthr_.add_schedule(5500, 1000, 0, "rcu offline thread", 
+	apischedthr_.add_schedule(5500, 1000, 0, "rcu offline thread", 
 	[] {
 		gy_rcu_offline();
 	});	
@@ -360,7 +380,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 						bret = apihdlr_->msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_DEL_SVCCAP>, psvc->glob_id_));
 						if (!bret) {
 							if (psvc->svcinfocap_) {
-								psvc->svcinfocap_->stop_parser_nsec_.store(get_nsec_clock(), mo_release);
+								psvc->svcinfocap_->stop_parser_tusec_.store(get_usec_time(), mo_release);
 							}
 
 							WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Skipping Network API Capture for Listener %s Port %hu as Msg Pool is full and deletion msg failed...\n", 
@@ -436,7 +456,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 				// Lazy init of Svc Captures after RCU read lock unlocked
 				for (uint32_t i = 0; i < ncapcache; ++i) {
 					if (capcachearr[i]) {
-						capcachearr[i]->lazy_init();
+						capcachearr[i]->lazy_init_blocking(*this);
 					}	
 				}	
 
@@ -549,7 +569,8 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 			return;
 		}	
 
-		uint32_t			ndelsvc = 0;
+		uint64_t			sslidarr[MAX_SVC_API_CAP * 2];
+		uint32_t			ndelsvc = 0, nssl = 0;
 
 		for (const auto & [inode, vecone] : nslistmap) {
 
@@ -559,6 +580,8 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 				if (it == apicallmap_.end()) {
 					continue;
 				}
+
+				nssl = 0;
 
 				auto				& nsone = it->second;
 				bool				torestart = false;
@@ -580,10 +603,20 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Deleting API Network Capture for Listener %s Port %hu as delete request seen\n",
 						psvc->listenshr_ ? psvc->listenshr_->comm_ : "", psvc->serport_);
 
+					if (psvc->svcinfocap_) {
+						auto			sslreq = psvc->svcinfocap_->ssl_req_.load(mo_acquire);
+
+						if (sslreq != SSL_REQ_E::SSL_NO_REQ && sslreq != SSL_REQ_E::SSL_REJECTED) {
+							if (nssl + 1 < GY_ARRAY_SIZE(sslidarr)) {
+								sslidarr[nssl++] = psvc->glob_id_;
+							}	
+						}
+					}
+
 					bret = apihdlr_->msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_DEL_SVCCAP>, psvc->glob_id_));
 					if (!bret) {
 						if (psvc->svcinfocap_) {
-							psvc->svcinfocap_->stop_parser_nsec_.store(get_nsec_clock(), mo_release);
+							psvc->svcinfocap_->stop_parser_tusec_.store(get_usec_time(), mo_release);
 						}
 
 						DEBUGEXECN(1, 
@@ -608,10 +641,11 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 					slowlock.unlock();
 
 					apicallmap_.erase(it);
-					continue;
+					torestart = false;
 				}	
-
-				slowlock.unlock();
+				else {
+					slowlock.unlock();
+				}
 
 				if (torestart) {
 					if (nsone.tstart_ > tcurr - 10) {
@@ -623,6 +657,9 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 					}
 				}	
 
+				for (int i = 0; i < (int)nssl; ++i) {
+					apihdlr_->sslcap_.stop_svc_cap(sslidarr[i]);
+				}	
 			}
 			GY_CATCH_EXCEPTION(
 				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while deleting listener from Network API Capture list due to %s\n", GY_GET_EXCEPT_STRING);
@@ -954,36 +991,79 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 
 bool SVC_NET_CAPTURE::sched_add_listeners(uint64_t start_after_msec, const char *name, SvcInodeMap && nslistmap, bool isapicallmap)
 {
-	return schedthr_.add_oneshot_schedule(start_after_msec, name,
-		[this, svcinodemap = std::move(nslistmap), isapicallmap]() mutable 
-		{
-			if (!isapicallmap) {
+	if (!isapicallmap) {
+		return errschedthr_.add_oneshot_schedule(start_after_msec, name,
+			[this, svcinodemap = std::move(nslistmap)]() mutable 
+			{
 				add_err_listeners(svcinodemap);
-				
+
 				last_errmapsize_.store(errcodemap_.size(), mo_release);
-			}
-			else {
+			});	
+	}
+	else {
+		return apischedthr_.add_oneshot_schedule(start_after_msec, name,
+			[this, svcinodemap = std::move(nslistmap)]() mutable 
+			{
 				add_api_listeners(svcinodemap);
 
 				last_apimapsize_.store(apicallmap_.size(), mo_release);
-			}	
-		});	
+			});	
+	}	
 }	
 
 bool SVC_NET_CAPTURE::sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap)
 {
-	return schedthr_.add_oneshot_schedule(start_after_msec, name,
+	auto				copymap = nslistmap; // Copy
+	bool				b1ret, b2ret;
+
+	b1ret = apischedthr_.add_oneshot_schedule(start_after_msec, name,
+		[this, delidmap = std::move(copymap)]() {
+			del_api_listeners(delidmap);
+
+			last_apimapsize_.store(apicallmap_.size(), mo_release);
+		});	
+
+	b2ret = errschedthr_.add_oneshot_schedule(start_after_msec, name,
 		[this, delidmap = std::move(nslistmap)]() {
 
 			del_err_listeners(delidmap);
 
 			last_errmapsize_.store(errcodemap_.size(), mo_release);
-
-			del_api_listeners(delidmap);
-
-			last_apimapsize_.store(apicallmap_.size(), mo_release);
 		});	
+
+	return b1ret && b2ret;
 }	
+
+bool SVC_NET_CAPTURE::sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LISTENER> svcweak)
+{
+	if (!apihdlr_ || apihdlr_->allow_ssl_probe_.load(mo_relaxed) == false) {
+		return false;
+	}
+
+	return apischedthr_.add_oneshot_schedule(1, name, 
+		[this, svcweak = std::move(svcweak)]() {
+			try {
+				auto				svcshr = svcweak.lock();
+
+				if (!svcshr) {
+					return;
+				}	
+		
+				pid_t				pidarr[MAX_SVC_SSL_PROCS];
+				size_t				npids;
+
+				npids = svcshr->get_pids_for_uprobe(pidarr, GY_ARRAY_SIZE(pidarr));
+
+				if (npids == 0) {
+					return;
+				}	
+			
+				apihdlr_->sslcap_.start_svc_cap(svcshr->comm_, svcshr->glob_id_, svcshr->ns_ip_port_.ip_port_.port_, pidarr, npids);
+			}
+			catch(...) {
+			}
+		});
+}
 
 SVC_ERR_HTTP::SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart)
 		: listenshr_(
@@ -1279,7 +1359,7 @@ bool NETNS_HTTP_CAP1::handle_req_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADDR
 				psess->last_http1_req_ = false;
 
 				if (psess->http2_seen_) {
-					bool		bret = http2_proto::is_valid_req_resp(pdata, datalen, caplen);
+					bool		bret = http2_proto::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirInbound);
 					
 					if (bret) {
 						psess->last_http2_req_ = true;
@@ -1377,7 +1457,7 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 				if (psess->req_seen_ == false) {
 					// Possible only for HTTP2 and some other protocols such as MySQL : Check for HTTP2 Settings
 					
-					bret = http2_proto::is_settings_response(pdata, datalen, caplen);
+					bret = http2_proto::is_settings_response(pdata, caplen, datalen);
 
 					// Lets wait for Client request before confirming
 					return bret;
@@ -1420,7 +1500,7 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 				else if (psess->init_http2_req_) {
 					psess->init_http2_req_ = false;
 
-					bret = http2_proto::is_settings_response(pdata, datalen, caplen);
+					bret = http2_proto::is_settings_response(pdata, caplen, datalen);
 
 					if (!bret) {
 						bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
@@ -1462,7 +1542,7 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 				bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 				if (!bret) {
-					bret = http2_proto::is_valid_req_resp(pdata, datalen, caplen);
+					bret = http2_proto::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirOutbound);
 				}	
 
 				return bret;
@@ -1472,7 +1552,7 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 			bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 			if (!bret) {
-				bret = http2_proto::is_valid_req_resp(pdata, datalen, caplen);
+				bret = http2_proto::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirOutbound);
 			}	
 
 			return bret;
@@ -1918,12 +1998,29 @@ void SVC_NET_CAPTURE::init_api_cap_handler()
 
 	api_cond_.cond_signal(lam1);
 
-	schedthr_.add_schedule(5400, 5000, 0, "Periodic ping to api parser thread for book-keeping", 
+	apischedthr_.add_schedule(5400, 5000, 0, "Periodic ping to api parser thread for book-keeping", 
 	[this] { 
 		apihdlr_->msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_TIMER_SVCCAP>));	
 	});
 }	
 
+void SVC_NET_CAPTURE::svc_ssl_probe_cb(void *pcb_cookie, void *pdata, int data_size) noexcept
+{
+	try {
+		SVC_NET_CAPTURE				*psvcnet = (SVC_NET_CAPTURE *)pcb_cookie;
+
+		psvcnet->handle_probe_cb(pdata, data_size);
+	}	
+	catch(...) {
+	}	
+}
+
+void SVC_NET_CAPTURE::handle_probe_cb(void *pdata, int data_size)
+{
+	
+}
+
+	
 int SVC_NET_CAPTURE::api_parse_thread() noexcept
 {
 	api_thr_.set_thread_init_done();

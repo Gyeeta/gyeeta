@@ -114,6 +114,13 @@ public :
 		return false;
 	}
 
+	static bool is_valid_resp(const uint8_t *pdata, uint32_t len) noexcept
+	{
+		bool			is_cli_err, is_ser_err;
+
+		return get_status_response(pdata, len, is_cli_err, is_ser_err);
+	}	
+
 	static bool get_status_response(const uint8_t *pdata, uint32_t len, bool & is_cli_err, bool & is_ser_err) noexcept
 	{
 		if (len < 19) {
@@ -147,6 +154,7 @@ public :
 
 		return true;
 	}
+
 
 };
 

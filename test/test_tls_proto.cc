@@ -80,7 +80,7 @@ int main()
 	char				combuf[sizeof(server_hello) - 1 + sizeof(change_cipher)];
 
 	std::memcpy(combuf, server_hello, sizeof(server_hello) - 1);
-	std::memcpy(combuf + sizeof(server_hello) - 1, change_cipher, sizeof(change_cipher) - 1);
+	std::memcpy(combuf + sizeof(server_hello) - 1, change_cipher, sizeof(change_cipher));
 
 	assert(true == tls_proto::is_tls_req_resp((const uint8_t *)client_hello, sizeof(client_hello) - 1, DirPacket::DirInbound, true /* is_init_msg */));
 	assert(true == tls_proto::is_tls_req_resp((const uint8_t *)server_hello, sizeof(server_hello) - 1, DirPacket::DirOutbound, true /* is_init_msg */));

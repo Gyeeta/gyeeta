@@ -17,6 +17,10 @@
 #include			"test_ssl_cap.h"
 #include			"test_ssl_cap.skel.h"
 
+// Uncomment below to test out Probe start/stop functionality
+
+// #define				TEST_SSL_START_STOP
+
 using namespace			gyeeta;
 using 				folly::StringPiece;
 
@@ -632,6 +636,8 @@ int main(int argc, char *argv[])
 			gy_nanosleep(2, 0);
 		}
 
+#ifdef TEST_SSL_START_STOP
+
 		for (int niter = 0; niter < 2; ++niter) {
 			if (gsig_rcvd.load(mo_relaxed)) {
 				break;
@@ -676,6 +682,7 @@ int main(int argc, char *argv[])
 				gy_nanosleep(2, 0);
 			}
 		}
+#endif		
 
 		pthread_join(thrid, nullptr);
 
