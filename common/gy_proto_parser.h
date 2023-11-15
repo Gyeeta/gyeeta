@@ -223,6 +223,7 @@ public :
 	SessMap					smap_;
 	time_t					tfirstreq_		{0};
 	time_t					tfirstresp_		{0};
+	time_t					tlastchk_		{0};
 	ApiStats				apistats_[MAX_API_PROTO];
 	uint16_t				nconfirm_		{0};
 	uint16_t				nconfirm_with_syn_	{0};
@@ -255,7 +256,7 @@ public :
 	gy_atomic<uint64_t>			stop_parser_tusec_	{0};	
 
 	PROTO_TYPES				proto_			{PROTO_UNINIT};
-	gy_atomic<bool>				is_reorder_		{false};
+	bool					is_reorder_		{false};
 	gy_atomic<SSL_REQ_E>			ssl_req_		{SSL_REQ_E::SSL_NO_REQ};
 	
 	bool					is_any_ip_		{false};
@@ -271,6 +272,8 @@ public :
 	void lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept;
 
 	void schedule_ssl_probe();
+
+	void schedule_stop_capture() noexcept;
 
 	bool detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
@@ -294,8 +297,8 @@ struct PARSE_PKT_HDR
 	
 	uint16_t				cliport_		{0};
 	uint16_t				serport_		{0};
-	DirPacket				dir_			{DirPacket::DirUnknown};
 	uint8_t					tcpflags_		{0};
+	DirPacket				dir_			{DirPacket::DirUnknown};
 	API_CAP_SRC				src_			{SRC_UNKNOWN};
 
 	// Data bytes follow

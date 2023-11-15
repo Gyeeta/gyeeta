@@ -265,7 +265,7 @@ public :
 	std::pair<SVC_API_PARSER *, DirPacket> get_svc_from_tuple_locked(const GY_IP_ADDR & srcip, uint16_t srcport, const GY_IP_ADDR & dstip, uint16_t dstport) const noexcept;
 
 	inline void set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr, const GY_IP_ADDR & cliip, const GY_IP_ADDR & serip, uint16_t cliport, uint16_t serport, \
-					const GY_TCP_HDR & tcp, const uint8_t *pdata, uint32_t datalen, uint32_t caplen, struct timeval tv_pkt, DirPacket dir) const noexcept;
+					const GY_TCP_HDR & tcp, const uint8_t *pdata, uint32_t wirelen, uint32_t caplen, struct timeval tv_pkt, DirPacket dir) const noexcept;
 
 	void print_stats(uint32_t npkts_received, uint32_t npkts_kernel_drops) const noexcept
 	{
@@ -333,6 +333,8 @@ public :
 
 	void init_api_cap_handler();
 
+	void handle_uprobe_cb(void *pdata, int data_size);
+
 	GY_SCHEDULER & get_api_scheduler() noexcept
 	{
 		return apischedthr_;
@@ -358,7 +360,6 @@ private :
 	void check_netns_err_listeners() noexcept;
 	void check_netns_api_listeners() noexcept;
 
-	void handle_probe_cb(void *pdata, int data_size);
 };	
 
 

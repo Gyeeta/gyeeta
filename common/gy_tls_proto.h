@@ -40,9 +40,9 @@ public :
 		HS_Max,
 	};	
 
-	static bool is_tls_req_resp(const uint8_t *porigdata, uint32_t origlen, DirPacket dir, bool is_init_msg = false) noexcept
+	static bool is_tls_req_resp(const uint8_t *porigdata, uint32_t caplen, DirPacket dir, bool is_init_msg = false) noexcept
 	{
-		int				len = origlen;
+		int				len = caplen;
 
 		if (len < (int)TLS_HDR_SZ) {
 			return false;

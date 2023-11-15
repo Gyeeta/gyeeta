@@ -142,7 +142,7 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 		nbytesdone += nbytes; 
 
 		// Now send the msg
-		for (int ntries = 0; ntries < 5; ++ntries) {
+		for (int ntries = 0; ntries < 3; ++ntries) {
 			bret = msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_PKT_SVCCAP>, psvccap, glob_id, std::move(puniq)));
 
 			if (bret == true) {
@@ -281,8 +281,9 @@ void SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
 
 bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
-	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
 	auto				& detect = *protodetect_.get();
+
+	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
 	PROTO_DETECT::SessInfo		*psess = nullptr;
 	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST), skip_parse = false, skipdone = false;
 	DROP_TYPES			droptype;
@@ -412,7 +413,6 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				if (hdr.src_ == SRC_UPROBE_SSL) {
 					sess.ssl_init_req_ = true;
 				}
-
 				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init_msg */)) {
 					sess.ssl_init_req_ = true;
 					skip_parse = true;
@@ -567,12 +567,8 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		switch (apistat.proto_) {
 
 		case PROTO_HTTP1 :
-			if (hdr.dir_ == DirPacket::DirInbound) {
-				isvalid	= http_proto::is_valid_req(pdata, hdr.datalen_, hdr.wirelen_);
-			}
-			else {
-				isvalid = http_proto::is_valid_resp(pdata, hdr.datalen_);
-			}
+			isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+
 			break;
 
 		case PROTO_HTTP2 :
@@ -581,12 +577,8 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			break;
 		
 		case PROTO_POSTGRES :
-			if (hdr.dir_ == DirPacket::DirInbound) {
-				isvalid	= postgres_proto::is_valid_req(pdata, hdr.datalen_, hdr.wirelen_);
-			}
-			else {
-				isvalid = postgres_proto::is_valid_resp(pdata, hdr.datalen_);
-			}
+			isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+
 			break;
 			
 		default :
@@ -620,7 +612,10 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					}	
 				}
 
-				std::memset((void *)&apistat, 0, sizeof(apistat));
+				apistat = {};
+			}	
+			else {
+				return true;
 			}	
 		}	
 		else {
@@ -675,41 +670,218 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					if (sess.syn_seen_) {
 						detect.nconfirm_with_syn_++;
 					}	
-
-					if (detect.nconfirm_ > 3 || (detect.nconfirm_ > 1 && detect.nconfirm_with_syn_)) {
-
-						// Also schedule ssl probe for multiplexed proto
-					}	
 				}	
 			}	
 
-		}	
-	}	
-	else {
-		if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
-			if (hdr.dir_ == DirPacket::DirInbound) {
-				sess.ssl_nreq_++;
-			}
-			else {
-				sess.ssl_nresp_++;
-			}
-
 			return true;
 		}	
-
-		// TODO Check various proto
-
 	}	
-	
 
+	if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+		if (hdr.dir_ == DirPacket::DirInbound) {
+			sess.ssl_nreq_++;
+		}
+		else {
+			sess.ssl_nresp_++;
+		}
+
+		return true;
+	}	
+
+	const auto init_apistat = [&](PROTO_TYPES proto)
+	{
+		apistat = {};
+
+		apistat.npkts_++;
+
+		if (hdr.dir_ == DirPacket::DirInbound) {
+			apistat.nreq_likely_++;
+		}	
+		else {
+			apistat.nresp_likely_++;
+		}	
+
+		apistat.src_ = hdr.src_;
+		apistat.proto_ = proto;
+	};	
+
+	isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+
+	if (true == isvalid) {
+		init_apistat(PROTO_HTTP1);
+
+		return true;
+	}	
+
+	isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+		
+	if (true == isvalid) {
+		init_apistat(PROTO_HTTP2);
+
+		return true;
+	}
+
+	isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+		
+	if (true == isvalid) {
+		init_apistat(PROTO_POSTGRES);
+
+		return true;
+	}
 
 	return true;
 }	
 
 void SVC_INFO_CAP::analyze_detect_status()
 {
-	// TODO
+	auto				& detect = *protodetect_.get();
+	auto				& tstats = stats_;
 
+	if (detect.nconfirm_ > 3 || (detect.nconfirm_ > 1 && detect.nconfirm_with_syn_)) {
+		auto				sslreq = ssl_req_.load(mo_relaxed);
+		auto				svcshr = svcweak_.lock();
+
+		if (!svcshr) {
+			protodetect_.reset();
+			return;
+		}	
+
+		// Also schedule ssl probe for multiplexed proto
+		for (int i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
+			auto			& apistat = detect.apistats_[i];
+
+			if (apistat.nconfirm_ > 1 && apistat.proto_ > PROTO_UNINIT && apistat.proto_ < PROTO_UNKNOWN) {
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Service API Capture : Service Protocol Detected as \'%s\' for Listener %s Port %hu ID %lx : "
+							"SSL Capture is currently %sactive\n", proto_to_string(apistat.proto_), comm_, ns_ip_port_.ip_port_.port_,
+							glob_id_, sslreq == SSL_REQ_E::SSL_ACTIVE ? "" : "not ");
+
+				if (sslreq == SSL_REQ_E::SSL_ACTIVE) {
+					svcshr->api_is_ssl_.store(true, mo_relaxed);
+					is_ssl_ = SSL_SVC_E::SSL_YES;
+				}
+				else if (sslreq == SSL_REQ_E::SSL_REJECTED || sslreq == SSL_REQ_E::SSL_NO_REQ) {
+					svcshr->api_is_ssl_.store(false, mo_relaxed);
+					is_ssl_ = SSL_SVC_E::SSL_NO;
+				}	
+				else {
+					svcshr->api_is_ssl_.store(indeterminate, mo_relaxed);
+
+					if (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 0) {
+						is_ssl_ = SSL_SVC_E::SSL_MULTIPLEXED;
+					}	
+					else {
+						is_ssl_ = SSL_SVC_E::SSL_NO;
+					}	
+				}	
+
+				svcshr->api_proto_.store(apistat.proto_, mo_relaxed);
+
+				proto_ = apistat.proto_;
+
+				GY_CC_BARRIER();
+
+				// detect/apistat no longer valid after this...
+				protodetect_.reset();
+
+				return;
+			}	
+		}	
+	}
+
+	if (detect.nssl_confirm_ > 3 || (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 1)) {
+		auto				sslreq = ssl_req_.load(mo_relaxed);
+		auto				svcshr = svcweak_.lock();
+
+		if (!svcshr) {
+			protodetect_.reset();
+			return;
+		}	
+
+		if (sslreq == SSL_REQ_E::SSL_REJECTED) {
+			if (stop_parser_tusec_.load(mo_relaxed) == 0) {
+
+				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture being stopped as Protocol Detected as TLS Encrtypted for Listener %s Port %hu ID %lx : "
+					"But SSL Capture cannot be enabled which may be because of unsupported binary (Go Lang, Java or Python based) or an unsupported SSL Library\n", 
+					comm_, ns_ip_port_.ip_port_.port_, glob_id_);
+
+				schedule_stop_capture();
+			}
+			
+			protodetect_.reset();
+			return;
+		}	
+	}	
+
+	time_t				tcurr = tstats.tlastpkt_;
+
+	if (detect.tlastchk_ > tcurr - 5) {
+		return;
+	}	
+
+	detect.tlastchk_ = tcurr;
+
+	if (detect.tfirstreq_ && detect.tfirstresp_ && tcurr > detect.tfirstreq_ + 900 && tcurr > detect.tfirstresp_ + 900 && tstats.npkts_ > 10000 && 
+		tstats.nbytes_ > GY_UP_MB(5) && (detect.nsynsess_ > 4 || (detect.nmidsess_ > 10 && detect.nsynsess_ > 1))) {
+
+		auto				sslreq = ssl_req_.load(mo_relaxed);
+
+		// No confirms or only upto two confirms
+		if (stop_parser_tusec_.load(mo_relaxed) == 0) {
+			if (detect.nconfirm_ > 0) {
+				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture : Service Protocol Detection failed due to inadequate connection detects : "
+					"Could only detect %u connections out of %u as \'%s\' for Listener %s Port %hu ID %lx : "
+						"SSL Capture is currently %sactive\n", detect.nconfirm_, detect.nsynsess_ + detect.nmidsess_,
+						proto_to_string(detect.apistats_[0].proto_), comm_, ns_ip_port_.ip_port_.port_,
+						glob_id_, sslreq == SSL_REQ_E::SSL_ACTIVE ? "" : "not ");
+			}
+			else {
+				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture : Service Protocol Detection failed due to protocol not detected : "
+					"Could not detect protocol from %u connections for Listener %s Port %hu ID %lx : "
+						"SSL Capture is currently %sactive\n", detect.nsynsess_ + detect.nmidsess_,
+						comm_, ns_ip_port_.ip_port_.port_, glob_id_, sslreq == SSL_REQ_E::SSL_ACTIVE ? "" : "not ");
+
+			}
+
+			schedule_stop_capture();
+		}
+		
+		protodetect_.reset();
+		return;
+	}
+
+	uint64_t			tstopusec = stop_parser_tusec_.load(mo_relaxed);
+
+	if (tstopusec > 0 && tstopusec + 30 * GY_USEC_PER_SEC > tcurr * GY_USEC_PER_SEC) {
+		protodetect_.reset();
+		return;
+	}	
+}
+
+void SVC_INFO_CAP::schedule_stop_capture() noexcept
+{
+	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();
+	
+	if (!psvcnet) {
+		return;
+	}	
+
+	GlobIDInodeMap			delidmap;
+
+	ino_t				inode = ns_ip_port_.inode_;
+	uint16_t			port = ns_ip_port_.ip_port_.port_;
+	
+	// Send delete msg
+	try {
+		auto			[it, success] = delidmap.try_emplace(inode);
+		auto			& vec = it->second;		
+		
+		vec.emplace_back(glob_id_, port);
+
+		psvcnet->sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listener %s %lx", comm_, glob_id_).get(), std::move(delidmap));
+	}
+	catch(...) {
+		return;
+	}	
 }
 
 void SVC_INFO_CAP::schedule_ssl_probe()
@@ -770,9 +942,10 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 		psvc->stats_.update_pkt_stats(*phdr);
 
 		if (gy_unlikely(bool(psvc->protodetect_))) {
-			psvc->detect_svc_req_resp(*phdr, pdata);
+			if (true == psvc->detect_svc_req_resp(*phdr, pdata)) {
+				psvc->analyze_detect_status();
+			}	
 
-			psvc->analyze_detect_status();
 			return true;
 		}	
 
@@ -798,7 +971,7 @@ bool API_PARSE_HDLR::handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept
 
 		if (!success) {
 			if (it->second) {
-				isreorder = it->second->is_reorder_.load(mo_relaxed);
+				isreorder = it->second->is_reorder_;
 			}	
 			it->second = std::move(msg.svcinfocap_);
 		}	

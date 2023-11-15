@@ -83,7 +83,7 @@ public :
 	}	
 
 	// Returns {is_valid, is_pending}
-	static std::pair<bool, bool> is_valid_frame(const uint8_t *pdata, uint32_t caplen, uint32_t datalen, FrameInfo *pframe = nullptr) noexcept
+	static std::pair<bool, bool> is_valid_frame(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, FrameInfo *pframe = nullptr) noexcept
 	{
 		if ((int)caplen < 9) {
 			return {false, false};
@@ -189,13 +189,13 @@ public :
 			pframe->flags_		= flags;
 		}	
 
-		return {true, datalen < framelen + 9};
+		return {true, wirelen < framelen + 9};
 	}	
 
-	static bool is_settings_response(const uint8_t *pdata, uint32_t caplen, uint32_t datalen) noexcept
+	static bool is_settings_response(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen) noexcept
 	{
 		FrameInfo			finfo;
-		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, datalen, &finfo);
+		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, wirelen, &finfo);
 
 		if (!is_valid) {
 			return false;
@@ -204,9 +204,9 @@ public :
 		return (finfo.type_ == HTYPE_SETTINGS);
 	}	
 
-	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t datalen, DirPacket dir) noexcept
+	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir) noexcept
 	{
-		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, datalen);
+		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, wirelen);
 
 		return is_valid;
 	}	

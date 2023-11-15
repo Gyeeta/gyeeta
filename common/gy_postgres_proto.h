@@ -18,7 +18,7 @@ class postgres_proto
 {
 public :
 
-	static tribool is_valid_req(const uint8_t *pdata, uint32_t caplen, uint32_t actlen) noexcept
+	static tribool is_valid_req(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen) noexcept
 	{
 		return false;
 	}	
@@ -26,6 +26,15 @@ public :
 	static bool is_valid_resp(const uint8_t *pdata, uint32_t len) noexcept
 	{
 		return false;
+	}	
+
+	static tribool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir) noexcept
+	{
+		if (dir == DirPacket::DirInbound) {
+			return is_valid_req(pdata, caplen, wirelen);
+		}	
+
+		return is_valid_resp(pdata, caplen);
 	}	
 };
 

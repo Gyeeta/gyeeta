@@ -34,6 +34,8 @@ class SSL_CAP_SVC
 {
 public :
 	static std::optional<GY_SSLCAP>		gsslcap_;
+
+	static GY_CLOCK_TO_TIME			gclktime_;
 	
 	SSL_CAP_SVC() noexcept;
 

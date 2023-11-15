@@ -88,7 +88,7 @@ public :
 		}
 	}
 
-	static tribool is_valid_req(const uint8_t *pdata, uint32_t caplen, uint32_t actlen) noexcept
+	static tribool is_valid_req(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen) noexcept
 	{
 		auto			method = get_req_method(pdata, caplen);
 		
@@ -100,7 +100,7 @@ public :
 		const uint8_t		*phttp = (const uint8_t *)memmem(pdata + 4, caplen - 4, "HTTP/1.", 7);
 
 		if (!phttp) {
-			if (caplen < actlen) {
+			if (caplen < wirelen) {
 				// Truncated req
 				return indeterminate;
 			}				
@@ -121,6 +121,15 @@ public :
 		return get_status_response(pdata, len, is_cli_err, is_ser_err);
 	}	
 
+	static tribool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir) noexcept
+	{
+		if (dir == DirPacket::DirInbound) {
+			return is_valid_req(pdata, caplen, wirelen);
+		}	
+
+		return is_valid_resp(pdata, caplen);
+	}	
+	
 	static bool get_status_response(const uint8_t *pdata, uint32_t len, bool & is_cli_err, bool & is_ser_err) noexcept
 	{
 		if (len < 19) {

@@ -1950,7 +1950,7 @@ void NETNS_API_CAP1::restart_capture()
 
 inline void NETNS_API_CAP1::set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr, const GY_IP_ADDR & cliip, const GY_IP_ADDR & serip, 
 						uint16_t cliport, uint16_t serport, const GY_TCP_HDR & tcp, 
-						const uint8_t *pdata, uint32_t datalen, uint32_t caplen, struct timeval tv_pkt, DirPacket dir) const noexcept
+						const uint8_t *pdata, uint32_t wirelen, uint32_t caplen, struct timeval tv_pkt, DirPacket dir) const noexcept
 {
 	msghdr.emplace();
 
@@ -1960,10 +1960,10 @@ inline void NETNS_API_CAP1::set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr
 	hdr.cliip_		= cliip;
 	hdr.serip_		= serip;
 	hdr.datalen_		= caplen;
-	hdr.wirelen_		= datalen;
+	hdr.wirelen_		= wirelen;
 
 	if (dir == DirPacket::DirInbound) { 
-		hdr.nxt_cli_seq_	= tcp.next_expected_src_seq(datalen);
+		hdr.nxt_cli_seq_	= tcp.next_expected_src_seq(wirelen);
 		hdr.start_cli_seq_	= tcp.seq;
 
 		hdr.nxt_ser_seq_	= tcp.ack_seq;
@@ -1973,14 +1973,14 @@ inline void NETNS_API_CAP1::set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr
 		hdr.nxt_cli_seq_	= tcp.ack_seq;
 		hdr.start_cli_seq_	= tcp.ack_seq;
 
-		hdr.nxt_ser_seq_	= tcp.next_expected_src_seq(datalen);
+		hdr.nxt_ser_seq_	= tcp.next_expected_src_seq(wirelen);
 		hdr.start_ser_seq_	= tcp.seq;
 	}	
 
 	hdr.cliport_		= cliport;
 	hdr.serport_		= serport;
-	hdr.dir_		= dir;
 	hdr.tcpflags_		= tcp.tcpflags;
+	hdr.dir_		= dir;
 	hdr.src_		= SRC_PCAP;
 }	
 
@@ -2009,18 +2009,12 @@ void SVC_NET_CAPTURE::svc_ssl_probe_cb(void *pcb_cookie, void *pdata, int data_s
 	try {
 		SVC_NET_CAPTURE				*psvcnet = (SVC_NET_CAPTURE *)pcb_cookie;
 
-		psvcnet->handle_probe_cb(pdata, data_size);
+		psvcnet->handle_uprobe_cb(pdata, data_size);
 	}	
 	catch(...) {
 	}	
 }
 
-void SVC_NET_CAPTURE::handle_probe_cb(void *pdata, int data_size)
-{
-	
-}
-
-	
 int SVC_NET_CAPTURE::api_parse_thread() noexcept
 {
 	api_thr_.set_thread_init_done();

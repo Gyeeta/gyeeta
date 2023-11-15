@@ -42,5 +42,11 @@ bool SSL_CAP_SVC::ssl_uprobes_allowed() noexcept
 	return false;
 }	
 
+void SVC_NET_CAPTURE::handle_uprobe_cb(void *pdata, int data_size)
+{
+	
+}
+
+
 } // namespace gyeeta
 

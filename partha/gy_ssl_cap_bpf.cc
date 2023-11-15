@@ -2,6 +2,7 @@
 //  SPDX-License-Identifier: GPL-3.0-or-later
 
 #include			"gy_ssl_cap_bpf.h"
+#include			"gy_ssl_cap.h"
 #include			"gy_svc_net_capture.h"
 
 using 				folly::StringPiece;
@@ -9,6 +10,7 @@ using 				folly::StringPiece;
 namespace gyeeta {
 
 std::optional<GY_SSLCAP>	SSL_CAP_SVC::gsslcap_;
+GY_CLOCK_TO_TIME		SSL_CAP_SVC::gclktime_;
 
 GY_SSLCAP::GY_SSLCAP(GY_EBPF_CB cb, void *pcb_cookie)
 {
@@ -21,10 +23,6 @@ GY_SSLCAP::GY_SSLCAP(GY_EBPF_CB cb, void *pcb_cookie)
 		GY_THROW_EXPRESSION("Failed to initialize SSL uprobe collection : %s", errorbuf);
 	}	
 }	
-
-SSL_CAP_SVC::SSL_CAP_SVC() noexcept		= default;
-
-SSL_CAP_SVC::~SSL_CAP_SVC() noexcept		= default;
 
 // Will update pidarr and set skipped pids to 0
 size_t GY_SSLCAP::add_procs_with_init(pid_t *pidarr, size_t npids, GY_EBPF_CB cb, void *pcb_cookie, char (&errorbuf)[256])
@@ -502,16 +500,28 @@ bool GY_SSLCAP::is_pid_ssl_probable(pid_t pid, char (&errorbuf)[256]) noexcept
 
 int GY_SSLCAP::ring_pool_thread() noexcept
 {
+	uint64_t			nrecs = 0, currrecs = 0;
+	int				ret;
+
 	pthrpool_->set_thread_init_done();
 
+try1 :
 	try {
 		do {
-			pdatapool_->poll(2000);
+			ret = pdatapool_->poll(2000);
 
-		} while (false == pthrpool_->is_thread_stop_signalled(mo_relaxed));
+			if (ret < 0 || ((nrecs += ret, currrecs += ret) > 1000)) {
+				currrecs = 0;
+
+				if (pthrpool_->is_thread_stop_signalled(mo_relaxed)) {
+					break;
+				}	
+			}
+			
+		} while (true);
 	}
 	catch(...) {
-
+		goto try1;
 	}	
 
 	return 1;
@@ -525,6 +535,18 @@ SSL_CAP_SVC::SSL_CAP_SVC(SVC_NET_CAPTURE & svcnet)
 	}	
 
 }	
+
+SSL_CAP_SVC::SSL_CAP_SVC() noexcept		= default;
+
+SSL_CAP_SVC::~SSL_CAP_SVC() noexcept
+{
+	SCOPE_GY_MUTEX				slock(mapmutex_);
+
+	for (const auto & [ svcid, _ ] : svcmap_) {
+		stop_svc_cap(svcid);
+	}
+}	
+
 
 size_t SSL_CAP_SVC::start_svc_cap(const char * comm, uint64_t glob_id, uint16_t port, pid_t *pidarr, size_t npids) noexcept
 {
@@ -658,6 +680,63 @@ bool SSL_CAP_SVC::ssl_uprobes_allowed() noexcept
 	sallowed = 1;
 	return true;
 }
+
+void SVC_NET_CAPTURE::handle_uprobe_cb(void *pdata, int data_size)
+{
+	if (!pdata || data_size < (signed)sizeof(caphdr_t)) {
+		return;
+	}
+
+	caphdr_t			event;
+
+	std::memcpy(&event, pdata, sizeof(event));
+	
+	if ((uint32_t)data_size != event.len + sizeof(event)) {
+		return;
+	}
+	
+	PARSE_PKT_HDR			hdr;
+
+	hdr.tv_				= SSL_CAP_SVC::gclktime_.get_timeval(event.ts_ns/1000);
+	
+	if (event.tuple.ipver != 6) {
+		hdr.cliip_.set_ip(event.tuple.cliaddr.cli4addr);
+		hdr.serip_.set_ip(event.tuple.seraddr.ser4addr);
+	}	
+	else {
+		hdr.cliip_.set_ip(event.tuple.cliaddr.cli6addr);
+		hdr.serip_.set_ip(event.tuple.seraddr.ser6addr);
+	}	
+
+	hdr.datalen_			= event.get_act_payload_len();
+	hdr.wirelen_			= hdr.datalen_;
+	hdr.nxt_cli_seq_		= event.nxt_cli_seq;
+	hdr.nxt_ser_seq_		= event.nxt_ser_seq;
+
+	if (event.is_inbound) {
+		hdr.start_cli_seq_	= event.get_src_seq_start(); 
+		hdr.start_ser_seq_	= event.nxt_ser_seq;
+		hdr.dir_		= DirPacket::DirInbound;
+	}	
+	else {
+		hdr.start_cli_seq_	= event.nxt_cli_seq;
+		hdr.start_ser_seq_	= event.get_src_seq_start(); 
+		hdr.dir_		= DirPacket::DirOutbound;
+	}	
+
+	hdr.pid_			= event.pid;
+	hdr.netns_			= event.tuple.netns;
+	hdr.cliport_			= event.tuple.cliport;
+	hdr.serport_			= event.tuple.serport;
+	hdr.tcpflags_			= event.tcp_flags;
+	hdr.src_			= SRC_UPROBE_SSL;
+
+	if (apihdlr_) {
+		apihdlr_->send_pkt_to_parser(nullptr, 0, hdr, (const uint8_t *)pdata + sizeof(event), hdr.datalen_);
+	}
+}
+
+
 	
 } // namespace gyeeta
 
