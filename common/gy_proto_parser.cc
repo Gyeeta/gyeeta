@@ -4,12 +4,24 @@
 #include			"gy_proto_parser.h"
 #include			"gy_socket_stat.h"
 #include			"gy_net_parse.h"
-#include			"gy_pkt_reorder.h"
 #include			"gy_task_types.h"
 
 namespace gyeeta {
 
-SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr)
+POOL_ALLOC			*REORDER_PKT_HDR::greorderpools_[MAX_API_PARSERS] = {};		
+
+API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx)
+		: svcnet_(svcnet), parseridx_(parseridx)
+{
+	if (parseridx < MAX_API_PARSERS) {
+		REORDER_PKT_HDR::greorderpools_[parseridx] = &reorderpool_;
+	}	
+	else {	
+		GY_THROW_EXPRESSION("API Parser Initialiation : Invalid Parser Index id specified %hhu : Max allowed is %lu", parseridx, MAX_API_PARSERS);
+	}	
+}	
+
+SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_PARSE_HDLR & apihdlr)
 	: svcweak_(
 	({
 		if (!listenshr) {
@@ -17,7 +29,7 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr)
 		}	
 		listenshr;
 
-	})), glob_id_(listenshr->glob_id_), ns_ip_port_(listenshr->ns_ip_port_),
+	})), apihdlr_(apihdlr), glob_id_(listenshr->glob_id_), ns_ip_port_(listenshr->ns_ip_port_),
 	is_any_ip_(listenshr->is_any_ip_), is_root_netns_(listenshr->is_root_netns_)
 {
 	GY_STRNCPY(comm_, listenshr->comm_, sizeof(comm_));
@@ -37,11 +49,6 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 	try {
 		tribool				isssl = indeterminate;
 
-		if (!svcnet.apihdlr_) {
-			return;
-		}
-
-		auto				& apihdlr = *svcnet.apihdlr_.get();
 		auto				listenshr = svcweak_.lock();
 
 		if (!listenshr) {
@@ -62,7 +69,7 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 			}	
 		}
 
-		if (is_ssl_ == SSL_SVC_E::SSL_UNINIT && indeterminate(isssl)) {
+		if (svc_ssl_ == SSL_SVC_E::SSL_UNINIT && indeterminate(isssl)) {
 			isssl =  typeinfo::ssl_enabled_listener(ns_ip_port_.ip_port_.port_, listenshr->comm_, listenshr->cmdline_);
 		}
 
@@ -100,6 +107,8 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 		auto				puniq = parsepool_.allocElem();
 
 		if (!puniq) {
+			stats_.nskip_pool_.fetch_add_relaxed(1);
+
 			return false;
 		}	
 
@@ -153,6 +162,8 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 		}	
 
 		if (bret == false) {
+			stats_.nskip_pool_.fetch_add_relaxed(1);
+
 			return false;
 		}	
 	}	
@@ -177,7 +188,7 @@ try1 :
 
 			PARSE_MSG_BUF			msg;
 
-			bret = msgpool_.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::microseconds(3 * GY_USEC_PER_SEC), msg);
+			bret = msgpool_.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::microseconds(2 * GY_USEC_PER_SEC), msg);
 			if (bret) {
 
 				switch (msg.index()) {
@@ -224,6 +235,8 @@ try1 :
 
 					handle_parse_timer(*ptimer);
 			
+					break;
+
 				case 4 :
 					pssl	= std::get_if<MSG_SVC_SSL_CAP>(&msg);
 
@@ -237,12 +250,16 @@ try1 :
 					else if (pssl->req_ == SSL_REQ_E::SSL_REJECTED) {
 						handle_ssl_rejected(*pssl);
 					}	
-			
+					else {
+						stats_.ninvalid_msg_++;
+					}	
 			
 					break;
 
 				default :
 					assert(false);		// Unhandled index
+
+					stats_.ninvalid_msg_++;
 					break;
 				}	
 			}	
@@ -258,7 +275,7 @@ try1 :
 	goto try1;
 }	
 	
-void SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
+bool SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
 {
 	tlastpkt_	= hdr.tv_.tv_sec;
 	
@@ -277,6 +294,11 @@ void SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
 	if (hdr.src_ < API_CAP_SRC::SRC_MAX) {
 		srcpkts_[hdr.src_]++;
 	}	
+	else {
+		return false;
+	}	
+
+	return true;
 }
 
 bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
@@ -286,7 +308,8 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
 	PROTO_DETECT::SessInfo		*psess = nullptr;
 	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST), skip_parse = false, skipdone = false;
-	DROP_TYPES			droptype;
+	bool				new_sess = false;
+	DROP_TYPES			droptype, droptypeack;
 
 	auto				it = detect.smap_.find(ipport);
 	
@@ -310,6 +333,8 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			it = detect.smap_.try_emplace(ipport, hdr.tv_.tv_sec, 
 						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn).first;
 			
+			new_sess = true;
+
 			if (is_syn) {
 				detect.nsynsess_++;
 			}	
@@ -349,24 +374,54 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	if (sess.is_ssl_ && hdr.src_ != SRC_UPROBE_SSL) {
 		return false;
 	}	
+
+	if (hdr.src_ == SRC_UPROBE_SSL && !sess.is_ssl_) {
+		sess.is_ssl_ = true;
+		sess.lastdir_ = DirPacket::DirUnknown;
+		detect.nssl_confirm_++;
+
+		if (sess.syn_seen_) {
+			detect.nssl_confirm_syn_++;
+		}	
+
+		if (!is_syn) {
+			sess.PROTO_DETECT::SessInfo::~SessInfo();
+
+			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, 
+						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
+		}	
+	}	
 	
 	if (hdr.datalen_ == 0) {
+		if (is_syn && !new_sess) {
+			sess.PROTO_DETECT::SessInfo::~SessInfo();
+
+			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, 
+						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
+		}
+
 		return true;
 	}
 	
 	if (hdr.dir_ == DirPacket::DirInbound) {
-		droptype = is_tcp_drop(sess.nxt_cli_seq_, hdr.start_cli_seq_, is_syn, sess.nxt_ser_seq_, hdr.start_ser_seq_);
+		auto p = is_tcp_drop(sess.nxt_cli_seq_, hdr.start_cli_seq_, sess.nxt_ser_seq_, hdr.start_ser_seq_, is_syn);
+
+		droptype 	= p.first;
+		droptypeack 	= p.second;
 	}
 	else {
-		droptype = is_tcp_drop(sess.nxt_ser_seq_, hdr.start_ser_seq_, is_syn, sess.nxt_cli_seq_, hdr.start_cli_seq_);
+		auto p = is_tcp_drop(sess.nxt_ser_seq_, hdr.start_ser_seq_, sess.nxt_cli_seq_, hdr.start_cli_seq_, is_syn);
+
+		droptype 	= p.first;
+		droptypeack 	= p.second;
 	}	
 
-	if (droptype == DROP_TYPES::DROP_NEW_SESS) {
+	if (droptype == DT_DROP_NEW_SESS) {
 		delsess();
 		return false;
 	}	
 
-	if (droptype == DROP_TYPES::RETRANSMIT) {
+	if (droptype == DT_RETRANSMIT) {
 		return false;
 	}
 
@@ -380,7 +435,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}	
 	};
 
-	if (droptype == DROP_TYPES::DROP_SEEN) {
+	if (droptype == DT_DROP_SEEN) {
 		// No reorder handling here...
 		if ((sess.tfirstreq_ == 0) || (sess.tfirstresp_ == 0)) {
 			sess.syn_seen_ = false;
@@ -404,6 +459,10 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			else {
 				return true;
 			}	
+		}
+
+		if (sess.lastdir_ == DirPacket::DirInbound) {
+			return false;
 		}
 
 		if (sess.tfirstreq_ == 0) {
@@ -435,6 +494,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 				if (sess.ssl_nresp_ > 1) {
 					sess.is_ssl_ = true;
+					sess.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -457,6 +517,10 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}
 	}
 	else {
+		if (sess.lastdir_ == DirPacket::DirOutbound) {
+			return false;
+		}
+
 		if (sess.skip_to_req_after_resp_) {
 			sess.skip_to_req_after_resp_ = 2;
 			return true;
@@ -469,6 +533,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				if (hdr.src_ == SRC_UPROBE_SSL) {
 					sess.ssl_init_resp_ = true;
 					sess.is_ssl_ = true;
+					sess.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -485,6 +550,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 					if (sess.ssl_init_req_) {
 						sess.is_ssl_ = true;
+						sess.lastdir_ = DirPacket::DirUnknown;
 						detect.nssl_confirm_++;
 						
 						if (sess.syn_seen_) {
@@ -512,6 +578,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			if (hdr.src_ == SRC_UPROBE_SSL) {
 				if (sess.ssl_nreq_ > 1) {
 					sess.is_ssl_ = true;
+					sess.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -528,6 +595,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 				if (sess.ssl_nreq_ > 1) {
 					sess.is_ssl_ = true;
+					sess.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -757,20 +825,29 @@ void SVC_INFO_CAP::analyze_detect_status()
 
 				if (sslreq == SSL_REQ_E::SSL_ACTIVE) {
 					svcshr->api_is_ssl_.store(true, mo_relaxed);
-					is_ssl_ = SSL_SVC_E::SSL_YES;
+
+					if (true == ssl_multiplexed_proto(apistat.proto_)) {
+						svc_ssl_ = SSL_SVC_E::SSL_MULTIPLEXED;
+					}
+					else if (detect.nssl_confirm_ > 0) {
+						svc_ssl_ = SSL_SVC_E::SSL_YES;
+					}
 				}
 				else if (sslreq == SSL_REQ_E::SSL_REJECTED || sslreq == SSL_REQ_E::SSL_NO_REQ) {
 					svcshr->api_is_ssl_.store(false, mo_relaxed);
-					is_ssl_ = SSL_SVC_E::SSL_NO;
+					svc_ssl_ = SSL_SVC_E::SSL_NO;
 				}	
 				else {
 					svcshr->api_is_ssl_.store(indeterminate, mo_relaxed);
 
-					if (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 0) {
-						is_ssl_ = SSL_SVC_E::SSL_MULTIPLEXED;
+					if (true == ssl_multiplexed_proto(apistat.proto_)) {
+						svc_ssl_ = SSL_SVC_E::SSL_MULTIPLEXED;
+					}
+					else if (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 0) {
+						svc_ssl_ = SSL_SVC_E::SSL_YES;
 					}	
 					else {
-						is_ssl_ = SSL_SVC_E::SSL_NO;
+						svc_ssl_ = SSL_SVC_E::SSL_NO;
 					}	
 				}	
 
@@ -800,7 +877,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 		if (sslreq == SSL_REQ_E::SSL_REJECTED) {
 			if (stop_parser_tusec_.load(mo_relaxed) == 0) {
 
-				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture being stopped as Protocol Detected as TLS Encrtypted for Listener %s Port %hu ID %lx : "
+				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture being stopped as Protocol Detected as TLS Encrypted for Listener %s Port %hu ID %lx : "
 					"But SSL Capture cannot be enabled which may be because of unsupported binary (Go Lang, Java or Python based) or an unsupported SSL Library\n", 
 					comm_, ns_ip_port_.ip_port_.port_, glob_id_);
 
@@ -857,6 +934,179 @@ void SVC_INFO_CAP::analyze_detect_status()
 	}	
 }
 
+
+COMMON_PROTO::COMMON_PROTO(PARSE_PKT_HDR & hdr) noexcept
+	: cli_ipport_(hdr.cliip_, hdr.cliport_), ser_ipport_(hdr.serip_, hdr.serport_)
+{
+	uint64_t			tusec = timeval_to_usec(hdr.tv_);
+
+	tlastpkt_usec_			= tusec;
+	tconnect_usec_			= tusec;
+
+	nxt_cli_seq_			= hdr.nxt_cli_seq_;
+	nxt_ser_seq_			= hdr.nxt_ser_seq_;
+
+	netns_				= hdr.netns_;
+	lastdir_			= hdr.dir_;
+	is_ssl_				= hdr.src_ == SRC_UPROBE_SSL;
+	syn_seen_			= hdr.tcpflags_ & GY_TH_SYN;
+}	
+
+
+SVC_SESSION::SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+	: common_(hdr), psvc_(&svc), proto_(svc.proto_)
+{
+}	
+
+bool SVC_INFO_CAP::parse_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
+	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST);
+
+	auto				it = sessmap_.find(ipport);
+	
+	if (it == sessmap_.end()) {
+
+		if (svc_ssl_ == SSL_SVC_E::SSL_YES && hdr.src_ != SRC_UPROBE_SSL) {
+			return false;
+		}	
+
+		if (is_finrst) {
+			return false;
+		}	
+		else if (hdr.datalen_ == 0) {
+			if (!is_syn) {
+				return false;
+			}	
+		}	
+		else if (hdr.dir_ == DirPacket::DirOutbound && !is_syn) {
+			// Wait for inbound first
+			return false;
+		}
+
+		if (sessmap_.size() >= MAX_PARSE_CONC_SESS) {
+			apihdlr_.stats_.nskip_conc_sess_++;
+			return false;
+		}	
+
+		it = sessmap_.try_emplace(ipport, *this, hdr, pdata).first;
+	}	
+
+	auto				& sess = it->second;
+
+	if (is_finrst) {
+		sess.common_.tclose_usec_ = timeval_to_usec(hdr.tv_);
+	}
+
+	if (sess.common_.is_ssl_ && hdr.src_ != SRC_UPROBE_SSL) {
+		return false;
+	}	
+
+	if (hdr.src_ == SRC_UPROBE_SSL && !sess.common_.is_ssl_) {
+		sess.reorder_.~REORDER_INFO();
+		sess.common_.~COMMON_PROTO();
+
+		new (&sess.common_) COMMON_PROTO(hdr);
+		new (&sess.reorder_) REORDER_INFO();
+	}
+
+	if (sess.reorder_active()) {
+		return handle_reorder(sess, it, hdr, pdata);
+	}	
+
+	return chk_drops_and_parse(sess, it, hdr, pdata, false);
+}	
+
+bool SVC_INFO_CAP::chk_drops_and_parse(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata, bool ign_reorder)
+{
+	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN;
+	DROP_TYPES			droptype, droptypeack;
+
+	if (hdr.dir_ == DirPacket::DirInbound) {
+		auto p = is_tcp_drop(sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, is_syn);
+
+		droptype 	= p.first;
+		droptypeack 	= p.second;
+
+		sess.reorder_.cli_dtype_ = droptype;
+		sess.reorder_.ser_dtype_ = droptypeack;
+	}
+	else {
+		auto p = is_tcp_drop(sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, is_syn);
+
+		droptype 	= p.first;
+		droptypeack 	= p.second;
+
+		sess.reorder_.cli_dtype_ = droptypeack;
+		sess.reorder_.ser_dtype_ = droptype;
+	}	
+
+	if (droptype == DT_NO_DROP && droptypeack == DT_NO_DROP) {
+		return do_proto_parse(sess, it, hdr, pdata);
+	}
+	else if (droptype == DT_DROP_NEW_SESS) {
+		auto			*psvc = sess.psvc_;
+
+		sess.~SVC_SESSION();
+
+		if (psvc) {
+			new (&sess) SVC_SESSION(*psvc, hdr, pdata);
+		}	
+	}	
+	else if (droptype == DT_RETRANSMIT) {
+		return false;
+	}
+
+	if (ign_reorder || hdr.src_ != SRC_PCAP) {
+		return do_proto_parse(sess, it, hdr, pdata);
+	}	
+
+	return add_to_reorder(sess, it, hdr, pdata);	
+}	
+
+REORDER_PKT_HDR::REORDER_PKT_HDR(ParserMemPool::UniquePtr && pooluniq, const PARSE_PKT_HDR & hdr, uint8_t parseridx)
+	: pooluniq_(std::move(pooluniq)), tpktusec_(timeval_to_usec(hdr.tv_)), datalen_(hdr.datalen_),
+	start_pkt_seq_(hdr.dir_ == DirPacket::DirInbound ? hdr.start_cli_seq_ : hdr.start_ser_seq_), 
+	ack_seq_(hdr.dir_ == DirPacket::DirInbound ? hdr.nxt_ser_seq_ : hdr.nxt_cli_seq_), dir_(hdr.dir_), parseridx_(parseridx)
+{
+	if (parseridx_ >= MAX_API_PARSERS) {
+		GY_THROW_EXPRESSION("Invalid Parser Index specified while constructing Reorder object");
+	}	
+}	
+
+REORDER_PKT_HDR::~REORDER_PKT_HDR() noexcept
+{
+}
+
+void REORDER_PKT_HDR::operator delete(void *ptr, size_t sz)
+{
+	if (ptr && sz == sizeof(REORDER_PKT_HDR)) {
+		auto			*prdr = (REORDER_PKT_HDR *)ptr;
+		POOL_ALLOC		*ppool = nullptr;	
+
+		// UB done intentionally...
+		if (prdr->parseridx_ >= MAX_API_PARSERS) {
+			prdr->parseridx_ = 0;
+		}	
+
+		ppool = REORDER_PKT_HDR::greorderpools_[prdr->parseridx_];
+
+		if (ppool) {
+			ppool->free(ptr);
+		}	
+	}	
+}	
+	
+bool SVC_INFO_CAP::add_to_reorder(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+	return false;
+}	
+
+bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+	return false;
+}	
+
 void SVC_INFO_CAP::schedule_stop_capture() noexcept
 {
 	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();
@@ -907,13 +1157,16 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 		auto				& puniq = msg.pooluniq_;
 
 		if (!puniq) {
+			stats_.ninvalid_pkt_++;
 			return false;
 		}	
 
 		PARSE_PKT_HDR			*phdr = (PARSE_PKT_HDR *)puniq.get()->get();
 		uint8_t				*pdata = (uint8_t *)(phdr + 1);
+		bool				bret;
 		
 		if (phdr->datalen_ > MAX_PARSE_DATA_LEN) {
+			stats_.ninvalid_pkt_++;
 			return false;
 		}
 
@@ -922,6 +1175,7 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 
 		if (!psvc) {
 			if (phdr->src_ == SRC_PCAP || glob_id != 0) {
+				stats_.ninvalid_pkt_++;
 				return false;
 			}	
 
@@ -939,7 +1193,12 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 			return false;
 		}	
 
-		psvc->stats_.update_pkt_stats(*phdr);
+		bret = psvc->stats_.update_pkt_stats(*phdr);
+		
+		if (!bret) {
+			stats_.ninvalid_pkt_++;
+			return false;
+		}	
 
 		if (gy_unlikely(bool(psvc->protodetect_))) {
 			if (true == psvc->detect_svc_req_resp(*phdr, pdata)) {
@@ -949,12 +1208,13 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 			return true;
 		}	
 
-		// Parse the packets...
-		
+		if (psvc->proto_ != PROTO_UNINIT) {
+			psvc->parse_pkt(*phdr, pdata);
+		}
+
 		return true;
 	}
 	GY_CATCH_EXPRESSION(
-		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception Caught while handling API Parser packet : %s\n", GY_GET_EXCEPT_STRING););
 		return false;
 	);
 }	
@@ -967,12 +1227,8 @@ bool API_PARSE_HDLR::handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept
 		}	
 
 		auto 				[it, success] = svcinfomap_.try_emplace(msg.glob_id_, std::move(msg.svcinfocap_));
-		bool				isreorder = false;
 
 		if (!success) {
-			if (it->second) {
-				isreorder = it->second->is_reorder_;
-			}	
 			it->second = std::move(msg.svcinfocap_);
 		}	
 
@@ -982,9 +1238,11 @@ bool API_PARSE_HDLR::handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept
 			it2->second = it->second;
 		}	
 
-		if (!success && isreorder) {
+		if (!success) {
 			reordermap_.erase(msg.glob_id_);
 		}
+
+		stats_.nsvcadd_++;
 
 		return true;
 	}
@@ -1026,6 +1284,8 @@ bool API_PARSE_HDLR::handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept
 				});
 		}
 
+		stats_.nsvcdel_++;
+
 		return true;
 	}
 	GY_CATCH_MSG("Exception Caught while handling API Parser Del Svc");
@@ -1057,6 +1317,8 @@ bool API_PARSE_HDLR::handle_ssl_active(MSG_SVC_SSL_CAP & msg) noexcept
 
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_GREEN, "SSL Probes active for Service %s ID %lx\n", it->second->comm_, it->second->glob_id_);
 
+		stats_.nsvcssl_on_++;
+
 		return true;
 	}
 	catch(...) {
@@ -1078,6 +1340,8 @@ bool API_PARSE_HDLR::handle_ssl_rejected(MSG_SVC_SSL_CAP & msg) noexcept
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "SSL Probes disabled for Service %s ID %lx\n", it->second->comm_, it->second->glob_id_);
 		
 		// TODO send notification to madhava
+
+		stats_.nsvcssl_fail_++;
 
 		return true;
 	}

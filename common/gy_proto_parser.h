@@ -12,18 +12,22 @@
 #include			"gy_postgres_proto.h"
 #include			"gy_ssl_cap_common.h"
 #include			"gy_stack_container.h"
+#include			"gy_pool_alloc.h"
 
 #include 			"folly/container/F14Map.h"
 #include			"folly/MPMCQueue.h"
 #include			"folly/IndexedMemPool.h"
+#include 			"folly/IntrusiveList.h"
 
 #include 			<variant>
 
 namespace gyeeta {
 
 static constexpr uint32_t			MAX_PARSE_API_LEN	{16 * 1024};	
-static constexpr uint32_t			MAX_PARSE_CONC_SESS	{10 * 1024};	
+static constexpr uint32_t			MAX_PARSE_CONC_SESS	{16 * 1024};	
 static constexpr uint32_t			MAX_PARSE_POOL_PKT	{100'000};
+static constexpr uint32_t			MAX_REORDER_PKTS	{20000};
+static constexpr size_t				MAX_API_PARSERS		{1};			// Currently only single threaded parser
 
 enum PROTO_TYPES : uint16_t 
 {
@@ -100,66 +104,117 @@ static constexpr const char * capsrc_to_string(API_CAP_SRC src) noexcept
 	return "Invalid";
 }	
 
+enum DROP_TYPES : uint8_t 
+{
+	DT_NO_DROP 		= 0,
+	DT_RETRANSMIT		= 1 << 0,
+	DT_DROP_SEEN		= 1 << 1,
+	DT_DROP_NEW_SESS	= 1 << 2,		// Very Large drop, maybe a new sess
+};
+
+
+// Returns drop status for both dirs (current and other)
+static std::pair<DROP_TYPES, DROP_TYPES> is_tcp_drop(uint32_t exp_seq, uint32_t act_seq, uint32_t exp_ack, uint32_t act_ack, bool is_syn = false) noexcept
+{
+	int			diff = exp_seq - act_seq, diffack = exp_ack - act_ack;
+
+	if (diff == 0) {
+		if (diffack >= 0) {
+			return {DT_NO_DROP, DT_NO_DROP};
+		}
+
+		return {DT_NO_DROP, DT_DROP_SEEN};
+	}
+
+	if (diff > 0) {	
+		if (diff < 1024 * 1024) {
+			return {DT_RETRANSMIT, DT_RETRANSMIT};
+		}
+		else {
+			if (is_syn || abs(diffack) > 1024 * 1024) {
+				return {DT_DROP_NEW_SESS, DT_DROP_NEW_SESS};
+			}
+			else {
+				return {DT_RETRANSMIT, DT_RETRANSMIT};
+			}
+		}
+	}
+
+	if ((diff < -100 * 1024 * 1024) || ((diff < -1024 * 1024) && (is_syn || abs(diffack) > 1024 * 1024))) {
+		return {DT_DROP_NEW_SESS, DT_DROP_NEW_SESS};
+	}
+
+	if (diffack >= 0) {
+		return {DT_DROP_SEEN, DT_NO_DROP};
+	}
+
+	return {DT_DROP_SEEN, DT_DROP_SEEN};
+}	
+
+static uint64_t tcp_drop_bytes(uint32_t exp_seq, uint32_t act_seq, uint32_t exp_ack, uint32_t act_ack, bool is_syn = false) noexcept
+{
+	uint64_t			dbytes = 0;
+	auto				[type, typea] = is_tcp_drop(exp_seq, act_seq, exp_ack, act_ack, is_syn);	
+
+	if ((type == DT_NO_DROP || type == DT_RETRANSMIT) && (typea == DT_NO_DROP || typea == DT_RETRANSMIT)) {
+		return 0;
+	}	
+	else if (type == DT_DROP_NEW_SESS) {
+		return 1024;	// We do not know the extent of the drop. Set a small drop byte count
+	}	
+
+	if (type == DT_DROP_SEEN) {
+		dbytes = abs(int(act_seq - exp_seq));
+	}	
+
+	if (typea == DT_DROP_SEEN) {
+		dbytes += abs(int(act_ack - exp_ack));
+	}	
+
+	return dbytes;
+}	
+
+
 
 class TCP_LISTENER;
 
-struct proto_base
+struct PARSE_PKT_HDR
 {
-	uint64_t				reqlen_			{0};
-	uint64_t				reslen_			{0};
-	uint64_t				reqnum_			{0};
-	uint64_t				response_usec_		{0};
+	struct timeval				tv_			{};
+	GY_IP_ADDR				cliip_;
+	GY_IP_ADDR				serip_;
+	
+	uint32_t				datalen_		{0};
+	uint32_t				wirelen_		{0};
+	uint32_t				nxt_cli_seq_		{0};
+	uint32_t				start_cli_seq_		{0};
+	uint32_t				nxt_ser_seq_		{0};
+	uint32_t				start_ser_seq_		{0};
+	uint32_t 				pid_			{0};
+	uint32_t 				netns_			{0};
+	
+	uint16_t				cliport_		{0};
+	uint16_t				serport_		{0};
+	uint8_t					tcpflags_		{0};
+	DirPacket				dir_			{DirPacket::DirUnknown};
+	API_CAP_SRC				src_			{SRC_UNKNOWN};
 
-	struct timeval				tv_upd_			{};		// last data timestamp for processing
-	struct timeval				tv_in_			{};		// last data inbound
-	struct timeval				tv_connect_		{};
-	struct timeval				tv_close_		{};
-	struct timeval				tv_req_			{};		// time of first request packet
-	struct timeval				tv_res_			{};		// time of first response packet
+	// Data bytes follow
 
-	IP_PORT					cli_ipport_;
-	IP_PORT					ser_ipport_;
-
-	uint64_t				reaction_usec_		{0};
-	int					errorcode_		{0};
-
-	bool					is_ssl_			{false};
+	uint32_t get_trunc_bytes() const noexcept
+	{
+		return wirelen_ - datalen_;
+	}	
 };	
 
-struct unknown_sess
+static constexpr uint32_t			MAX_PARSE_TOTAL_LEN	{1800};
+static constexpr uint32_t			MAX_PARSE_DATA_LEN	{MAX_PARSE_TOTAL_LEN - sizeof(PARSE_PKT_HDR)};
+
+using ParserMemPool = folly::IndexedMemPool<UCHAR_BUF<MAX_PARSE_TOTAL_LEN>, 8, 200, std::atomic, folly::IndexedMemPoolTraitsLazyRecycle<UCHAR_BUF<MAX_PARSE_TOTAL_LEN>>>;
+
+
+struct SVC_PARSE_STATS
 {
-
-};	
-
-struct http1_sess : public proto_base
-{
-	std::unique_ptr<http1_sessinfo>		sessuniq_;
-};	
-
-struct http2_sess : public proto_base
-{
-	std::unique_ptr<http2_sessinfo>		sessuniq_;
-};
-
-struct postgres_sess : public proto_base
-{
-	std::unique_ptr<postgres_sessinfo>	sessuniq_;
-};
-
-
-struct svc_session
-{
-	using proto_sess = std::variant<unknown_sess, http1_sess, http2_sess, postgres_sess>;
-
-	proto_sess				sess_;
-	PROTO_TYPES				proto_			{PROTO_UNINIT};
-};	
-
-struct PARSE_PKT_HDR;
-
-class SVC_PARSE_STATS
-{
-public :
 	time_t					tlastpkt_		{0};
 
 	uint64_t				npkts_			{0};
@@ -171,7 +226,7 @@ public :
 
 	uint64_t				srcpkts_[API_CAP_SRC::SRC_MAX]	{};
 
-	void update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept;
+	bool update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept;
 };	
 
 class PROTO_DETECT
@@ -233,17 +288,136 @@ public :
 	uint8_t					nmidsess_		{0};
 };	
 
+struct unknown_sessinfo
+{
+};	
+
+struct REORDER_PKT_HDR
+{
+	ParserMemPool::UniquePtr		pooluniq_;
+	uint64_t				tpktusec_		{0};
+	uint32_t				datalen_		{0};
+	uint32_t				start_pkt_seq_		{0};
+	uint32_t				ack_seq_		{0};
+	DirPacket				dir_			{DirPacket::DirUnknown};
+	uint8_t					parseridx_		{0};
+	folly::SafeIntrusiveListHook		listhook_;
+
+	static POOL_ALLOC			*greorderpools_[MAX_API_PARSERS];		
+
+	REORDER_PKT_HDR(ParserMemPool::UniquePtr && pooluniq, const PARSE_PKT_HDR & hdr, uint8_t parseridx);
+
+	~REORDER_PKT_HDR() noexcept;
+
+	static void operator delete(void *ptr, size_t sz);
+};	
+
+struct REORDER_INFO
+{
+	using ReorderList = folly::CountedIntrusiveList<REORDER_PKT_HDR, &REORDER_PKT_HDR::listhook_>;
+
+	ReorderList				reorder_list_;
+	uint64_t				tfirstusec_		{0};
+	uint64_t				tlastusec_		{0};
+
+	uint64_t				nreorders_		{0};
+	uint64_t				nreorder_fail_		{0};
+
+	uint32_t				exp_cli_seq_start_	{0};
+	uint32_t				exp_cli_seq_end_	{0};
+	uint32_t				exp_ser_seq_start_	{0};
+	uint32_t				exp_ser_seq_end_	{0};
+
+	DROP_TYPES				cli_dtype_		{DT_NO_DROP};
+	DROP_TYPES				ser_dtype_		{DT_NO_DROP};
+
+	REORDER_INFO() 				= default;
+
+	~REORDER_INFO() noexcept;
+
+	bool is_active() const noexcept
+	{
+		return !reorder_list_.empty();
+	}	
+};	
+
+struct COMMON_PROTO
+{
+	uint64_t				reqnum_			{0};		// Request Number within session
+	uint64_t				response_usec_		{0};
+	uint64_t				reaction_usec_		{0};
+
+	uint64_t				reqlen_			{0};		// Current Req Inbound Bytes
+	uint64_t				reslen_			{0};		// Current Req Outbound Bytes
+
+	uint64_t				tot_reqlen_		{0};		// Total Req Inbound Bytes
+	uint64_t				tot_reslen_		{0};		// Total Req Outbound Bytes
+
+	uint64_t				treq_usec_		{0};		// first request packet of current query
+	uint64_t				tres_usec_		{0};		// first response packet of current query
+	uint64_t				tin_usec_		{0};		// last data inbound
+	uint64_t				tupd_usec_		{0};		// last data timestamp for processing
+	uint64_t				tlastpkt_usec_		{0};		// last seen pkt time
+
+	uint64_t				tconnect_usec_		{0};
+	uint64_t				tclose_usec_		{0};
+
+	IP_PORT					cli_ipport_;
+	IP_PORT					ser_ipport_;
+
+	uint32_t				nxt_cli_seq_		{0};
+	uint32_t				nxt_ser_seq_		{0};
+
+	int					errorcode_		{0};
+	uint32_t 				netns_			{0};
+	DirPacket				lastdir_		{DirPacket::DirUnknown};
+	bool					is_ssl_			{false};
+	bool					syn_seen_		{false}; 
+
+	COMMON_PROTO() noexcept			= default;
+
+	COMMON_PROTO(PARSE_PKT_HDR & hdr) noexcept;
+};	
+
 class API_PARSE_HDLR;
 class SVC_NET_CAPTURE;
+class SVC_INFO_CAP;
+
+struct SVC_SESSION
+{
+	using proto_sess = std::variant<unknown_sessinfo, http1_sessinfo, http2_sessinfo, postgres_sessinfo>;
+
+	std::unique_ptr<proto_sess>		protosess_;
+	COMMON_PROTO				common_;				
+	SVC_INFO_CAP				*psvc_			{nullptr};
+	PROTO_TYPES				proto_			{PROTO_UNINIT};
+	REORDER_INFO				reorder_;
+
+	SVC_SESSION() 				= default;
+
+	SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	~SVC_SESSION() noexcept;
+
+	bool reorder_active() const noexcept
+	{
+		return reorder_.is_active();
+	}	
+};	
 
 class SVC_INFO_CAP : public std::enable_shared_from_this<SVC_INFO_CAP>
 {
 public :
-	using SvcSessMap 			= folly::F14NodeMap<IP_PORT, svc_session, IP_PORT::IP_PORT_HASH>;
+	using SvcSessMap 			= folly::F14NodeMap<IP_PORT, SVC_SESSION, IP_PORT::IP_PORT_HASH>;
+	using SessReorderMap 			= folly::F14ValueMap<SVC_SESSION *, uint64_t>;
+	using SessMapIt				= typename SvcSessMap::iterator;
 	
 	SVC_PARSE_STATS				stats_;
 	std::weak_ptr<TCP_LISTENER>		svcweak_;
 	SvcSessMap				sessmap_;
+	SessReorderMap				sessrdrmap_;
+
+	API_PARSE_HDLR				& apihdlr_;
 
 	/*
 	 * Lazy init fields as the constructor is called under RCU lock
@@ -256,18 +430,17 @@ public :
 	gy_atomic<uint64_t>			stop_parser_tusec_	{0};	
 
 	PROTO_TYPES				proto_			{PROTO_UNINIT};
-	bool					is_reorder_		{false};
 	gy_atomic<SSL_REQ_E>			ssl_req_		{SSL_REQ_E::SSL_NO_REQ};
 	
 	bool					is_any_ip_		{false};
 	bool					is_root_netns_		{false};
-	SSL_SVC_E				is_ssl_			{SSL_SVC_E::SSL_UNINIT};
+	SSL_SVC_E				svc_ssl_		{SSL_SVC_E::SSL_UNINIT};
 
 	// Previously set listener info
 	PROTO_TYPES				orig_proto_		{PROTO_UNINIT};
 	bool					orig_ssl_		{false};		
 
-	SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr);
+	SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_PARSE_HDLR & apihdlr);
 
 	void lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept;
 
@@ -278,41 +451,17 @@ public :
 	bool detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
 	void analyze_detect_status();
+
+	bool parse_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	bool do_proto_parse(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	bool handle_reorder(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	bool chk_drops_and_parse(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata, bool ign_reorder);
+	
+	bool add_to_reorder(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata);
 };
-
-struct PARSE_PKT_HDR
-{
-	struct timeval				tv_			{};
-	GY_IP_ADDR				cliip_;
-	GY_IP_ADDR				serip_;
-	
-	uint32_t				datalen_		{0};
-	uint32_t				wirelen_		{0};
-	uint32_t				nxt_cli_seq_		{0};
-	uint32_t				start_cli_seq_		{0};
-	uint32_t				nxt_ser_seq_		{0};
-	uint32_t				start_ser_seq_		{0};
-	uint32_t 				pid_			{0};
-	uint32_t 				netns_			{0};
-	
-	uint16_t				cliport_		{0};
-	uint16_t				serport_		{0};
-	uint8_t					tcpflags_		{0};
-	DirPacket				dir_			{DirPacket::DirUnknown};
-	API_CAP_SRC				src_			{SRC_UNKNOWN};
-
-	// Data bytes follow
-
-	uint32_t get_trunc_bytes() const noexcept
-	{
-		return wirelen_ - datalen_;
-	}	
-};	
-
-static constexpr uint32_t			MAX_PARSE_TOTAL_LEN	{1800};
-static constexpr uint32_t			MAX_PARSE_DATA_LEN	{MAX_PARSE_TOTAL_LEN - sizeof(PARSE_PKT_HDR)};
-
-using ParserMemPool = folly::IndexedMemPool<UCHAR_BUF<MAX_PARSE_TOTAL_LEN>, 8, 200, std::atomic, folly::IndexedMemPoolTraitsLazyRecycle<UCHAR_BUF<MAX_PARSE_TOTAL_LEN>>>;
 
 struct MSG_PKT_SVCCAP
 {
@@ -376,36 +525,48 @@ struct MSG_SVC_SSL_CAP
 // Do not change the order here 
 using PARSE_MSG_BUF = std::variant<MSG_ADD_SVCCAP, MSG_PKT_SVCCAP, MSG_DEL_SVCCAP, MSG_TIMER_SVCCAP, MSG_SVC_SSL_CAP>;
 
+struct API_PARSER_STATS
+{
+	uint64_t				nskipped_		{0};
+	uint64_t				nskip_conc_sess_	{0};
+	uint32_t				nsvcadd_		{0};
+	uint32_t				nsvcdel_		{0};
+	uint32_t				nsvcssl_on_		{0};
+	uint32_t				nsvcssl_fail_		{0};
+	uint32_t				ninvalid_pkt_		{0};
+	uint32_t				ninvalid_msg_		{0};
+
+	alignas(64) gy_atomic<uint64_t>		nskip_pool_		{0};
+};	
+
 class API_PARSE_HDLR
 {
 public :
-	static constexpr uint32_t		MAX_REORDER_PKTS	{20000};
-
 	using ParMsgPool			= folly::MPMCQueue<PARSE_MSG_BUF>;
 	using SvcInfoIdMap 			= folly::F14NodeMap<uint64_t, std::shared_ptr<SVC_INFO_CAP>, HASH_SAME_AS_KEY<uint64_t>>;
 	using SvcInfoPortMap 			= folly::F14NodeMap<NS_IP_PORT, std::shared_ptr<SVC_INFO_CAP>, NS_IP_PORT::ANY_IP, NS_IP_PORT::ANY_IP>;
-	using StatsStrMap			= std::unordered_map<const char *, int64_t, GY_JHASHER<const char *>>;
 
 	ParserMemPool				parsepool_		{MAX_PARSE_POOL_PKT};
 	ParMsgPool				msgpool_		{MAX_PARSE_POOL_PKT + 1000};
-	SVC_NET_CAPTURE				&svcnet_;
+	POOL_ALLOC				reorderpool_		{sizeof(REORDER_PKT_HDR), MAX_REORDER_PKTS};	// Only from parser thread
+	API_PARSER_STATS			stats_;
+
+	SVC_NET_CAPTURE				& svcnet_;
 	SSL_CAP_SVC				sslcap_;
 	std::atomic<bool>			allow_ssl_probe_	{SSL_CAP_SVC::ssl_uprobes_allowed()};
-
+	uint8_t					parseridx_		{0};
+	
 protected :
 
 	// The following section is only accessed by parser thread
 	SvcInfoIdMap				svcinfomap_;
 	SvcInfoIdMap				reordermap_;		
 	SvcInfoPortMap				nsportmap_;
-	StatsStrMap				statsmap_;		
 	uint32_t				nreorderpkts_		{0};
 
 
 public :
-	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet)
-		: svcnet_(svcnet)
-	{}	
+	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx);
 
 	bool send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id, const PARSE_PKT_HDR & msghdr, const uint8_t *pdata, const uint32_t len);
 

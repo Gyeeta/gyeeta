@@ -1082,7 +1082,8 @@ SVC_API_PARSER::SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool 
 			if (!listenshr) GY_THROW_EXPRESSION("Service API Network Capture : Invalid Listen shared pointer");
 			std::move(listenshr);
 		})), glob_id_(listenshr_->glob_id_),
-		tstart_(tstart), svcinfocap_(std::make_shared<SVC_INFO_CAP>(listenshr_)), serport_(listenshr_->ns_ip_port_.ip_port_.port_), is_rootns_(is_rootns)
+		tstart_(tstart), svcinfocap_(std::make_shared<SVC_INFO_CAP>(listenshr_, *pgsvccap->apihdlr_.get())), 
+		serport_(listenshr_->ns_ip_port_.ip_port_.port_), is_rootns_(is_rootns)
 {
 	listenshr_->api_cap_started_.store(true, std::memory_order_relaxed);
 }
@@ -1790,6 +1791,9 @@ uint32_t NETNS_API_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 		if (plisten) {
 			uint16_t		port = plisten->ns_ip_port_.ip_port_.port_;
 			
+			/*
+			 * Currently we enable pcap filters even for uprobe only svcs (ssl). Revisit this if needed...
+			 */
 			portset.emplace(port);
 
 			if (maxport < port) maxport = port;
@@ -1963,7 +1967,7 @@ inline void NETNS_API_CAP1::set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr
 	hdr.wirelen_		= wirelen;
 
 	if (dir == DirPacket::DirInbound) { 
-		hdr.nxt_cli_seq_	= tcp.next_expected_src_seq(wirelen);
+		hdr.nxt_cli_seq_	= tcp.next_expected_src_seq(caplen);	// For wirelen > caplen will cause a drop indication
 		hdr.start_cli_seq_	= tcp.seq;
 
 		hdr.nxt_ser_seq_	= tcp.ack_seq;
@@ -1973,7 +1977,7 @@ inline void NETNS_API_CAP1::set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr
 		hdr.nxt_cli_seq_	= tcp.ack_seq;
 		hdr.start_cli_seq_	= tcp.ack_seq;
 
-		hdr.nxt_ser_seq_	= tcp.next_expected_src_seq(wirelen);
+		hdr.nxt_ser_seq_	= tcp.next_expected_src_seq(caplen);
 		hdr.start_ser_seq_	= tcp.seq;
 	}	
 
@@ -1992,13 +1996,13 @@ void SVC_NET_CAPTURE::init_api_cap_handler()
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Initializing API Capture Data structures : API Captures can be initiated thereafter...\n");
 
-	apihdlr_.reset(new API_PARSE_HDLR(*this));
+	apihdlr_.reset(new API_PARSE_HDLR(*this, 0 /* parseridx */));
 	
 	auto lam1 = []() { return true; };
 
 	api_cond_.cond_signal(lam1);
 
-	apischedthr_.add_schedule(5400, 5000, 0, "Periodic ping to api parser thread for book-keeping", 
+	apischedthr_.add_schedule(5400, 2000, 0, "Periodic ping to api parser thread for book-keeping", 
 	[this] { 
 		apihdlr_->msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_TIMER_SVCCAP>));	
 	});

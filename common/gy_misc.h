@@ -61,7 +61,7 @@ enum class DirPacket : uint8_t
 
 
 template <typename T>
-int set_bitset_from_buffer(T &bset, const char *buf, size_t buflen) noexcept
+int set_bitset_from_buffer(T &bset, const char *buf, size_t buflen, bool ignore_over_max = true) noexcept
 {
 	try {
 		/*
@@ -84,7 +84,7 @@ int set_bitset_from_buffer(T &bset, const char *buf, size_t buflen) noexcept
 			if (!bret) {
 				return 1;
 			}	
-			else if (ulval > maxbits) {
+			else if (ulval >= maxbits && false == ignore_over_max) {
 				return 1;
 			}
 			else if (ulval == 0 && (pnxt == ptmp)) {
@@ -93,14 +93,22 @@ int set_bitset_from_buffer(T &bset, const char *buf, size_t buflen) noexcept
 			else {
 
 				if (isrange == false) {
-					bset[ulval] = true;
+					if (ulval < maxbits) {
+						bset[ulval] = true;
+					}	
 				}
 				else {
 					isrange = false;
 
-					for (uint64_t i = ulstart; i <= ulval; i++) {
-						bset[i] = true;
-					}	
+					if (ulstart < maxbits) {
+						if (ulval >= maxbits) {
+							ulval = maxbits - 1;
+						}	
+
+						for (uint64_t i = ulstart; i <= ulval; i++) {
+							bset[i] = true;
+						}	
+					}
 				}
 			}
 

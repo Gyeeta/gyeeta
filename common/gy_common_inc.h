@@ -1961,16 +1961,25 @@ static inline uint64_t get_sec_bootclock() noexcept
 	_ts;											\
 })	
 
-static inline struct timespec timeval_to_timespec(const struct timeval tv) noexcept
+static inline struct timespec timeval_to_timespec(struct timeval tv) noexcept
 {
 	return {tv.tv_sec, tv.tv_usec * 1000};
 }	
 
-static inline struct timeval timespec_to_timeval(const struct timespec ts) noexcept
+static inline struct timeval timespec_to_timeval(struct timespec ts) noexcept
 {
 	return {ts.tv_sec, ts.tv_nsec / 1000};
 }	
 
+static inline uint64_t timeval_to_usec(struct timeval tv) noexcept
+{
+	return GY_USEC_CONVERT(tv.tv_sec, tv.tv_usec);
+}	
+
+static inline uint64_t timespec_to_nsec(struct timespec ts) noexcept
+{
+	return GY_NSEC_CONVERT(ts.tv_sec, ts.tv_nsec);
+}	
 
 /*
  * Compare 2 struct timevals. Returns -1 if second < first, 1 if second > first and 0 if same

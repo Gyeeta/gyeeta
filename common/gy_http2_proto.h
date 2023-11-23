@@ -355,6 +355,10 @@ public :
 
 		return false;
 	}	
+
+	struct PARSE_PKT_HDR;
+
+	void init_session(PARSE_PKT_HDR & hdr, uint8_t *pdata);
 };	
 
 } // namespace gyeeta
