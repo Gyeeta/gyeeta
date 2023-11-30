@@ -58,12 +58,12 @@ SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid)
 		gy_rcu_offline();
 	});	
 
-	apischedthr_.add_schedule(100'100, 30'000, 0, "Check for netns Listener Deletes and Netns capture errors", 
+	apischedthr_.add_schedule(100'200, 30'000, 0, "Check for api netns Listener Deletes and Netns capture errors", 
 	[this] { 
 		check_netns_api_listeners();
 	});
 
-	apischedthr_.add_schedule(5500, 1000, 0, "rcu offline thread", 
+	apischedthr_.add_schedule(5550, 1000, 0, "rcu offline thread", 
 	[] {
 		gy_rcu_offline();
 	});	

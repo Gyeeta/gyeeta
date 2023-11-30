@@ -8,12 +8,6 @@
 
 namespace gyeeta {
 
-class postgres_sessinfo
-{
-public :
-
-};
-
 class postgres_proto 
 {
 public :
@@ -37,9 +31,6 @@ public :
 		return is_valid_resp(pdata, caplen);
 	}	
 
-	struct PARSE_PKT_HDR;
-
-	void init_session(PARSE_PKT_HDR & hdr, uint8_t *pdata);
 };
 
 } // namespace gyeeta

@@ -5,6 +5,10 @@
 #include			"gy_socket_stat.h"
 #include			"gy_net_parse.h"
 #include			"gy_task_types.h"
+#include			"gy_tls_proto.h"
+#include			"gy_http_proto_detail.h"
+#include			"gy_http2_proto_detail.h"
+#include			"gy_postgres_proto_detail.h"
 
 namespace gyeeta {
 
@@ -40,6 +44,24 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 		orig_ssl_ = listenshr->api_is_ssl_.load(mo_relaxed);
 	}
 }	
+
+void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
+{
+	try {
+		stop_parser_tusec_.store(tusec, mo_relaxed);
+
+		svcweak_.reset();
+		sessmap_.clear();
+		sessrdrmap_.clear();
+		protodetect_.reset();
+
+		proto_ = PROTO_UNKNOWN;
+
+	}
+	catch(...) {
+	
+	}
+}
 
 /*
  * Called by the SVC_NET_CAPTURE::schedthr_ only
@@ -171,135 +193,6 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 	return true;
 }	
 
-
-void API_PARSE_HDLR::api_parse_rd_thr() noexcept
-{
-	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "API Capture initialized : API Parser thread init completed as well\n");
-
-try1 :
-	try {
-		do {
-			MSG_PKT_SVCCAP			*pmsgpkt;
-			MSG_ADD_SVCCAP			*paddsvc;
-			MSG_DEL_SVCCAP			*pdelsvc;
-			MSG_TIMER_SVCCAP		*ptimer;
-			MSG_SVC_SSL_CAP			*pssl;
-			bool				bret;
-
-			PARSE_MSG_BUF			msg;
-
-			bret = msgpool_.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::microseconds(2 * GY_USEC_PER_SEC), msg);
-			if (bret) {
-
-				switch (msg.index()) {
-
-				case 1 :
-					pmsgpkt	= std::get_if<MSG_PKT_SVCCAP>(&msg);
-
-					if (!pmsgpkt) {
-						ASSERT_OR_THROW(false, "Please fix the MSG_PKT_SVCCAP index");
-					}
-
-					handle_proto_pkt(*pmsgpkt);
-
-					break;
-
-				case 0 :
-					paddsvc	= std::get_if<MSG_ADD_SVCCAP>(&msg);
-
-					if (!paddsvc) {
-						ASSERT_OR_THROW(false, "Please fix the MSG_ADD_SVCCAP index");
-					}
-
-					handle_svc_add(*paddsvc);
-			
-					break;
-
-				case 2 :
-					pdelsvc	= std::get_if<MSG_DEL_SVCCAP>(&msg);
-
-					if (!pdelsvc) {
-						ASSERT_OR_THROW(false, "Please fix the MSG_DEL_SVCCAP index");
-					}
-			
-					handle_svc_del(*pdelsvc);
-
-					break;
-
-				case 3 :
-					ptimer	= std::get_if<MSG_TIMER_SVCCAP>(&msg);
-
-					if (!ptimer) {
-						ASSERT_OR_THROW(false, "Please fix the MSG_TIMER_SVCCAP index");
-					}
-
-					handle_parse_timer(*ptimer);
-			
-					break;
-
-				case 4 :
-					pssl	= std::get_if<MSG_SVC_SSL_CAP>(&msg);
-
-					if (!pssl) {
-						ASSERT_OR_THROW(false, "Please fix the MSG_SVC_SSL_CAP index");
-					}
-
-					if (pssl->req_ == SSL_REQ_E::SSL_ACTIVE) {
-						handle_ssl_active(*pssl);
-					}
-					else if (pssl->req_ == SSL_REQ_E::SSL_REJECTED) {
-						handle_ssl_rejected(*pssl);
-					}	
-					else {
-						stats_.ninvalid_msg_++;
-					}	
-			
-					break;
-
-				default :
-					assert(false);		// Unhandled index
-
-					stats_.ninvalid_msg_++;
-					break;
-				}	
-			}	
-			else {
-				handle_parse_no_msg();
-			}	
-
-		} while (true);	
-
-	}
-	GY_CATCH_MSG("Exception Caught in Parser Thread");
-
-	goto try1;
-}	
-	
-bool SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
-{
-	tlastpkt_	= hdr.tv_.tv_sec;
-	
-	npkts_++;
-	nbytes_		+= hdr.datalen_;
-	
-	if (hdr.dir_ == DirPacket::DirInbound) {
-		nreqpkts_++;
-		nreqbytes_ += hdr.datalen_;
-	}	
-	else {
-		nresppkts_++;
-		nrespbytes_ += hdr.datalen_;
-	}	
-
-	if (hdr.src_ < API_CAP_SRC::SRC_MAX) {
-		srcpkts_[hdr.src_]++;
-	}	
-	else {
-		return false;
-	}	
-
-	return true;
-}
 
 bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
@@ -898,14 +791,14 @@ void SVC_INFO_CAP::analyze_detect_status()
 	detect.tlastchk_ = tcurr;
 
 	if (detect.tfirstreq_ && detect.tfirstresp_ && tcurr > detect.tfirstreq_ + 900 && tcurr > detect.tfirstresp_ + 900 && tstats.npkts_ > 10000 && 
-		tstats.nbytes_ > GY_UP_MB(5) && (detect.nsynsess_ > 4 || (detect.nmidsess_ > 10 && detect.nsynsess_ > 1))) {
+		tstats.nbytes_ > GY_UP_MB(1) && (detect.nsynsess_ > 4 || (detect.nmidsess_ > 10 && detect.nsynsess_ > 1))) {
 
 		auto				sslreq = ssl_req_.load(mo_relaxed);
 
 		// No confirms or only upto two confirms
 		if (stop_parser_tusec_.load(mo_relaxed) == 0) {
 			if (detect.nconfirm_ > 0) {
-				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture : Service Protocol Detection failed due to inadequate connection detects : "
+				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture : Service Protocol Detection failed due to inadequate protocol detects : "
 					"Could only detect %u connections out of %u as \'%s\' for Listener %s Port %hu ID %lx : "
 						"SSL Capture is currently %sactive\n", detect.nconfirm_, detect.nsynsess_ + detect.nmidsess_,
 						proto_to_string(detect.apistats_[0].proto_), comm_, ns_ip_port_.ip_port_.port_,
@@ -934,6 +827,135 @@ void SVC_INFO_CAP::analyze_detect_status()
 	}	
 }
 
+void API_PARSE_HDLR::api_parse_rd_thr() noexcept
+{
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "API Capture initialized : API Parser thread init completed as well\n");
+
+try1 :
+	try {
+		do {
+			MSG_PKT_SVCCAP			*pmsgpkt;
+			MSG_ADD_SVCCAP			*paddsvc;
+			MSG_DEL_SVCCAP			*pdelsvc;
+			MSG_TIMER_SVCCAP		*ptimer;
+			MSG_SVC_SSL_CAP			*pssl;
+			bool				bret;
+
+			PARSE_MSG_BUF			msg;
+
+			bret = msgpool_.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::microseconds(2 * GY_USEC_PER_SEC), msg);
+			if (bret) {
+
+				switch (msg.index()) {
+
+				case 1 :
+					pmsgpkt	= std::get_if<MSG_PKT_SVCCAP>(&msg);
+
+					if (!pmsgpkt) {
+						ASSERT_OR_THROW(false, "Please fix the MSG_PKT_SVCCAP index");
+					}
+
+					handle_proto_pkt(*pmsgpkt);
+
+					break;
+
+				case 0 :
+					paddsvc	= std::get_if<MSG_ADD_SVCCAP>(&msg);
+
+					if (!paddsvc) {
+						ASSERT_OR_THROW(false, "Please fix the MSG_ADD_SVCCAP index");
+					}
+
+					handle_svc_add(*paddsvc);
+			
+					break;
+
+				case 2 :
+					pdelsvc	= std::get_if<MSG_DEL_SVCCAP>(&msg);
+
+					if (!pdelsvc) {
+						ASSERT_OR_THROW(false, "Please fix the MSG_DEL_SVCCAP index");
+					}
+			
+					handle_svc_del(*pdelsvc);
+
+					break;
+
+				case 3 :
+					ptimer	= std::get_if<MSG_TIMER_SVCCAP>(&msg);
+
+					if (!ptimer) {
+						ASSERT_OR_THROW(false, "Please fix the MSG_TIMER_SVCCAP index");
+					}
+
+					handle_parse_timer(*ptimer);
+			
+					break;
+
+				case 4 :
+					pssl	= std::get_if<MSG_SVC_SSL_CAP>(&msg);
+
+					if (!pssl) {
+						ASSERT_OR_THROW(false, "Please fix the MSG_SVC_SSL_CAP index");
+					}
+
+					if (pssl->req_ == SSL_REQ_E::SSL_ACTIVE) {
+						handle_ssl_active(*pssl);
+					}
+					else if (pssl->req_ == SSL_REQ_E::SSL_REJECTED) {
+						handle_ssl_rejected(*pssl);
+					}	
+					else {
+						stats_.ninvalid_msg_++;
+					}	
+			
+					break;
+
+				default :
+					assert(false);		// Unhandled index
+
+					stats_.ninvalid_msg_++;
+					break;
+				}	
+			}	
+			else {
+				handle_parse_no_msg();
+			}	
+
+		} while (true);	
+
+	}
+	GY_CATCH_MSG("Exception Caught in Parser Thread");
+
+	goto try1;
+}	
+	
+bool SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
+{
+	tlastpkt_	= hdr.tv_.tv_sec;
+	
+	npkts_++;
+	nbytes_		+= hdr.datalen_;
+	
+	if (hdr.dir_ == DirPacket::DirInbound) {
+		nreqpkts_++;
+		nreqbytes_ += hdr.datalen_;
+	}	
+	else {
+		nresppkts_++;
+		nrespbytes_ += hdr.datalen_;
+	}	
+
+	if ((uint8_t)hdr.src_ < (uint8_t)API_CAP_SRC::SRC_MAX) {
+		srcpkts_[hdr.src_]++;
+	}	
+	else {
+		return false;
+	}	
+
+	return true;
+}
+
 
 COMMON_PROTO::COMMON_PROTO(PARSE_PKT_HDR & hdr) noexcept
 	: cli_ipport_(hdr.cliip_, hdr.cliport_), ser_ipport_(hdr.serip_, hdr.serport_)
@@ -946,19 +968,124 @@ COMMON_PROTO::COMMON_PROTO(PARSE_PKT_HDR & hdr) noexcept
 	nxt_cli_seq_			= hdr.nxt_cli_seq_;
 	nxt_ser_seq_			= hdr.nxt_ser_seq_;
 
+	pid_				= hdr.pid_;
 	netns_				= hdr.netns_;
-	lastdir_			= hdr.dir_;
+	currdir_			= hdr.dir_;
 	is_ssl_				= hdr.src_ == SRC_UPROBE_SSL;
 	syn_seen_			= hdr.tcpflags_ & GY_TH_SYN;
 }	
 
+void COMMON_PROTO::set_src_chg(PARSE_PKT_HDR & hdr) noexcept
+{
+	nxt_cli_seq_			= hdr.nxt_cli_seq_;
+	nxt_ser_seq_			= hdr.nxt_ser_seq_;
+
+	pid_				= hdr.pid_;
+	netns_				= hdr.netns_;
+	is_ssl_				= hdr.src_ == SRC_UPROBE_SSL;
+	syn_seen_			= hdr.tcpflags_ & GY_TH_SYN;
+}	
+
+void COMMON_PROTO::upd_stats(PARSE_PKT_HDR & hdr) noexcept
+{
+	if (hdr.dir_ == DirPacket::DirInbound) {
+		tot_reqlen_		+= hdr.datalen_;
+		nxt_cli_seq_		= hdr.nxt_cli_seq_;
+
+		if (serdroptype_ != DT_RETRANSMIT) {
+			nxt_ser_seq_	= hdr.nxt_ser_seq_;
+		}	
+	}
+	else {
+		tot_reslen_		+= hdr.datalen_;
+		nxt_ser_seq_		= hdr.nxt_ser_seq_;
+
+		if (clidroptype_ != DT_RETRANSMIT) {
+			nxt_cli_seq_	= hdr.nxt_cli_seq_;
+		}
+	}	
+
+	tlastpkt_usec_			= timeval_to_usec(hdr.tv_);
+
+	lastdir_			= currdir_;
+	currdir_			= hdr.dir_;
+}	
 
 SVC_SESSION::SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	: common_(hdr), psvc_(&svc), proto_(svc.proto_)
 {
+	svc.stats_.nsessions_++;
 }	
 
-bool SVC_INFO_CAP::parse_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
+SVC_SESSION::~SVC_SESSION() noexcept
+{
+	set_to_delete(false);
+
+	if (reorder_active() || isrdrmap_) {
+		try {
+			set_reorder_end();
+		}
+		catch(...) {
+		}	
+	}	
+
+	if (pvarproto_.index() != 0) {
+		bool				del = false;
+
+		switch (proto_) {
+
+		case PROTO_HTTP1 :
+			if (auto phttp1 = std::get_if<http1_sessinfo *>(&pvarproto_); phttp1) {
+				if (*phttp1) http1_sessinfo::destroy(*phttp1, pdataproto_);
+				del = true;
+			}	
+			break;
+
+		case PROTO_HTTP2 :
+			if (auto phttp2 = std::get_if<http2_sessinfo *>(&pvarproto_); phttp2) {
+				if (*phttp2) http2_sessinfo::destroy(*phttp2, pdataproto_);
+				del = true;
+			}	
+			break;
+
+		case PROTO_POSTGRES :
+			if (auto ppostgres = std::get_if<postgres_sessinfo *>(&pvarproto_); ppostgres) {
+				if (*ppostgres) postgres_sessinfo::destroy(*ppostgres, pdataproto_);
+				del = true;
+			}	
+			break;
+
+		default :
+			break;
+		}	
+
+		if (!del) {
+			if (auto phttp1 = std::get_if<http1_sessinfo *>(&pvarproto_); phttp1) {
+				if (*phttp1) http1_sessinfo::destroy(*phttp1, pdataproto_);
+			}	
+			else if (auto phttp2 = std::get_if<http2_sessinfo *>(&pvarproto_); phttp2) {
+				if (*phttp2) http2_sessinfo::destroy(*phttp2, pdataproto_);
+			}	
+			else if (auto ppostgres = std::get_if<postgres_sessinfo *>(&pvarproto_); ppostgres) {
+				if (*ppostgres) postgres_sessinfo::destroy(*ppostgres, pdataproto_);
+			}	
+		}	
+	}
+}	
+
+void SVC_SESSION::set_reorder_end()
+{
+	reorder_.exp_cli_seq_start_ = 0;
+	reorder_.exp_ser_seq_start_ = 0;
+
+	if (psvc_ && psvc_->sessrdrmap_.erase(this) && psvc_->sessrdrmap_.empty()) {
+		psvc_->apihdlr_.reordermap_.erase(psvc_->glob_id_);
+	}	
+
+	isrdrmap_ = false;
+}
+
+bool SVC_INFO_CAP::parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
 	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
 	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST);
@@ -994,6 +1121,12 @@ bool SVC_INFO_CAP::parse_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	auto				& sess = it->second;
 
+	if (sess.to_delete()) {
+		sessmap_.erase(it);
+
+		return false;
+	}	
+
 	if (is_finrst) {
 		sess.common_.tclose_usec_ = timeval_to_usec(hdr.tv_);
 	}
@@ -1002,67 +1135,439 @@ bool SVC_INFO_CAP::parse_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		return false;
 	}	
 
-	if (hdr.src_ == SRC_UPROBE_SSL && !sess.common_.is_ssl_) {
-		sess.reorder_.~REORDER_INFO();
-		sess.common_.~COMMON_PROTO();
+	if (hdr.datalen_ == 0 && (0 == (hdr.tcpflags_ & (GY_TH_SYN | GY_TH_FIN | GY_TH_RST)))) {
+		// GY_TH_URG not handled currently
+		return false;
+	}	
 
-		new (&sess.common_) COMMON_PROTO(hdr);
+	GY_SCOPE_EXIT {
+		if (sess.to_delete()) {
+			sessmap_.erase(it);
+		}	
+	};
+
+	if (hdr.src_ == SRC_UPROBE_SSL && !sess.common_.is_ssl_) {
+		if (sess.reorder_active()) {
+			sess.set_reorder_end();
+		}
+
+		sess.reorder_.~REORDER_INFO();
+
 		new (&sess.reorder_) REORDER_INFO();
+
+		sess.common_.set_src_chg(hdr);
+
+		stats_.nsrc_chg_++;
+
+		proto_handle_ssl_chg(sess, hdr, pdata);
 	}
 
 	if (sess.reorder_active()) {
-		return handle_reorder(sess, it, hdr, pdata);
+		return handle_reorder(sess, puniq, hdr, pdata);
 	}	
 
-	return chk_drops_and_parse(sess, it, hdr, pdata, false);
+	return chk_drops_and_parse(sess, puniq, hdr, pdata, false);
 }	
 
-bool SVC_INFO_CAP::chk_drops_and_parse(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata, bool ign_reorder)
+bool SVC_INFO_CAP::add_to_reorder_list(SVC_SESSION & sess, REORDER_PKT_HDR *pnewpkt, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
-	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN;
-	DROP_TYPES			droptype, droptypeack;
+	auto				& rdr = sess.reorder_;
+	auto				& rlist = rdr.reorder_list_;
+	
+	auto				dir = pnewpkt->dir_;
+	uint32_t			seq, ack;
+	int				seqdiff;
+	DROP_TYPES			dtype;
 
-	if (hdr.dir_ == DirPacket::DirInbound) {
-		auto p = is_tcp_drop(sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, is_syn);
+	seq 				= pnewpkt->start_pkt_seq_;
+	ack				= pnewpkt->ack_seq_;
 
-		droptype 	= p.first;
-		droptypeack 	= p.second;
+	for (auto rit = rlist.rbegin(); rit != rlist.rend(); ++rit) {
+		REORDER_PKT_HDR			& pkt = *rit;
 
-		sess.reorder_.cli_dtype_ = droptype;
-		sess.reorder_.ser_dtype_ = droptypeack;
+		seqdiff = (pkt.dir_ == dir ? pkt.start_pkt_seq_ + pkt.datalen_ - seq : pkt.ack_seq_ - seq);
+		
+		if (seqdiff <= 0) {
+			auto			it = rlist.iterator_to(pkt);
+
+			rlist.insert(++it, *pnewpkt);
+			return true;
+		}	
+	}
+
+	if (dir == DirPacket::DirInbound) {
+		dtype = is_tcp_drop(sess.common_.nxt_cli_seq_, seq, sess.common_.nxt_ser_seq_, ack, hdr.tcpflags_ & GY_TH_SYN).first;
 	}
 	else {
-		auto p = is_tcp_drop(sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, is_syn);
-
-		droptype 	= p.first;
-		droptypeack 	= p.second;
-
-		sess.reorder_.cli_dtype_ = droptypeack;
-		sess.reorder_.ser_dtype_ = droptype;
+		dtype = is_tcp_drop(sess.common_.nxt_ser_seq_, seq, sess.common_.nxt_cli_seq_, ack, hdr.tcpflags_ & GY_TH_SYN).first;
 	}	
 
-	if (droptype == DT_NO_DROP && droptypeack == DT_NO_DROP) {
-		return do_proto_parse(sess, it, hdr, pdata);
+	if (dtype == DT_RETRANSMIT) {
+		delete pnewpkt;
+		return false;
+	}	
+	else if (dtype == DT_DROP_NEW_SESS) {
+		delete pnewpkt;
+
+		// Send all pkts to parser
+		send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), true /* clear_all */);
+
+		return chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+	}	
+
+	// Add to start of list
+	rdr.reorder_list_.push_front(*pnewpkt);
+	rdr.set_head_info(sess, hdr);
+
+	return true;
+}
+
+bool SVC_INFO_CAP::handle_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+	auto				& rdr = sess.reorder_;
+	int				clidiff = 0, serdiff = 0;
+
+	const auto addelem = [&]() -> bool
+	{
+		if (rdr.reorder_list_.size() >= rdr.MAX_SESS_REORDER_PKTS || (timeval_to_usec(hdr.tv_) > rdr.tfirstusec_ + GY_USEC_PER_SEC)) {
+			// Skip reordering
+			send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), false /* clear_all */);
+
+			if (rdr.reorder_list_.empty()) {
+				return chk_drops_and_parse(sess, puniq, hdr, pdata, false /* ign_reorder */);
+			}
+		}	
+			
+		auto				prdr = alloc_reorder(sess, puniq, hdr, pdata);
+
+		if (!prdr) {
+			// Send all pkts to parser
+			send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), true /* clear_all */);
+
+			return chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+		}	
+
+		return add_to_reorder_list(sess, prdr, puniq, hdr, pdata);
+	};
+	
+	const auto addfirst = [&]() -> bool
+	{
+		auto				prdr = alloc_reorder(sess, puniq, hdr, pdata);
+
+		if (!prdr) {
+			// Send all pkts to parser
+			bool			bret = chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+
+			if (bret) {
+				return send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), true /* clear_all */);
+			}
+			else {
+				return false;
+			}	
+		}	
+
+		rdr.reorder_list_.push_front(*prdr);
+		rdr.set_head_info(sess, hdr);
+		
+		return true;
+
+	};
+
+	bool				bret;
+
+	if (hdr.dir_ == DirPacket::DirInbound) {
+		if (rdr.exp_cli_seq_start_ > 0) {
+			clidiff = rdr.exp_cli_seq_start_ - hdr.start_cli_seq_;
+
+			if (clidiff == 0) {
+				if (rdr.exp_ser_seq_start_ > 0) {
+					serdiff = rdr.exp_ser_seq_start_ - hdr.start_ser_seq_;
+
+					if (serdiff >= 0) {
+						// Send pkt to parser
+						bret = chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+						
+						if (bret) {
+							return send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), false /* clear_all */);
+						}
+						else {
+							return false;
+						}	
+					}	
+					else {
+						// Still missing preceding resp
+						return addfirst();
+					}	
+				}	
+				else {
+					// Send pkt to parser
+					bret = chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+
+					if (bret) {
+						return send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), false /* clear_all */);
+					}
+					else {
+						return false;
+					}	
+				}	
+			}	
+			else {
+				int			seenclidiff = rdr.seen_cli_seq_ - hdr.start_cli_seq_;
+
+				if (seenclidiff > 0 && clidiff < 0) {
+					return addfirst();
+				}	
+
+				return addelem();
+			}	
+		}
+		else {
+			if (rdr.exp_ser_seq_start_ > 0) {
+				return addelem();
+			}
+
+			// Error...
+			send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), true /* clear_all */);
+
+			return chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+		}	
 	}
-	else if (droptype == DT_DROP_NEW_SESS) {
-		auto			*psvc = sess.psvc_;
+	else {
+		if (rdr.exp_ser_seq_start_ > 0) {
+			serdiff = rdr.exp_ser_seq_start_ - hdr.start_ser_seq_;
+
+			if (serdiff == 0) {
+				if (rdr.exp_cli_seq_start_ > 0) {
+					clidiff = rdr.exp_cli_seq_start_ - hdr.start_cli_seq_;
+
+					if (clidiff >= 0) {
+						// Send pkt to parser
+						bret = chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+
+						if (bret) {
+							return send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), false /* clear_all */);
+						}
+						else {
+							return false;
+						}	
+					}	
+					else {
+						// Still missing preceding req
+						return addfirst();
+					}	
+				}	
+				else {
+					// Send pkt to parser
+					bret = chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+
+					if (bret) {
+						return send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), false /* clear_all */);
+					}
+					else {
+						return false;
+					}	
+				}	
+			}	
+			else {
+				int			seenserdiff = rdr.seen_ser_seq_ - hdr.start_ser_seq_;
+
+				if (seenserdiff > 0 && serdiff < 0) {
+					return addfirst();
+				}	
+
+				return addelem();
+			}	
+		}
+		else {
+			if (rdr.exp_cli_seq_start_ > 0) {
+				return addelem();
+			}
+
+			// Error...
+			send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), true /* clear_all */);
+
+			return chk_drops_and_parse(sess, puniq, hdr, pdata, true /* ign_reorder */);
+		}	
+	}	
+		
+	return true;
+}
+
+// Returns false for retransmits
+bool SVC_INFO_CAP::set_pkt_drops(SVC_SESSION & sess, PARSE_PKT_HDR & hdr)
+{
+	auto				& common = sess.common_;
+	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN;
+
+	if (hdr.dir_ == DirPacket::DirInbound) {
+		auto 			p = is_tcp_drop(sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, is_syn);
+
+		if (p.first == DT_RETRANSMIT) {
+			return false;
+		}
+
+		common.clidroptype_ 	= p.first;
+		common.serdroptype_ 	= p.second;
+	}
+	else {
+		auto 			p = is_tcp_drop(sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, is_syn);
+
+		if (p.first == DT_RETRANSMIT) {
+			return false;
+		}
+
+		common.serdroptype_ 	= p.first;
+		common.clidroptype_ 	= p.second;
+	}	
+	
+	return true;
+}
+
+// Returns false if new session init
+bool SVC_INFO_CAP::chk_drops_and_parse(SVC_SESSION & sess, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata, bool ign_reorder)
+{
+	auto				& common = sess.common_;
+	bool				bret;
+
+	bret = set_pkt_drops(sess, hdr);
+	if (!bret) {
+		return true;
+	}	
+
+	if (common.clidroptype_ == DT_NO_DROP && common.serdroptype_ == DT_NO_DROP) {
+		return do_proto_parse(sess, hdr, pdata);
+	}
+	else if (common.clidroptype_ == DT_DROP_NEW_SESS || common.serdroptype_ == DT_DROP_NEW_SESS) {
+		stats_.nsess_drop_new_++;
 
 		sess.~SVC_SESSION();
 
-		if (psvc) {
-			new (&sess) SVC_SESSION(*psvc, hdr, pdata);
-		}	
-	}	
-	else if (droptype == DT_RETRANSMIT) {
+		new (&sess) SVC_SESSION(*this, hdr, pdata);
+
+		do_proto_parse(sess, hdr, pdata);
+
 		return false;
+	}	
+
+	if (ign_reorder || hdr.src_ != SRC_PCAP || (sess.reorder_active())) {
+		return do_proto_parse(sess, hdr, pdata);
+	}	
+
+	start_reorder(sess, puniq, hdr, pdata);
+
+	return true;
+}	
+
+bool SVC_INFO_CAP::send_reorder_to_parser(SVC_SESSION & sess, uint64_t tcurrusec, bool clear_all)
+{
+	auto				& rdr = sess.reorder_;
+	auto				& rlist = rdr.reorder_list_;
+	auto				& common = sess.common_;
+
+	size_t				rlen = rlist.size(), minpkts = 1, npkts = 0;
+	bool				bret;
+
+	if (rlist.empty()) {
+		goto done;
+	}
+	
+	if (rlen >= rdr.MAX_SESS_REORDER_PKTS) {
+		minpkts = rlen >> 2;
+	}	
+
+	for (; !rlist.empty() && !sess.to_delete(); rlist.pop_front_and_dispose(REORDER_PKT_HDR::destroy)) {
+		auto				& pkt = rlist.front();
+		auto				& puniq = pkt.pooluniq_;	
+
+		if (!puniq) {
+			npkts++;
+			continue;
+		}	
+
+		PARSE_PKT_HDR			*phdr = (PARSE_PKT_HDR *)puniq.get()->get(), & hdr = *phdr;
+		uint8_t				*pdata = (uint8_t *)(phdr + 1);
+
+		bret = set_pkt_drops(sess, hdr);
+		if (!bret) {
+			npkts++;
+			continue;
+		}	
+		
+		if (common.clidroptype_ == DT_NO_DROP && common.serdroptype_ == DT_NO_DROP) {
+			do_proto_parse(sess, hdr, pdata);
+			npkts++;
+			continue;
+		}
+
+		if (common.clidroptype_ == DT_DROP_NEW_SESS || common.serdroptype_ == DT_DROP_NEW_SESS) {
+			stats_.nsess_drop_new_++;
+
+			sess.~SVC_SESSION();
+
+			new (&sess) SVC_SESSION(*this, hdr, pdata);
+
+			return true;
+		}	
+
+		// Drops exist
+
+		if (!clear_all) {
+			if (npkts > minpkts || tcurrusec < timeval_to_usec(hdr.tv_) + GY_USEC_PER_SEC) {
+				break;
+			}	
+		}	
+
+		do_proto_parse(sess, hdr, pdata);
 	}
 
-	if (ign_reorder || hdr.src_ != SRC_PCAP) {
-		return do_proto_parse(sess, it, hdr, pdata);
+done :
+	if (rlist.empty()) {
+		sess.set_reorder_end();
+	}
+	
+	return true;
+}
+
+REORDER_PKT_HDR * SVC_INFO_CAP::alloc_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+	REORDER_PKT_HDR			*prdr = (REORDER_PKT_HDR *)apihdlr_.reorderpool_.malloc();
+
+	if (!prdr) {
+		stats_.nrdr_alloc_fails_++;
+		apihdlr_.stats_.nrdr_alloc_fails_++;
+
+		return nullptr;
 	}	
 
-	return add_to_reorder(sess, it, hdr, pdata);	
-}	
+	new (prdr) REORDER_PKT_HDR(std::move(puniq), hdr, apihdlr_.parseridx_);
+
+	return prdr;
+}
+
+bool SVC_INFO_CAP::start_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+	if (sess.common_.clidroptype_ != DT_DROP_SEEN && sess.common_.serdroptype_ != DT_DROP_SEEN) {
+		return do_proto_parse(sess, hdr, pdata);
+	}
+
+	auto				prdr = alloc_reorder(sess, puniq, hdr, pdata);
+
+	if (!prdr) {
+		return do_proto_parse(sess, hdr, pdata);
+	}	
+
+	auto				& reorder = sess.reorder_;
+
+	reorder.reorder_list_.push_front(*prdr);
+	reorder.set_head_info(sess, hdr);
+
+	sessrdrmap_.insert_or_assign(&sess, prdr->tpktusec_);
+	apihdlr_.reordermap_.try_emplace(glob_id_, this);
+
+	sess.isrdrmap_ = true;
+
+	return true;
+}
 
 REORDER_PKT_HDR::REORDER_PKT_HDR(ParserMemPool::UniquePtr && pooluniq, const PARSE_PKT_HDR & hdr, uint8_t parseridx)
 	: pooluniq_(std::move(pooluniq)), tpktusec_(timeval_to_usec(hdr.tv_)), datalen_(hdr.datalen_),
@@ -1078,9 +1583,48 @@ REORDER_PKT_HDR::~REORDER_PKT_HDR() noexcept
 {
 }
 
+REORDER_INFO::~REORDER_INFO() noexcept
+{
+	while (!reorder_list_.empty()) {
+		reorder_list_.pop_front_and_dispose(REORDER_PKT_HDR::destroy);
+	}	
+}
+
+void REORDER_INFO::set_head_info(SVC_SESSION & sess, PARSE_PKT_HDR & hdr)
+{
+	auto				clidroptype = sess.common_.clidroptype_, serdroptype = sess.common_.serdroptype_;
+
+	tfirstusec_			= timeval_to_usec(hdr.tv_);
+
+	if (clidroptype == DT_DROP_SEEN) {
+		exp_cli_seq_start_	= sess.common_.nxt_cli_seq_;
+		seen_cli_seq_		= hdr.start_cli_seq_;
+	}	
+	else {
+		exp_cli_seq_start_	= 0;
+		seen_cli_seq_		= 0;
+	}	
+
+	if (serdroptype == DT_DROP_SEEN) {
+		exp_ser_seq_start_	= sess.common_.nxt_ser_seq_;
+		seen_ser_seq_		= hdr.start_ser_seq_;
+	}	
+	else {
+		exp_ser_seq_start_	= 0;
+		seen_ser_seq_		= 0;
+	}	
+	
+	if (hdr.dir_ == DirPacket::DirInbound) {
+		ninbound_++;
+	}	
+	else {
+		noutbound_++;
+	}	
+}
+
 void REORDER_PKT_HDR::operator delete(void *ptr, size_t sz)
 {
-	if (ptr && sz == sizeof(REORDER_PKT_HDR)) {
+	if (ptr && sz >= sizeof(REORDER_PKT_HDR)) {
 		auto			*prdr = (REORDER_PKT_HDR *)ptr;
 		POOL_ALLOC		*ppool = nullptr;	
 
@@ -1092,19 +1636,179 @@ void REORDER_PKT_HDR::operator delete(void *ptr, size_t sz)
 		ppool = REORDER_PKT_HDR::greorderpools_[prdr->parseridx_];
 
 		if (ppool) {
-			ppool->free(ptr);
+			try {
+				ppool->free(ptr);
+			}
+			catch(...) {
+			}	
 		}	
 	}	
 }	
 	
-bool SVC_INFO_CAP::add_to_reorder(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+
+bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
+	auto				& common = sess.common_;
+
+	common.upd_stats(hdr);
+
+	if (sess.to_delete()) {
+		return true;
+	}
+	
+	if (sess.reorder_active()) {
+		sess.reorder_.set_head_info(sess, hdr);
+	}	
+
+	bool				is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST);
+
+	if (sess.pvarproto_.index() == 0) {
+		if (hdr.datalen_ == 0) {
+			if (is_finrst) {
+				sess.set_to_delete(true);
+			}
+
+			return true;
+		}	
+		
+		switch (sess.proto_) {
+		
+		case PROTO_HTTP1 :
+			if (true) {
+				auto [psess, pdata]	 	= http1_sessinfo::alloc_sess(sess, hdr);
+
+				sess.pvarproto_ 		= psess;
+				sess.pdataproto_		= pdata;
+			}
+			break;
+
+		case PROTO_HTTP2 :
+			if (true) {
+				auto [psess, pdata]		= http2_sessinfo::alloc_sess(sess, hdr);
+
+				sess.pvarproto_ 		= psess;
+				sess.pdataproto_		= pdata;
+			}
+			break;
+
+		case PROTO_POSTGRES :
+			if (true) {
+				auto [psess, pdata]		= postgres_sessinfo::alloc_sess(sess, hdr);
+
+				sess.pvarproto_ 		= psess;
+				sess.pdataproto_		= pdata;
+			}
+			break;
+
+		default :
+			break;	
+		}	
+	}
+		
+	if (hdr.datalen_ > 0) {	
+		switch (sess.proto_) {
+
+		case PROTO_HTTP1 :
+			if (auto phttp1 = std::get_if<http1_sessinfo *>(&sess.pvarproto_); phttp1 && *phttp1) {
+
+				if (hdr.dir_ == DirPacket::DirInbound) {
+					(*phttp1)->handle_request_pkt(sess, hdr, pdata);
+				}	
+				else {
+					(*phttp1)->handle_response_pkt(sess, hdr, pdata);
+				}	
+			}
+			break;
+
+		case PROTO_HTTP2 :
+			if (auto phttp2 = std::get_if<http2_sessinfo *>(&sess.pvarproto_); phttp2 && *phttp2) {
+
+				if (hdr.dir_ == DirPacket::DirInbound) {
+					(*phttp2)->handle_request_pkt(sess, hdr, pdata);
+				}	
+				else {
+					(*phttp2)->handle_response_pkt(sess, hdr, pdata);
+				}	
+			}
+			break;
+
+		case PROTO_POSTGRES :
+			if (auto ppostgres = std::get_if<postgres_sessinfo *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+
+				if (hdr.dir_ == DirPacket::DirInbound) {
+					(*ppostgres)->handle_request_pkt(sess, hdr, pdata);
+				}	
+				else {
+					(*ppostgres)->handle_response_pkt(sess, hdr, pdata);
+				}	
+			}
+			break;
+
+		default :
+			break;	
+
+		}	
+	}
+
+	if (is_finrst) {
+		sess.set_to_delete(true);
+	
+		switch (sess.proto_) {
+
+		case PROTO_HTTP1 :
+			if (auto phttp1 = std::get_if<http1_sessinfo *>(&sess.pvarproto_); phttp1 && *phttp1) {
+				(*phttp1)->handle_session_end(sess, hdr);
+			}
+			break;
+
+		case PROTO_HTTP2 :
+			if (auto phttp2 = std::get_if<http2_sessinfo *>(&sess.pvarproto_); phttp2 && *phttp2) {
+				(*phttp2)->handle_session_end(sess, hdr);
+			}
+			break;
+
+		case PROTO_POSTGRES :
+			if (auto ppostgres = std::get_if<postgres_sessinfo *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+				(*ppostgres)->handle_session_end(sess, hdr);
+			}
+			break;
+
+		default :
+			break;	
+
+		}	
+	}
+	
 	return false;
 }	
 
-bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, SessMapIt it, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
-	return false;
+	switch (sess.proto_) {
+
+	case PROTO_HTTP1 :
+		if (auto phttp1 = std::get_if<http1_sessinfo *>(&sess.pvarproto_); phttp1 && *phttp1) {
+			(*phttp1)->handle_ssl_change(sess, hdr, pdata);
+		}
+		break;
+
+	case PROTO_HTTP2 :
+		if (auto phttp2 = std::get_if<http2_sessinfo *>(&sess.pvarproto_); phttp2 && *phttp2) {
+			(*phttp2)->handle_ssl_change(sess, hdr, pdata);
+		}
+		break;
+
+	case PROTO_POSTGRES :
+		if (auto ppostgres = std::get_if<postgres_sessinfo *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+			(*ppostgres)->handle_ssl_change(sess, hdr, pdata);
+		}
+		break;
+
+	default :
+		return false;
+	}
+
+	return true;
 }	
 
 void SVC_INFO_CAP::schedule_stop_capture() noexcept
@@ -1174,7 +1878,7 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 		SVC_INFO_CAP			*psvc = msg.psvc_;
 
 		if (!psvc) {
-			if (phdr->src_ == SRC_PCAP || glob_id != 0) {
+			if (phdr->netns_ == 0 && phdr->src_ == SRC_PCAP) {
 				stats_.ninvalid_pkt_++;
 				return false;
 			}	
@@ -1209,10 +1913,10 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 		}	
 
 		if (psvc->proto_ != PROTO_UNINIT) {
-			psvc->parse_pkt(*phdr, pdata);
+			return psvc->parse_pkt(puniq, *phdr, pdata);
 		}
 
-		return true;
+		return false;
 	}
 	GY_CATCH_EXPRESSION(
 		return false;
@@ -1261,7 +1965,9 @@ bool API_PARSE_HDLR::handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept
 		if (it != svcinfomap_.end()) {
 			if (it->second) {
 				svcshr = std::move(it->second);
-				svcshr->stop_parser_tusec_.store(msg.tusec_, mo_relaxed);
+		
+				// Call destroy to ensure the map clear() are called from this thread itself...
+				svcshr->destroy(msg.tusec_);
 			}	
 
 			svcinfomap_.erase(it);
@@ -1296,6 +2002,11 @@ bool API_PARSE_HDLR::handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept
 bool API_PARSE_HDLR::handle_parse_timer(MSG_TIMER_SVCCAP & msg) noexcept
 {
 	try {
+		if (tlast_rdrchk_usec_ <= msg.tusec_ - 2 * GY_USEC_PER_SEC) {
+			chk_svc_reorders();
+		}	
+
+		// TODO scan svcs and print stats
 
 		return true;
 	}
@@ -1362,6 +2073,43 @@ bool API_PARSE_HDLR::handle_parse_no_msg() noexcept
 	return false;
 }	
 
+void API_PARSE_HDLR::chk_svc_reorders()
+{
+	uint64_t			tcurrusec = get_usec_time();
+
+	for (auto osit = reordermap_.begin(); osit != reordermap_.end();) {
+		auto				oit = osit++;
+		SVC_INFO_CAP			*psvc = oit->second;
+
+		if (!psvc) {
+			reordermap_.erase(oit);
+			continue;
+		}	
+
+		for (auto sit = psvc->sessrdrmap_.begin(); sit != psvc->sessrdrmap_.end();) {
+			auto				it = sit++;
+			SVC_SESSION			*psess = it->first;
+
+			if (!psess) {
+				psvc->sessrdrmap_.erase(it);
+				continue;
+			}	
+
+			if (psess->reorder_active() && psess->reorder_.tfirstusec_ < tcurrusec - GY_USEC_PER_SEC) {
+				// Timed Out
+				psvc->send_reorder_to_parser(*psess, tcurrusec, false /* clear_all */);
+
+				if (psess->to_delete()) {
+					psvc->sessmap_.erase(psess->common_.cli_ipport_);
+					continue;
+				}	
+			}	
+		}
+		
+	}	
+
+	tlast_rdrchk_usec_ = get_usec_time();
+}	
 
 } // namespace gyeeta
 

@@ -8,12 +8,6 @@
 
 namespace gyeeta {
 
-class http1_sessinfo
-{
-public :
-
-};
-
 class http_proto 
 {
 public :
@@ -163,10 +157,6 @@ public :
 
 		return true;
 	}
-
-	struct PARSE_PKT_HDR;
-
-	void init_session(PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
 };
 

@@ -131,6 +131,11 @@ int main()
 
 		parg[16] = pool1.malloc();
 		assert(parg[16] == nullptr);
+
+		// Test invalid free
+		pool1.free((void *)&eret);
+
+		(void)pool1.malloc();
 	}	
 
 
