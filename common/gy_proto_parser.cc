@@ -45,6 +45,13 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 	}
 }	
 
+SVC_INFO_CAP::~SVC_INFO_CAP() noexcept
+{
+	schedule_ssl_stop();
+
+	proto_ = PROTO_UNKNOWN;
+}
+
 void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
 {
 	try {
@@ -55,8 +62,9 @@ void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
 		sessrdrmap_.clear();
 		protodetect_.reset();
 
-		proto_ = PROTO_UNKNOWN;
+		schedule_ssl_stop();
 
+		proto_ = PROTO_UNKNOWN;
 	}
 	catch(...) {
 	
@@ -695,6 +703,8 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 void SVC_INFO_CAP::analyze_detect_status()
 {
+	if (!protodetect_) return;
+
 	auto				& detect = *protodetect_.get();
 	auto				& tstats = stats_;
 
@@ -833,14 +843,14 @@ void API_PARSE_HDLR::api_parse_rd_thr() noexcept
 
 try1 :
 	try {
-		do {
-			MSG_PKT_SVCCAP			*pmsgpkt;
-			MSG_ADD_SVCCAP			*paddsvc;
-			MSG_DEL_SVCCAP			*pdelsvc;
-			MSG_TIMER_SVCCAP		*ptimer;
-			MSG_SVC_SSL_CAP			*pssl;
-			bool				bret;
+		MSG_PKT_SVCCAP			*pmsgpkt;
+		MSG_ADD_SVCCAP			*paddsvc;
+		MSG_DEL_SVCCAP			*pdelsvc;
+		MSG_TIMER_SVCCAP		*ptimer;
+		MSG_SVC_SSL_CAP			*pssl;
+		bool				bret;
 
+		do {
 			PARSE_MSG_BUF			msg;
 
 			bret = msgpool_.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::microseconds(2 * GY_USEC_PER_SEC), msg);
@@ -925,7 +935,7 @@ try1 :
 		} while (true);	
 
 	}
-	GY_CATCH_MSG("Exception Caught in Parser Thread");
+	GY_CATCH_MSG("Exception Caught in API Parser Thread");
 
 	goto try1;
 }	
@@ -989,6 +999,18 @@ void COMMON_PROTO::set_src_chg(PARSE_PKT_HDR & hdr) noexcept
 void COMMON_PROTO::upd_stats(PARSE_PKT_HDR & hdr) noexcept
 {
 	if (hdr.dir_ == DirPacket::DirInbound) {
+		if (clidroptype_ == DT_DROP_SEEN || serdroptype_ == DT_DROP_SEEN) {	
+			auto			[dropcli, dropser] = tcp_drop_bytes(nxt_cli_seq_, hdr.start_cli_seq_, nxt_ser_seq_, hdr.start_ser_seq_, 
+											clidroptype_, serdroptype_); 
+
+			curr_req_drop_bytes_ 	= dropcli;
+			curr_resp_drop_bytes_	= dropser;
+		}
+		else {
+			curr_req_drop_bytes_ 	= 0;
+			curr_resp_drop_bytes_	= 0;
+		}	
+
 		tot_reqlen_		+= hdr.datalen_;
 		nxt_cli_seq_		= hdr.nxt_cli_seq_;
 
@@ -997,6 +1019,18 @@ void COMMON_PROTO::upd_stats(PARSE_PKT_HDR & hdr) noexcept
 		}	
 	}
 	else {
+		if (clidroptype_ == DT_DROP_SEEN || serdroptype_ == DT_DROP_SEEN) {	
+			auto			[dropser, dropcli] = tcp_drop_bytes(nxt_ser_seq_, hdr.start_ser_seq_, nxt_cli_seq_, hdr.start_cli_seq_, 
+											serdroptype_, clidroptype_); 
+
+			curr_req_drop_bytes_ 	= dropcli;
+			curr_resp_drop_bytes_	= dropser;
+		}
+		else {
+			curr_req_drop_bytes_ 	= 0;
+			curr_resp_drop_bytes_	= 0;
+		}	
+
 		tot_reslen_		+= hdr.datalen_;
 		nxt_ser_seq_		= hdr.nxt_ser_seq_;
 
@@ -1014,11 +1048,15 @@ void COMMON_PROTO::upd_stats(PARSE_PKT_HDR & hdr) noexcept
 SVC_SESSION::SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	: common_(hdr), psvc_(&svc), proto_(svc.proto_)
 {
-	svc.stats_.nsessions_++;
+	svc.stats_.nsessions_new_++;
 }	
 
 SVC_SESSION::~SVC_SESSION() noexcept
 {
+	if (psvc_) {
+		psvc_->stats_.nsessions_del_++;
+	}
+
 	set_to_delete(false);
 
 	if (reorder_active() || isrdrmap_) {
@@ -1112,7 +1150,7 @@ bool SVC_INFO_CAP::parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & h
 		}
 
 		if (sessmap_.size() >= MAX_PARSE_CONC_SESS) {
-			apihdlr_.stats_.nskip_conc_sess_++;
+			stats_.nskip_conc_sess_++;
 			return false;
 		}	
 
@@ -1157,8 +1195,6 @@ bool SVC_INFO_CAP::parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & h
 
 		sess.common_.set_src_chg(hdr);
 
-		stats_.nsrc_chg_++;
-
 		proto_handle_ssl_chg(sess, hdr, pdata);
 	}
 
@@ -1191,6 +1227,11 @@ bool SVC_INFO_CAP::add_to_reorder_list(SVC_SESSION & sess, REORDER_PKT_HDR *pnew
 			auto			it = rlist.iterator_to(pkt);
 
 			rlist.insert(++it, *pnewpkt);
+
+			if (rit != rlist.rbegin()) {
+				stats_.nrdrpkts_++;
+				stats_.nrdrbytes_ += pnewpkt->datalen_;
+			}	
 			return true;
 		}	
 	}
@@ -1209,6 +1250,8 @@ bool SVC_INFO_CAP::add_to_reorder_list(SVC_SESSION & sess, REORDER_PKT_HDR *pnew
 	else if (dtype == DT_DROP_NEW_SESS) {
 		delete pnewpkt;
 
+		stats_.nsess_drop_new_++;
+
 		// Send all pkts to parser
 		send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), true /* clear_all */);
 
@@ -1218,6 +1261,9 @@ bool SVC_INFO_CAP::add_to_reorder_list(SVC_SESSION & sess, REORDER_PKT_HDR *pnew
 	// Add to start of list
 	rdr.reorder_list_.push_front(*pnewpkt);
 	rdr.set_head_info(sess, hdr);
+
+	stats_.nrdrpkts_++;
+	stats_.nrdrbytes_ += pnewpkt->datalen_;
 
 	return true;
 }
@@ -1230,6 +1276,13 @@ bool SVC_INFO_CAP::handle_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr &
 	const auto addelem = [&]() -> bool
 	{
 		if (rdr.reorder_list_.size() >= rdr.MAX_SESS_REORDER_PKTS || (timeval_to_usec(hdr.tv_) > rdr.tfirstusec_ + GY_USEC_PER_SEC)) {
+			if (rdr.reorder_list_.size() >= rdr.MAX_SESS_REORDER_PKTS) {
+				stats_.nrdr_sess_max_++;
+			}
+			else {
+				stats_.nrdr_timeout_++;
+			}	
+
 			// Skip reordering
 			send_reorder_to_parser(sess, timeval_to_usec(hdr.tv_), false /* clear_all */);
 
@@ -1280,6 +1333,9 @@ bool SVC_INFO_CAP::handle_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr &
 			clidiff = rdr.exp_cli_seq_start_ - hdr.start_cli_seq_;
 
 			if (clidiff == 0) {
+				stats_.nrdrpkts_++;
+				stats_.nrdrbytes_ += hdr.datalen_;
+
 				if (rdr.exp_ser_seq_start_ > 0) {
 					serdiff = rdr.exp_ser_seq_start_ - hdr.start_ser_seq_;
 
@@ -1315,6 +1371,9 @@ bool SVC_INFO_CAP::handle_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr &
 				int			seenclidiff = rdr.seen_cli_seq_ - hdr.start_cli_seq_;
 
 				if (seenclidiff > 0 && clidiff < 0) {
+					stats_.nrdrpkts_++;
+					stats_.nrdrbytes_ += hdr.datalen_;
+
 					return addfirst();
 				}	
 
@@ -1337,6 +1396,9 @@ bool SVC_INFO_CAP::handle_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr &
 			serdiff = rdr.exp_ser_seq_start_ - hdr.start_ser_seq_;
 
 			if (serdiff == 0) {
+				stats_.nrdrpkts_++;
+				stats_.nrdrbytes_ += hdr.datalen_;
+
 				if (rdr.exp_cli_seq_start_ > 0) {
 					clidiff = rdr.exp_cli_seq_start_ - hdr.start_cli_seq_;
 
@@ -1372,6 +1434,9 @@ bool SVC_INFO_CAP::handle_reorder(SVC_SESSION & sess, ParserMemPool::UniquePtr &
 				int			seenserdiff = rdr.seen_ser_seq_ - hdr.start_ser_seq_;
 
 				if (seenserdiff > 0 && serdiff < 0) {
+					stats_.nrdrpkts_++;
+					stats_.nrdrbytes_ += hdr.datalen_;
+
 					return addfirst();
 				}	
 
@@ -1705,6 +1770,14 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 		}	
 	}
 		
+	if (sess.is_pkt_drop()) {
+		stats_.ndroppkts_++;
+
+		stats_.ndropbytes_	+= (uint64_t)common.curr_req_drop_bytes_ + common.curr_resp_drop_bytes_;
+		stats_.ndropbytesin_	+= common.curr_req_drop_bytes_;
+		stats_.ndropbytesout_	+= common.curr_resp_drop_bytes_;
+	}
+		
 	if (hdr.datalen_ > 0) {	
 		switch (sess.proto_) {
 
@@ -1784,6 +1857,8 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 
 bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
+	stats_.nsrc_chg_++;
+
 	switch (sess.proto_) {
 
 	case PROTO_HTTP1 :
@@ -1853,6 +1928,84 @@ void SVC_INFO_CAP::schedule_ssl_probe()
 	ssl_req_.store(SSL_REQ_E::SSL_REQUEST_SCHED, mo_relaxed);
 
 	psvcnet->sched_svc_ssl_probe(gy_to_charbuf<256>("SSL Probe for Svc %s %lx", comm_, glob_id_).get(), svcweak_);
+}	
+
+void SVC_INFO_CAP::schedule_ssl_stop() noexcept
+{
+	auto				sslreq = ssl_req_.load(mo_relaxed);
+
+	if (sslreq == SSL_REQ_E::SSL_NO_REQ || sslreq == SSL_REQ_E::SSL_REJECTED) {
+		return;
+	}
+	
+	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();
+
+	if (!psvcnet) {
+		return;
+	}	
+
+	psvcnet->sched_svc_ssl_stop(gy_to_charbuf<256>("Stop SSL Probe for Svc %s %lx", comm_, glob_id_).get(), glob_id_);
+
+	ssl_req_.store(SSL_REQ_E::SSL_NO_REQ, mo_relaxed);
+}	
+
+void SVC_PARSE_STATS::operator -= (const SVC_PARSE_STATS & other) noexcept
+{
+	npkts_			-= other.npkts_;
+	nbytes_			-= other.nbytes_;
+	nreqpkts_		-= other.nreqpkts_;
+	nreqbytes_		-= other.nreqbytes_;
+	nresppkts_		-= other.nresppkts_;
+	nrespbytes_		-= other.nrespbytes_;
+	ndroppkts_		-= other.ndroppkts_;
+	ndropbytes_		-= other.ndropbytes_;
+	ndropbytesin_		-= other.ndropbytesin_;
+	ndropbytesout_		-= other.ndropbytesout_;
+	nrdrpkts_		-= other.nrdrpkts_;
+	nrdrbytes_		-= other.nrdrbytes_;
+	nrdr_sess_max_		-= other.nrdr_sess_max_;
+	nrdr_timeout_		-= other.nrdr_timeout_;
+	nrdr_alloc_fails_	-= other.nrdr_alloc_fails_;
+	nsessions_new_		-= other.nsessions_new_;
+	nsessions_del_		-= other.nsessions_del_;
+	nsess_drop_new_		-= other.nsess_drop_new_;
+	nskip_conc_sess_	-= other.nskip_conc_sess_;
+	nsrc_chg_		-= other.nsrc_chg_;
+
+	for (uint8_t i = 0; i < API_CAP_SRC::SRC_MAX; ++i) {
+		srcpkts_[i]	-= other.srcpkts_[i];
+	}
+}
+
+
+void SVC_PARSE_STATS::print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) const noexcept
+{
+	strbuf << "Stats for "sv << (tcurrusec - tlastusec)/GY_USEC_PER_SEC << " sec : Packets "sv << npkts_ << ", Bytes "sv << nbytes_ << "("sv << (nbytes_ >> 20) 
+		<< " MB), Request Pkts "sv << nreqpkts_ << ", Request Bytes "sv << nreqbytes_ << " ("sv << (nreqbytes_ >> 20) << " MB), Response Pkts "sv << nresppkts_ 
+		<< ", Response Bytes "sv << nrespbytes_ << " ("sv << (nrespbytes_ >> 20) << " MB), Drop Pkts "sv << ndroppkts_ << ", Drop Bytes "sv << ndropbytes_ 
+		<< " ("sv << (ndropbytes_ >> 20) << " MB), Drop Req Bytes "sv << ndropbytesin_ << ", Drop Resp Bytes "sv << ndropbytesout_ << ", Reordered Pkts "sv << nrdrpkts_ 
+		<< ", Reorder Bytes "sv << nrdrbytes_ << " ("sv << (nrdrbytes_ >> 20) << " MB), "sv << "Reorder miss by max session pkts "sv << nrdr_sess_max_ 
+		<< ", Reorder miss by timeout "sv << nrdr_timeout_ << ", Reorder miss by too many reorders "sv << nrdr_alloc_fails_ << ", Sessions Allocated "sv << nsessions_new_ 
+		<< ", Sessions Completed "sv << nsessions_del_ << ", Sessions with drop Logouts "sv << nsess_drop_new_ << ", Sessions with Change of Src e.g. SSL "sv 
+		<< nsrc_chg_ << ", Packets skipped by Max Concurrency hits " << nskip_conc_sess_ << "\n\n"sv;
+}	
+
+void SVC_INFO_CAP::print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) noexcept
+{
+	auto				diffstats = stats_, & lstats = laststats_;
+
+	strbuf << "API Capture Statsistics for Svc '"sv << comm_ << "' Port "sv << ns_ip_port_.ip_port_.port_ << " Protocol "sv << proto_to_string(proto_);
+	strbuf << " SSL Capture Status : "sv << ssl_req_to_string(ssl_req_.load(mo_relaxed)) << '\n';
+
+	diffstats -= lstats;
+
+	strbuf << "Interval "sv;
+	diffstats.print_stats(strbuf, tcurrusec, tlastusec);
+	
+	strbuf << "Cumulative "sv;
+	stats_.print_stats(strbuf, tcurrusec, tstartusec_);
+	
+	lstats = stats_;
 }	
 
 bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
@@ -1955,12 +2108,18 @@ bool API_PARSE_HDLR::handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept
 	return false;
 }	
 
-bool API_PARSE_HDLR::handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept
+bool API_PARSE_HDLR::handle_svc_del(MSG_DEL_SVCCAP & msg, SvcInfoIdMap::iterator *pit) noexcept
 {
 	try {
 		std::shared_ptr<SVC_INFO_CAP>	svcshr;
+		SvcInfoIdMap::iterator 		it;
 
-		auto 				it = svcinfomap_.find(msg.glob_id_);
+		if (!pit) {
+			it = svcinfomap_.find(msg.glob_id_);
+		}
+		else {
+			it = *pit;
+		}	
 
 		if (it != svcinfomap_.end()) {
 			if (it->second) {
@@ -2002,11 +2161,17 @@ bool API_PARSE_HDLR::handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept
 bool API_PARSE_HDLR::handle_parse_timer(MSG_TIMER_SVCCAP & msg) noexcept
 {
 	try {
-		if (tlast_rdrchk_usec_ <= msg.tusec_ - 2 * GY_USEC_PER_SEC) {
+		if (tlast_rdrchk_usec_ <= msg.tusec_ - REORDER_CHK_SEC * GY_USEC_PER_SEC - 100 * GY_USEC_PER_MSEC /* 100 msec leeway */) {
 			chk_svc_reorders();
 		}	
 
-		// TODO scan svcs and print stats
+		if (tlast_svc_chk_usec_ <= msg.tusec_ - SVC_CHK_SEC * GY_USEC_PER_SEC - 100 * GY_USEC_PER_MSEC /* 100 msec leeway */) {
+			chk_svc_info();
+		}	
+
+		if (tlast_print_usec_ <= msg.tusec_ - PRINT_STATS_SEC * GY_USEC_PER_SEC - 100 * GY_USEC_PER_MSEC /* 100 msec leeway */) {
+			print_stats();
+		}	
 
 		return true;
 	}
@@ -2108,8 +2273,99 @@ void API_PARSE_HDLR::chk_svc_reorders()
 		
 	}	
 
-	tlast_rdrchk_usec_ = get_usec_time();
+	tlast_rdrchk_usec_ = tcurrusec;
 }	
+
+void API_PARSE_HDLR::chk_svc_info()
+{
+	uint64_t			tcurrusec = get_usec_time();
+
+	for (auto osit = svcinfomap_.begin(); osit != svcinfomap_.end();) {
+		auto				oit = osit++;
+		SVC_INFO_CAP			*psvc = oit->second.get();
+
+		if (!psvc) {
+			svcinfomap_.erase(oit);
+			continue;
+		}	
+
+		if (gy_unlikely(psvc->stop_parser_tusec_.load(mo_relaxed) > 0)) {
+			MSG_DEL_SVCCAP		msg(psvc->glob_id_);
+
+			handle_svc_del(msg, &oit);
+			continue;
+		}
+
+		if (gy_unlikely(psvc->protodetect_)) {
+			psvc->analyze_detect_status();
+		}
+	}	
+
+	tlast_svc_chk_usec_ = tcurrusec;
+}	
+
+
+void API_PARSER_STATS::operator -= (const API_PARSER_STATS & other) noexcept
+{
+	nsvcadd_		-=	other.nsvcadd_;
+	nsvcdel_		-=	other.nsvcdel_;
+	nsvcssl_on_		-=	other.nsvcssl_on_;
+	nsvcssl_fail_		-=	other.nsvcssl_fail_;
+	ninvalid_pkt_		-=	other.ninvalid_pkt_;
+	ninvalid_msg_		-=	other.ninvalid_msg_;
+	nrdr_alloc_fails_	-=	other.nrdr_alloc_fails_;
+
+	nskip_pool_.fetch_sub_relaxed_0(other.nskip_pool_.load(mo_relaxed));
+}
+
+void API_PARSER_STATS::print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) const noexcept
+{
+	strbuf << "Stats for "sv << (tcurrusec - tlastusec)/GY_USEC_PER_SEC << " sec : Service API Captures Started "sv << nsvcadd_ 
+	<< ", Captures Stopped "sv << nsvcdel_ << ", SSL Captures Started "sv << nsvcssl_on_ << ", SSL Captures Failed "sv << nsvcssl_fail_ 
+	<< ", Invalid Capture Packets "sv << ninvalid_pkt_ << ", Invalid Messages "sv << ninvalid_msg_ << ", Reorder Alloc Fails "sv 
+	<< nrdr_alloc_fails_ << ", Pkts skipped by Pool Blocks "sv << nskip_pool_.load(mo_relaxed) << "\n"sv;
+
+}	
+
+
+void API_PARSE_HDLR::print_stats() noexcept
+{
+	STRING_BUFFER<2048>		strbuf;
+	uint64_t			tcurrusec = get_usec_time();
+
+	for (auto osit = svcinfomap_.begin(); osit != svcinfomap_.end();) {
+		auto				oit = osit++;
+		SVC_INFO_CAP			*psvc = oit->second.get();
+
+		if (!psvc) {
+			svcinfomap_.erase(oit);
+			continue;
+		}	
+
+		strbuf << '\n';
+
+		psvc->print_stats(strbuf, tcurrusec, tlast_print_usec_);	
+	}	
+	
+	auto				diffstats = stats_, & lstats = laststats_;
+
+	strbuf << "API Parser #"sv << parseridx_ << " Stats : \n"sv; 
+
+	diffstats -= lstats;
+
+	strbuf << "Interval "sv;
+	diffstats.print_stats(strbuf, tcurrusec, tlast_print_usec_);
+	
+	strbuf << "Cumulative "sv;
+	stats_.print_stats(strbuf, tcurrusec, tstartusec_);
+	
+	lstats = stats_;
+
+	tlast_print_usec_ = tcurrusec;
+
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+}	
+
 
 } // namespace gyeeta
 

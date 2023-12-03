@@ -21,11 +21,23 @@ enum class SSL_SVC_E : uint8_t
 enum class SSL_REQ_E : uint8_t
 {
 	SSL_NO_REQ				= 0,
-
 	SSL_REQUEST_SCHED,			
 	SSL_REJECTED,
 	SSL_ACTIVE,
 };	
+
+static constexpr const char * ssl_req_to_string(SSL_REQ_E req) noexcept
+{
+	constexpr const char		*reqstr[(int)SSL_REQ_E::SSL_ACTIVE + 1] = {
+		"Not Requested", "SSL Scheduled", "SSL Rejected", "SSL Active",
+	};	
+
+	if ((unsigned)req <= (unsigned)SSL_REQ_E::SSL_ACTIVE) {
+		return reqstr[(int)req];
+	}	
+
+	return "Invalid";
+}	
 
 class GY_SSLCAP;
 class SVC_NET_CAPTURE;

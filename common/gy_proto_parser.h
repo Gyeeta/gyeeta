@@ -352,6 +352,9 @@ struct COMMON_PROTO
 
 	uint32_t 				pid_			{0};
 	uint32_t 				netns_			{0};
+	uint32_t				curr_req_drop_bytes_	{0};
+	uint32_t				curr_resp_drop_bytes_	{0};
+
 	DirPacket				currdir_		{DirPacket::DirUnknown};
 	DirPacket				lastdir_		{DirPacket::DirUnknown};
 	DROP_TYPES				clidroptype_		{DT_NO_DROP};
@@ -413,6 +416,21 @@ struct SVC_SESSION
 		return reorder_.is_active();
 	}	
 
+	bool is_req_pkt_drop() const noexcept
+	{
+		return common_.clidroptype_ == DT_DROP_SEEN;
+	}
+
+	bool is_resp_pkt_drop() const noexcept
+	{
+		return common_.serdroptype_ == DT_DROP_SEEN;
+	}
+
+	bool is_pkt_drop() const noexcept
+	{
+		return (is_req_pkt_drop() || is_resp_pkt_drop());
+	}
+
 	void set_new_proto(proto_sess && varproto, PROTO_TYPES proto) noexcept
 	{
 		pvarproto_ 	= std::move(varproto);
@@ -430,15 +448,29 @@ struct SVC_PARSE_STATS
 	uint64_t				nreqbytes_		{0};
 	uint64_t				nresppkts_		{0};
 	uint64_t				nrespbytes_		{0};
+	
+	uint64_t				ndroppkts_		{0};
+	uint64_t				ndropbytes_		{0};
+	uint64_t				ndropbytesin_		{0};
+	uint64_t				ndropbytesout_		{0};
+	uint64_t				nrdrpkts_		{0};
+	uint64_t				nrdrbytes_		{0};
+	uint64_t				nrdr_sess_max_		{0};
+	uint64_t				nrdr_timeout_		{0};
+	uint64_t				nrdr_alloc_fails_	{0};
 
-	uint64_t				nsessions_		{0};
+	uint64_t				nsessions_new_		{0};
+	uint64_t				nsessions_del_		{0};
 	uint64_t				nsess_drop_new_		{0};
-	uint32_t				nrdr_alloc_fails_	{0};
-	uint32_t				nsrc_chg_		{0};
+	uint64_t				nskip_conc_sess_	{0};
 
+	uint64_t				nsrc_chg_		{0};
 	uint64_t				srcpkts_[API_CAP_SRC::SRC_MAX]	{};
 
 	bool update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept;
+	void print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) const noexcept;
+
+	void operator -= (const SVC_PARSE_STATS & other) noexcept;
 };	
 
 class SVC_INFO_CAP : public std::enable_shared_from_this<SVC_INFO_CAP>
@@ -452,6 +484,7 @@ public :
 	std::weak_ptr<TCP_LISTENER>		svcweak_;
 	SvcSessMap				sessmap_;
 	SessReorderMap				sessrdrmap_;
+	SVC_PARSE_STATS				laststats_;
 
 	API_PARSE_HDLR				& apihdlr_;
 
@@ -463,6 +496,7 @@ public :
 	uint64_t 				glob_id_		{0};
 	NS_IP_PORT				ns_ip_port_;
 	char					comm_[TASK_COMM_LEN]	{};
+	uint64_t				tstartusec_		{get_usec_time()};
 	gy_atomic<uint64_t>			stop_parser_tusec_	{0};	
 
 	PROTO_TYPES				proto_			{PROTO_UNINIT};
@@ -478,11 +512,15 @@ public :
 
 	SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_PARSE_HDLR & apihdlr);
 
+	~SVC_INFO_CAP() noexcept;
+
 	void destroy(uint64_t tusec) noexcept;
 
 	void lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept;
 
 	void schedule_ssl_probe();
+
+	void schedule_ssl_stop() noexcept;
 
 	void schedule_stop_capture() noexcept;
 
@@ -509,6 +547,8 @@ public :
 	bool send_reorder_to_parser(SVC_SESSION & sess, uint64_t tcurrusec, bool clear_all);
 	
 	bool add_to_reorder_list(SVC_SESSION & sess, REORDER_PKT_HDR *pnewpkt, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) noexcept;
 };
 
 struct MSG_PKT_SVCCAP
@@ -575,18 +615,18 @@ using PARSE_MSG_BUF = std::variant<MSG_ADD_SVCCAP, MSG_PKT_SVCCAP, MSG_DEL_SVCCA
 
 struct API_PARSER_STATS
 {
-	uint64_t				nskipped_		{0};
-	uint64_t				nskip_conc_sess_	{0};
 	uint64_t				nsvcadd_		{0};
 	uint64_t				nsvcdel_		{0};
 	uint64_t				nsvcssl_on_		{0};
 	uint64_t				nsvcssl_fail_		{0};
 	uint64_t				ninvalid_pkt_		{0};
 	uint64_t				ninvalid_msg_		{0};
-
 	uint64_t				nrdr_alloc_fails_	{0};
 
 	alignas(64) gy_atomic<uint64_t>		nskip_pool_		{0};
+
+	void operator -= (const API_PARSER_STATS & other) noexcept;
+	void print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) const noexcept;
 };	
 
 class API_PARSE_HDLR
@@ -601,7 +641,11 @@ public :
 	ParMsgPool				msgpool_		{MAX_PARSE_POOL_PKT + 1000};
 	POOL_ALLOC				reorderpool_		{sizeof(REORDER_PKT_HDR), MAX_REORDER_PKTS};	// Only from parser thread
 	API_PARSER_STATS			stats_;
-	uint64_t				tlast_rdrchk_usec_	{0};
+	API_PARSER_STATS			laststats_;
+	uint64_t				tstartusec_		{get_usec_time()};
+	uint64_t				tlast_rdrchk_usec_	{tstartusec_};
+	uint64_t				tlast_svc_chk_usec_	{tstartusec_};
+	uint64_t				tlast_print_usec_	{tstartusec_};
 
 	SVC_NET_CAPTURE				& svcnet_;
 	SSL_CAP_SVC				sslcap_;
@@ -620,11 +664,17 @@ protected :
 	friend class				SVC_INFO_CAP;
 
 public :
+	
+	static constexpr uint64_t		REORDER_CHK_SEC		{2};
+	static constexpr uint64_t		SVC_CHK_SEC		{30};
+	static constexpr uint64_t		PRINT_STATS_SEC		{60};
+
 	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx);
 
 	bool send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id, const PARSE_PKT_HDR & msghdr, const uint8_t *pdata, const uint32_t len);
 
 	void api_parse_rd_thr() noexcept;
+
 
 	static bool is_valid_pool_idx(uint32_t idx, bool is_reorder) noexcept
 	{
@@ -639,13 +689,15 @@ public :
 private :
 	bool handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept;
 	bool handle_svc_add(MSG_ADD_SVCCAP & msg) noexcept;
-	bool handle_svc_del(MSG_DEL_SVCCAP & msg) noexcept;
+	bool handle_svc_del(MSG_DEL_SVCCAP & msg, SvcInfoIdMap::iterator *pit = nullptr) noexcept;
 	bool handle_parse_timer(MSG_TIMER_SVCCAP & msg) noexcept;
 	bool handle_ssl_active(MSG_SVC_SSL_CAP & msg) noexcept;
 	bool handle_ssl_rejected(MSG_SVC_SSL_CAP & msg) noexcept;
 	bool handle_parse_no_msg() noexcept;
 
 	void chk_svc_reorders();
+	void chk_svc_info();
+	void print_stats() noexcept;
 };	
 
 

@@ -1065,6 +1065,18 @@ bool SVC_NET_CAPTURE::sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LI
 		});
 }
 
+bool SVC_NET_CAPTURE::sched_svc_ssl_stop(const char *name, uint64_t glob_id) noexcept
+{
+	if (!apihdlr_ || apihdlr_->allow_ssl_probe_.load(mo_relaxed) == false) {
+		return false;
+	}
+
+	return apischedthr_.add_oneshot_schedule(1, name, 
+		[this, glob_id]() {
+			apihdlr_->sslcap_.stop_svc_cap(glob_id);
+		});
+}
+
 SVC_ERR_HTTP::SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart)
 		: listenshr_(
 		({

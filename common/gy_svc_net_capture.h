@@ -327,6 +327,8 @@ public :
 
 	bool sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LISTENER> svcweak);
 
+	bool sched_svc_ssl_stop(const char *name, uint64_t glob_id) noexcept;
+
 	MAKE_CLASS_FUNC_WRAPPER_NO_ARG(SVC_NET_CAPTURE, api_parse_thread);
 
 	int api_parse_thread() noexcept;
