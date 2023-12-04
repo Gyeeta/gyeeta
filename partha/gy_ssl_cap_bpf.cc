@@ -185,8 +185,10 @@ bool GY_SSLCAP::init_collection(GY_EBPF_CB cb, void *pcb_cookie, bool attach_pro
 
 		pdatapool_.emplace("SSL Cap Pool", bpf_map__fd(obj_.get()->maps.sslcapring), cb, pcb_cookie);
 
-		pthrpool_ = std::make_unique<GY_THREAD>("SSL Pool Thread", GY_SSLCAP::GET_PTHREAD_WRAPPER(ring_pool_thread), this, nullptr, nullptr, true, 1024 * 1024, 2500, 
+		pthrpool_ = std::make_unique<GY_THREAD>("SSL Pool Thread", GY_SSLCAP::GET_PTHREAD_WRAPPER(ring_pool_thread), this, nullptr, nullptr, false /* start_immed */, 1024 * 1024, 2500, 
 				true, true, true, 10000, false);
+
+		pthrpool_->start_thread();
 	}
 
 	if (state_ == SSL_PROBE_DETACHED) {

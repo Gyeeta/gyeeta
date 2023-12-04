@@ -231,6 +231,8 @@ public :
 		time_t				tstart_			{0};
 		time_t				tfirstreq_		{0};
 		time_t				tfirstresp_		{0};
+		time_t				tlastpkt_		{0};
+		PROTO_DETECT			& detect_;
 		uint32_t			nxt_cli_seq_		{0};
 		uint32_t			nxt_ser_seq_		{0};
 		uint32_t			npkts_data_		{0};
@@ -238,6 +240,7 @@ public :
 		uint16_t			ndrops_			{0};
 
 		bool				syn_seen_		{false}; 
+		bool				init_skipped_		{false}; 
 		uint8_t				skip_to_req_after_resp_	{0};
 		bool				resp_seen_		{false};
 		bool				is_ssl_			{false};
@@ -247,9 +250,27 @@ public :
 		uint8_t				ssl_nresp_		{0};
 		DirPacket			lastdir_		{DirPacket::DirUnknown};
 		
-		SessInfo(time_t tstart, uint32_t nxt_cli_seq, uint32_t nxt_ser_seq, bool syn_seen) noexcept
-			: tstart_(tstart), nxt_cli_seq_(nxt_cli_seq), nxt_ser_seq_(nxt_ser_seq), syn_seen_(syn_seen)
-		{}	
+		SessInfo(time_t tstart, PROTO_DETECT & detect, uint32_t nxt_cli_seq, uint32_t nxt_ser_seq, bool syn_seen) noexcept
+			: tstart_(tstart), tlastpkt_(tstart), detect_(detect), nxt_cli_seq_(nxt_cli_seq), nxt_ser_seq_(nxt_ser_seq), syn_seen_(syn_seen)
+		{
+			if (syn_seen_) {
+				detect_.nsynsess_++;
+			}	
+			else {
+				detect_.nmidsess_++;
+			}	
+		}	
+
+		~SessInfo() noexcept
+		{
+			if (syn_seen_) {
+				detect_.nsynsess_--;
+			}	
+			else {
+				detect_.nmidsess_--;
+			}	
+
+		}	
 	};	
 
 	using SessMap				= INLINE_STACK_HASH_MAP<IP_PORT, SessInfo, MaxSessEntries * sizeof(SessInfo) * 3 + 128, IP_PORT::IP_PORT_HASH>;
@@ -258,6 +279,7 @@ public :
 	time_t					tfirstreq_		{0};
 	time_t					tfirstresp_		{0};
 	time_t					tlastchk_		{0};
+	time_t					tlast_inactive_sec_	{0};
 	ApiStats				apistats_[MAX_API_PROTO];
 	uint16_t				nconfirm_		{0};
 	uint16_t				nconfirm_with_syn_	{0};
@@ -265,6 +287,8 @@ public :
 	uint16_t				nssl_confirm_syn_	{0};
 	uint8_t					nsynsess_		{0};
 	uint8_t					nmidsess_		{0};
+
+	void cleanup_inactive_sess(time_t tcur) noexcept;
 };	
 
 struct REORDER_PKT_HDR

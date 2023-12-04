@@ -201,6 +201,41 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 	return true;
 }	
 
+void PROTO_DETECT::cleanup_inactive_sess(time_t tcur) noexcept
+{
+	time_t				tmin = tcur - 300;
+	int				ntime = 0, ndel = 0;
+
+	tlast_inactive_sec_		= tcur;
+
+	for (auto oit = smap_.begin(); oit != smap_.end();) {
+		auto				it = oit++;
+		auto				& sess = it->second;
+
+		if (sess.tlastpkt_ < tmin && sess.apistat_.nconfirm_ == 0) {
+			if (sess.apistat_.proto_ == PROTO_UNINIT) {
+				smap_.erase(it);
+				ndel++;
+				continue;
+			}
+
+			ntime++;
+		}
+	}
+
+	if (ndel < 3 && ntime > 10) {
+		for (auto oit = smap_.begin(); oit != smap_.end();) {
+			auto				it = oit++;
+			auto				& sess = it->second;
+
+			if (sess.tlastpkt_ < tmin && sess.apistat_.nconfirm_ == 0) {
+				smap_.erase(it);
+				ndel++;
+				continue;
+			}
+		}
+	}	
+}
 
 bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
@@ -224,6 +259,10 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			}	
 		}	
 
+		if (detect.smap_.size() >= detect.MaxSessEntries/2 && detect.tlast_inactive_sec_ < hdr.tv_.tv_sec - 100) {
+			detect.cleanup_inactive_sess(hdr.tv_.tv_sec);
+		}	
+
 		if (detect.smap_.size() < detect.MaxSessEntries) {
 			if (!is_syn) {
 				if (detect.nmidsess_ >= detect.MaxSessEntries/2) {
@@ -231,17 +270,10 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				}	
 			}	
 
-			it = detect.smap_.try_emplace(ipport, hdr.tv_.tv_sec, 
+			it = detect.smap_.try_emplace(ipport, hdr.tv_.tv_sec, detect,
 						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn).first;
 			
 			new_sess = true;
-
-			if (is_syn) {
-				detect.nsynsess_++;
-			}	
-			else {
-				detect.nmidsess_++;
-			}	
 		}	
 		else {
 			return false;
@@ -254,13 +286,6 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	const auto delsess = [&]()
 	{
 		if (!psess) return;
-
-		if (psess->syn_seen_) {
-			detect.nsynsess_--;
-		}
-		else {
-			detect.nmidsess_--;
-		}	
 
 		detect.smap_.erase(it);
 
@@ -288,8 +313,11 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (!is_syn) {
 			sess.PROTO_DETECT::SessInfo::~SessInfo();
 
-			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, 
+			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, detect,
 						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
+
+			sess.is_ssl_ = true;
+			sess.lastdir_ = DirPacket::DirUnknown;
 		}	
 	}	
 	
@@ -297,7 +325,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (is_syn && !new_sess) {
 			sess.PROTO_DETECT::SessInfo::~SessInfo();
 
-			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, 
+			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, detect,
 						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
 		}
 
@@ -326,6 +354,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		return false;
 	}
 
+	sess.tlastpkt_		= hdr.tv_.tv_sec;
 	sess.nxt_cli_seq_	= hdr.nxt_cli_seq_;
 	sess.nxt_ser_seq_	= hdr.nxt_ser_seq_;
 	sess.npkts_data_++;
@@ -355,6 +384,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (sess.skip_to_req_after_resp_) {
 			if (sess.skip_to_req_after_resp_ == 2) {
 				sess.skip_to_req_after_resp_ = 0;
+				sess.init_skipped_ = true;
 				skipdone = true;
 			}	
 			else {
@@ -378,9 +408,11 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					skip_parse = true;
 				}	
 			}	
-			else if (skipdone == false) {
-				sess.skip_to_req_after_resp_ = 1;
-				return true;
+			else if (skipdone == false && !sess.init_skipped_) {
+				if (hdr.src_ == SRC_PCAP) {
+					sess.skip_to_req_after_resp_ = 1;
+					return true;
+				}
 			}	
 			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
 				sess.ssl_nreq_++;
@@ -464,7 +496,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					}	
 				}	
 			}	
-			else if (skipdone == false) {
+			else if (skipdone == false && !sess.init_skipped_) {
 				sess.skip_to_req_after_resp_ = 1;
 				return true;
 			}	
