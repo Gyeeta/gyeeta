@@ -323,7 +323,7 @@ public :
 
 	bool sched_add_listeners(uint64_t start_after_msec, const char *name, SvcInodeMap && nslistmap, bool isapicallmap);
 
-	bool sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap);
+	bool sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap, bool onlyapi = false);
 
 	bool sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LISTENER> svcweak);
 

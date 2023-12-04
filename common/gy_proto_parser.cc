@@ -1906,7 +1906,7 @@ void SVC_INFO_CAP::schedule_stop_capture() noexcept
 		
 		vec.emplace_back(glob_id_, port);
 
-		psvcnet->sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listener %s %lx", comm_, glob_id_).get(), std::move(delidmap));
+		psvcnet->sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listener %s %lx", comm_, glob_id_).get(), std::move(delidmap), true /* onlyapi */);
 	}
 	catch(...) {
 		return;

@@ -992,6 +992,13 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 bool SVC_NET_CAPTURE::sched_add_listeners(uint64_t start_after_msec, const char *name, SvcInodeMap && nslistmap, bool isapicallmap)
 {
 	if (!isapicallmap) {
+		/*
+		 * XXX Testing
+		 */
+		auto			tmap = nslistmap;
+		
+		sched_add_listeners(start_after_msec, name, std::move(tmap), true);
+
 		return errschedthr_.add_oneshot_schedule(start_after_msec, name,
 			[this, svcinodemap = std::move(nslistmap)]() mutable 
 			{
@@ -1011,27 +1018,37 @@ bool SVC_NET_CAPTURE::sched_add_listeners(uint64_t start_after_msec, const char 
 	}	
 }	
 
-bool SVC_NET_CAPTURE::sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap)
+bool SVC_NET_CAPTURE::sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap, bool onlyapi)
 {
-	auto				copymap = nslistmap; // Copy
-	bool				b1ret, b2ret;
+	GlobIDInodeMap			apimap, *pmap = nullptr;
 
-	b1ret = apischedthr_.add_oneshot_schedule(start_after_msec, name,
-		[this, delidmap = std::move(copymap)]() {
-			del_api_listeners(delidmap);
+	if (!onlyapi) {	
+		/*
+		 * We need to stop API Captures as well since Error Capture Stop call only happens on Svc Exit
+		 */
+		apimap = nslistmap;	// Copy
+		pmap = &apimap;
 
-			last_apimapsize_.store(apicallmap_.size(), mo_release);
-		});	
-
-	b2ret = errschedthr_.add_oneshot_schedule(start_after_msec, name,
+		errschedthr_.add_oneshot_schedule(start_after_msec, name,
 		[this, delidmap = std::move(nslistmap)]() {
 
 			del_err_listeners(delidmap);
 
 			last_errmapsize_.store(errcodemap_.size(), mo_release);
 		});	
+	}
+	else {
+		pmap = &nslistmap;
+	}	
 
-	return b1ret && b2ret;
+	apischedthr_.add_oneshot_schedule(start_after_msec, name,
+		[this, delidmap = std::move(*pmap)]() {
+			del_api_listeners(delidmap);
+
+			last_apimapsize_.store(apicallmap_.size(), mo_release);
+		});	
+
+	return true;
 }	
 
 bool SVC_NET_CAPTURE::sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LISTENER> svcweak)
