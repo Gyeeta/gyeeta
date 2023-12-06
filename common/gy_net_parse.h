@@ -52,7 +52,17 @@ struct GY_TCP_HDR
 	uint32_t		ack_seq;
 
 	union {
-		uint16_t		tcpflags;
+		struct {
+# if __BYTE_ORDER == __LITTLE_ENDIAN
+		uint8_t 		th_x2:4;	/* (unused) */
+		uint8_t 		th_off:4;	/* data offset */
+# endif
+# if __BYTE_ORDER == __BIG_ENDIAN
+		uint8_t 		th_off:4;	/* data offset */
+		uint8_t 		th_x2:4;	/* (unused) */
+# endif
+		uint8_t 		tcpflags;
+		};
 
 		struct {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__		

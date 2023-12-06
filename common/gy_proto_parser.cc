@@ -133,7 +133,7 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 		nfrag = 1;
 	}	
 	
-	for (uint32_t i = 0; i < nfrag && nbytesdone < len; ++i) {
+	for (uint32_t i = 0; i < nfrag && nbytesdone <= len; ++i) {
 		auto				puniq = parsepool_.allocElem();
 
 		if (!puniq) {
@@ -2362,8 +2362,10 @@ void API_PARSER_STATS::print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint
 
 void API_PARSE_HDLR::print_stats() noexcept
 {
-	STRING_BUFFER<2048>		strbuf;
+	STRING_BUFFER<4096>		strbuf;
 	uint64_t			tcurrusec = get_usec_time();
+
+	strbuf << "API Parser Stats for captured services : "sv;
 
 	for (auto osit = svcinfomap_.begin(); osit != svcinfomap_.end();) {
 		auto				oit = osit++;
@@ -2377,6 +2379,11 @@ void API_PARSE_HDLR::print_stats() noexcept
 		strbuf << '\n';
 
 		psvc->print_stats(strbuf, tcurrusec, tlast_print_usec_);	
+
+		if (strbuf.bytes_left() < 512) {
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+			strbuf.reset();
+		}	
 	}	
 	
 	auto				diffstats = stats_, & lstats = laststats_;

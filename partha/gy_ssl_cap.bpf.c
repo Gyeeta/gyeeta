@@ -243,14 +243,18 @@ static bool get_cleartext(void *ctx, struct ClearArgs *pcleararg)
 		psslinfo->nxt_ser_seq	= SSL_SEQ_START;
 
 		if (is_resp) {
-			psslinfo->nxt_cli_seq++;
-			psslinfo->cli_started = true;
-			psslinfo->ser_started = false;
-		}
-		else {
 			psslinfo->nxt_ser_seq++;
 			psslinfo->ser_started = true;
-			psslinfo->cli_started = false;
+
+			if (psslinfo->cli_started == false) {
+				psslinfo->nxt_cli_seq++;
+				psslinfo->cli_started = true;
+			}	
+		}
+		else {
+			psslinfo->nxt_cli_seq++;
+			psslinfo->ser_started = false;
+			psslinfo->cli_started = true;
 		}	
 	}	
 
