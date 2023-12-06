@@ -337,12 +337,20 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 		droptype 	= p.first;
 		droptypeack 	= p.second;
+
+		if (detect.tfirstreq_ == 0) {
+			detect.tfirstreq_ = hdr.tv_.tv_sec;
+		}	
 	}
 	else {
 		auto p = is_tcp_drop(sess.nxt_ser_seq_, hdr.start_ser_seq_, sess.nxt_cli_seq_, hdr.start_cli_seq_, is_syn);
 
 		droptype 	= p.first;
 		droptypeack 	= p.second;
+
+		if (detect.tfirstresp_ == 0) {
+			detect.tfirstresp_ = hdr.tv_.tv_sec;
+		}	
 	}	
 
 	if (droptype == DT_DROP_NEW_SESS) {
@@ -832,7 +840,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 
 	detect.tlastchk_ = tcurr;
 
-	if (detect.tfirstreq_ && detect.tfirstresp_ && tcurr > detect.tfirstreq_ + 900 && tcurr > detect.tfirstresp_ + 900 && tstats.npkts_ > 10000 && 
+	if (detect.tfirstreq_ && detect.tfirstresp_ && tcurr > detect.tfirstreq_ + 600 && tcurr > detect.tfirstresp_ + 600 && tstats.npkts_ > 1000 && 
 		tstats.nbytes_ > GY_UP_MB(1) && (detect.nsynsess_ > 4 || (detect.nmidsess_ > 10 && detect.nsynsess_ > 1))) {
 
 		auto				sslreq = ssl_req_.load(mo_relaxed);
@@ -1918,6 +1926,9 @@ bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr,
 	return true;
 }	
 
+/*
+ * Can be called from capture threads as well...
+ */
 void SVC_INFO_CAP::schedule_stop_capture() noexcept
 {
 	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();

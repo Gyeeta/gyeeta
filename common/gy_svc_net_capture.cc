@@ -830,7 +830,7 @@ void SVC_NET_CAPTURE::check_netns_err_listeners() noexcept
 void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 {
 	try {
-		size_t				nnetns = 0, nlisten = 0, nweb = 0, nhttp2 = 0;
+		size_t				nnetns = 0, nlisten = 0;
 
 		CONDDECLARE(
 		STRING_BUFFER<8000>		strbuf;
@@ -863,52 +863,30 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 
 			if (psockhdlr->is_listener_deleted(lshr)) {
 
-				if (!forcerestart && (1 >= pnetone->port_listen_tbl_.count_duplicate_elems(psvcone->serport_, get_uint32_hash(psvcone->serport_), 2))) {
-					forcerestart = true;
+				GlobIDInodeMap			delidmap;
+
+				uint64_t			glob_id = lshr->glob_id_;
+				ino_t				inode = lshr->ns_ip_port_.inode_;
+				uint16_t			port = lshr->ns_ip_port_.ip_port_.port_;
+				
+				// Send delete msg
+				try {
+					auto			[it, success] = delidmap.try_emplace(inode);
+					auto			& vec = it->second;		
+					
+					vec.emplace_back(glob_id, port);
+
+					sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listener %s %lx", lshr->comm_, glob_id).get(), std::move(delidmap));
 				}
-				return CB_DELETE_ELEM;
+				catch(...) {
+					if (!forcerestart && (1 >= pnetone->port_listen_tbl_.count_duplicate_elems(psvcone->serport_, get_uint32_hash(psvcone->serport_), 2))) {
+						forcerestart = true;
+					}
+					return CB_DELETE_ELEM;
+				}
 			}	
 
 			pnetone->printbuf_ << "[Svc \'"sv << lshr->comm_ << "\' Port " << psvcone->serport_ << "], "sv;
-
-#if 0
-			if (psvcone->web_confirm_ == false && psvcone->nconfirm_web_ > 0) {
-				psvcone->web_confirm_ = true;
-				lshr->is_http_svc_ = true;
-
-				strbuf.appendfmt("Listener %s ID %016lx Port %hu NetNS %lu  confirmed to be a HTTP%s Service...\n", 
-							lshr->comm_, lshr->glob_id_, psvcone->serport_, pnetone->netinode_, psvcone->is_http2_ ? "2" : "1.x");
-
-				forcerestart = true;
-			}
-
-			if (psvcone->web_confirm_ == false && 
-				((psvcone->tfirstresp_ &&
-				((tcurr >= psvcone->tfirstresp_ + 10 && psvcone->nconfirm_noweb_ >= 3) ||
-				(tcurr >= psvcone->tfirstresp_ + 60 && psvcone->nconfirm_noweb_ >= 1 && psvcone->nmaybe_noweb_ > 100 && psvcone->nsess_chks_ > 6) ||
-				(tcurr >= psvcone->tfirstresp_ + 100 && psvcone->nmaybe_noweb_ > 1000 && psvcone->nsess_chks_ > 6))) ||
-				(psvcone->npkts_data_ > 1000'000 && psvcone->nsess_chks_ > 2 && tcurr > psvcone->tfirstreq_ + 600 && tcurr > psvcone->tfirstresp_ + 600))) {
-
-				strbuf.appendfmt("Listener %s ID %016lx Port %hu NetNS %lu  does not seem to be a HTTP Service. Stopping Network Capture for it...\n", 
-							lshr->comm_, lshr->glob_id_, psvcone->serport_, pnetone->netinode_);
-
-				lshr->is_http_svc_ = false;
-				lshr->httperr_cap_started_.store(false, std::memory_order_relaxed);
-
-				if (!forcerestart && (1 >= pnetone->port_listen_tbl_.count_duplicate_elems(psvcone->serport_, get_uint32_hash(psvcone->serport_), 2))) {
-					forcerestart = true;
-				}
-
-				return CB_DELETE_ELEM;
-			}
-			else if (psvcone->web_confirm_) {
-				nweb++;
-
-				if (psvcone->is_http2_) {
-					nhttp2++;
-				}	
-			}	
-#endif			
 
 			nlisten++;
 
@@ -980,12 +958,11 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 		last_apimapsize_.store(nnetns, mo_release);
 
 		if (nnetns > 0 || nlisten > 0) {
-			INFOPRINT_OFFLOAD("Service API Network Capture : Network Namespaces %lu, Listeners %lu, Confirmed Web Services %lu, HTTP2/GRPC Services %lu\n%s\n",
-					nnetns, nlisten, nweb, nhttp2, strbuf.buffer());
+			INFOPRINT_OFFLOAD("Service API Network Capture : Network Namespaces %lu, Listeners %lu\n%s\n", nnetns, nlisten, strbuf.buffer());
 		}	
 	}
 	GY_CATCH_EXCEPTION(
-		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Caught Exception while checking Error Port Listener Map : %s\n", GY_GET_EXCEPT_STRING););
+		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Caught Exception while checking API Port Listener Map : %s\n", GY_GET_EXCEPT_STRING););
 	);
 }
 
