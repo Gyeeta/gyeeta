@@ -257,6 +257,9 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			if (!is_syn) {
 				return false;
 			}	
+			if (hdr.start_cli_seq_ > 0 && hdr.nxt_ser_seq_ == 0) {
+				return false;
+			}	
 		}	
 
 		if (detect.smap_.size() >= detect.MaxSessEntries/2 && detect.tlast_inactive_sec_ < hdr.tv_.tv_sec - 100) {
@@ -1181,6 +1184,10 @@ bool SVC_INFO_CAP::parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & h
 		}	
 		else if (hdr.datalen_ == 0) {
 			if (!is_syn) {
+				return false;
+			}	
+
+			if (hdr.start_cli_seq_ > 0 && hdr.nxt_ser_seq_ == 0) {
 				return false;
 			}	
 		}	

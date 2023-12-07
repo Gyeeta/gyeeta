@@ -1987,6 +1987,7 @@ inline void NETNS_API_CAP1::set_api_msghdr(std::optional<PARSE_PKT_HDR> & msghdr
 		hdr.start_ser_seq_	= tcp.seq;
 	}	
 
+	hdr.netns_		= (uint32_t)netinode_;
 	hdr.cliport_		= cliport;
 	hdr.serport_		= serport;
 	hdr.tcpflags_		= tcp.tcpflags;
