@@ -1926,9 +1926,6 @@ bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr,
 	return true;
 }	
 
-/*
- * Can be called from capture threads as well...
- */
 void SVC_INFO_CAP::schedule_stop_capture() noexcept
 {
 	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();
@@ -2391,7 +2388,7 @@ void API_PARSE_HDLR::print_stats() noexcept
 
 		psvc->print_stats(strbuf, tcurrusec, tlast_print_usec_);	
 
-		if (strbuf.bytes_left() < 512) {
+		if (strbuf.bytes_left() < 1024) {
 			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
 			strbuf.reset();
 		}	
