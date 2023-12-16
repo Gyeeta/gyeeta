@@ -112,7 +112,7 @@ static bool valid_cap_pid(u32 pid, bool checkppid)
 	return false;
 }	
 
-static bool read_addr_tuple(struct addr_tuple *ptuple, struct sock *sk, bool * pis_client, bool is_write)
+static bool read_addr_tuple(struct addr_tuple *ptuple, struct sock *sk, bool *pis_client)
 {
 	struct inet_sock 		*sockp;
 	u32				sk_max_ack_backlog = 0;
@@ -137,24 +137,12 @@ static bool read_addr_tuple(struct addr_tuple *ptuple, struct sock *sk, bool * p
 	}	
 
 	if (sk_max_ack_backlog > 0) {
-		if (is_write) {
-			is_inbound			= false;
-			*pis_client			= false;
-		}	
-		else {
-			is_inbound			= true;
-			*pis_client			= true;
-		}	
+		is_inbound			= false;
+		*pis_client			= false;
 	}
 	else {
-		if (!is_write) {
-			is_inbound			= false;
-			*pis_client			= false;
-		}	
-		else {
-			is_inbound			= true;
-			*pis_client			= true;
-		}
+		is_inbound			= true;
+		*pis_client			= true;
 	}	
 
 	if (family == AF_INET) {
@@ -600,7 +588,7 @@ static int upd_tcp_sock(void *ctx, struct sock *sk, bool is_write)
 	struct ssl_conn_info		sslinfo = {};
 	bool				bret;
 
-	bret = read_addr_tuple(&sslinfo.tup, sk, &sslinfo.is_client, is_write);
+	bret = read_addr_tuple(&sslinfo.tup, sk, &sslinfo.is_client);
 	if (!bret) {
 		goto done;
 	}	
@@ -679,15 +667,15 @@ void BPF_UPROBE(ssl_set_ex_data, void *ssl)
 		return;
 	}	
 
-	struct ssl_conn_info		*pssl;
+	struct ssl_conn_info		*psslinfo;
 	struct ssl_key			tkey = {};
 
 	tkey.ssl			= ssl;
 	tkey.pid			= pid;
 
-	pssl = bpf_map_lookup_elem(&ssl_conn_map, &tkey);
+	psslinfo = bpf_map_lookup_elem(&ssl_conn_map, &tkey);
 
-	if (!pssl) {
+	if (!psslinfo) {
 		u32				tval = 0;
 		
 		bpf_map_update_elem(&ssl_unmap, &tkey, &tval, BPF_ANY);
@@ -695,6 +683,52 @@ void BPF_UPROBE(ssl_set_ex_data, void *ssl)
 	}	
 
 }	
+
+SEC("uprobe")
+void BPF_UPROBE(ssl_set_accept_state, void *ssl) 
+{
+	u64 				pidtid = bpf_get_current_pid_tgid(), pid = pidtid >> 32;
+
+	if (!valid_cap_pid(pid, true /* checkppid */)) {
+		return;
+	}	
+
+	struct ssl_conn_info		*psslinfo;
+	struct ssl_key			tkey = {};
+
+	tkey.ssl			= ssl;
+	tkey.pid			= pid;
+
+	psslinfo = bpf_map_lookup_elem(&ssl_conn_map, &tkey);
+
+	if (psslinfo) {
+		struct ssl_rw_args		args = {};
+
+		args.pssl			= ssl;
+
+		struct ClearArgs		clearargs = 
+		{
+			.psslinfo		= psslinfo,
+			.pargs			= &args,
+			.nbytes			= 0,
+			.pid			= pidtid >> 32,
+			.tcp_flags		= GY_TH_FIN | GY_TH_ACK,
+			.is_write		= true,
+		};
+
+		if (psslinfo->ser_started || psslinfo->cli_started) {
+			get_cleartext(ctx, &clearargs);
+		}
+
+		bpf_map_delete_elem(&ssl_conn_map, &tkey);
+	}	
+
+	u32				tval = 0;
+		
+	bpf_map_update_elem(&ssl_unmap, &tkey, &tval, BPF_ANY);
+	bpf_map_update_elem(&ssl_initmap, &tkey, &tval, BPF_ANY);
+}	
+
 
 SEC("fentry/tcp_sendmsg")
 int BPF_PROG(fentry_tcp_sendmsg_entry, struct sock *sk)

@@ -1717,7 +1717,7 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 
 		if constexpr (netns.parse_api_calls_) {
 			if (pcapsvc) {
-				netns.nmissed_total_ += !netns.svccap_.apihdlr_->send_pkt_to_parser(pcapsvc, glob_id, *msghdr, pdata, caplen);
+				netns.nmissed_total_ += !netns.svccap_.apihdlr_->send_pkt_to_parser(*msghdr, pdata, caplen, pcapsvc, glob_id);
 			}
 		}	
 

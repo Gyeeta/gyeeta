@@ -375,7 +375,6 @@ static void *memcpy_or_move(void *dest, const void *src, size_t n) noexcept
 })
 
 
-
 // Will use strnlen for upto 512 bytes maxlen
 static size_t gy_strnlen(const char *str, size_t maxlen) noexcept
 {
@@ -1686,7 +1685,7 @@ do {																	\
 	GY_CATCH_EXPRESSION(												\
 		const char			*errmsg_ = static_cast<const char *>(errmsg);				\
 		if (errmsg_ && *errmsg_) {										\
-			ERRORPRINT("%s : %s\n", errmsg_, GY_GET_EXCEPT_STRING);						\
+			ERRORPRINT("%s : %s\n", errmsg_, GY_GET_EXCEPT_STRING);					\
 		}													\
 	);														\
 
@@ -1717,7 +1716,7 @@ do {																	\
 	GY_CATCH_EXPRESSION(												\
 		const char			*errmsg_ = static_cast<const char *>(errmsg);				\
 		if (errmsg_ && *errmsg_) {										\
-			ERRORPRINT("%s : %s\n", errmsg_, GY_GET_EXCEPT_STRING);						\
+			ERRORPRINT("%s : %s\n", errmsg_, GY_GET_EXCEPT_STRING);					\
 		}													\
 	);														\
 	ret__;														\

@@ -476,6 +476,23 @@ protected :
 			}	
 
 			vec.emplace_back(plink);
+
+			offset = pssllib->get_func_offset("SSL_set_accept_state");
+
+			if (offset == 0) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to get SSL Lib Function SSL_set_accept_state offset for PID %d\n\n", pid);
+				return -1;
+			}	
+
+			plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_set_accept_state, false /* retprobe */, -1, path, offset);
+			
+			if (!plink) {
+				ERRORPRINTCOLOR(GY_COLOR_RED, "BPF : Failed to attach Function SSL_set_accept_state for PID %d due to %s\n", pid, gy_get_perror());
+				return -1;
+			}	
+
+			vec.emplace_back(plink);
+
 			
 		}	
 		else if (libtype == SSL_LIB_GNUTLS || libtype == SSL_LIB_BORINGSSL) {

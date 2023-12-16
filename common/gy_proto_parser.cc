@@ -9,10 +9,196 @@
 #include			"gy_http_proto_detail.h"
 #include			"gy_http2_proto_detail.h"
 #include			"gy_postgres_proto_detail.h"
+#include			"gy_pcap_write.h"
+
 
 namespace gyeeta {
 
 POOL_ALLOC			*REORDER_PKT_HDR::greorderpools_[MAX_API_PARSERS] = {};		
+
+// Uncomment this to test the reorder handling
+/*#define				GY_TEST_REORDER_PKTS	10*/
+
+#ifdef GY_TEST_REORDER_PKTS
+
+class TestRdr
+{
+public :	
+	struct TestRdrData
+	{
+		SVC_INFO_CAP			*psvc_		{nullptr};
+		ParserMemPool::UniquePtr	puniq_;
+		PARSE_PKT_HDR			hdr_;
+		uint8_t				*pdata_		{nullptr};
+
+		TestRdrData(SVC_INFO_CAP *psvc, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+			: psvc_(psvc), puniq_(std::move(puniq)), hdr_(hdr), pdata_(pdata)
+		{}
+
+		TestRdrData() noexcept		= default;
+	};	
+
+	enum RdrType : uint8_t
+	{
+		RdrNone				= 0,
+		RdrRandom,
+		RdrBlock,
+		RdrDirBlock,
+
+		RdrMax,
+	};	
+
+	static constexpr uint32_t		MAX_RDR_BLOCK		{static_cast<uint32_t>(GY_TEST_REORDER_PKTS)};
+
+	std::list<TestRdrData>			list_;
+	RdrType					currtype_		{RdrNone};
+
+	bool do_rdr_test(SVC_INFO_CAP *psvc, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+	{
+		switch (currtype_) {
+			
+		case RdrNone :
+			list_.emplace_back(psvc, puniq, hdr, pdata);
+
+			if (list_.size() >= MAX_RDR_BLOCK) {
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Reorder Test : Flushing no Reorder packets %lu : Next Reorder Test is Random Reorders...\n", list_.size());
+
+				flush();
+			}	
+
+			return true;
+
+		case RdrRandom :
+
+			if (list_.size() > 1) {
+				TestRdrData			data(psvc, puniq, hdr, pdata);
+				uint32_t			n = 0, nrand = std::rand() % list_.size();
+				bool				ok = false;
+
+				for (auto it = list_.begin(); it != list_.end(); ++it) {
+					if (n++ == nrand) {
+						list_.insert(it, std::move(data));
+						ok = true;
+						break;
+					}	
+				}	
+
+				if (!ok) {
+					list_.push_back(std::move(data));
+				}	
+
+				if (list_.size() >= MAX_RDR_BLOCK) {
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Reorder Test : Flushing Random Reorder packets %lu : Next Reorder Test is Block Reorders...\n", list_.size());
+					
+					flush();
+				}	
+			}
+			else {
+				list_.emplace_back(psvc, puniq, hdr, pdata);
+			}	
+
+			return true;
+
+		case RdrBlock :
+
+			if (list_.size() < MAX_RDR_BLOCK * 2) {
+				list_.emplace_back(psvc, puniq, hdr, pdata);
+
+				if (list_.size() == MAX_RDR_BLOCK * 2) {
+					std::list<TestRdrData>		list2;
+					auto 				it = list_.begin();
+
+					std::advance(it, MAX_RDR_BLOCK);
+
+					list2.splice(list2.begin(), list_, it, list_.end());
+
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Reorder Test : Flushing Block Reorder packets : Next Reorder Test is Dir specific Block Reorders...\n");
+					
+					for (; !list2.empty(); list2.pop_front()) {
+						auto			& elem = list2.front();
+
+						elem.psvc_->parse_pkt(elem.puniq_, elem.hdr_, elem.pdata_);
+					}	
+					
+					flush();
+				}	
+			}	
+
+			return true;
+
+		case RdrDirBlock :
+
+			if (list_.size() < MAX_RDR_BLOCK * 2) {
+				list_.emplace_back(psvc, puniq, hdr, pdata);
+
+				if (list_.size() == MAX_RDR_BLOCK * 2) {
+					std::list<TestRdrData>		list2;
+					auto 				it = list_.begin();
+
+					for (auto it = list_.begin(); it != list_.end(); ) {
+						auto			& data = *it;
+
+						if (data.hdr_.dir_ == DirPacket::DirOutbound) {
+							list2.push_back(std::move(data));
+							
+							it = list_.erase(it);
+						}	
+						else {
+							++it;
+						}	
+					}	
+
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Reorder Test : Flushing Dir specific Block Reorder packets : Next Reorder Test is No Reorders...\n");
+
+					// Send Outbound first
+					for (; !list2.empty(); list2.pop_front()) {
+						auto			& elem = list2.front();
+
+						elem.psvc_->parse_pkt(elem.puniq_, elem.hdr_, elem.pdata_);
+					}	
+					
+					flush();
+				}	
+			}	
+
+			return true;
+
+		default :
+			return false;
+			
+		}	
+	}	
+
+	void flush()
+	{
+		for (; !list_.empty(); list_.pop_front()) {
+			auto			& elem = list_.front();
+
+			elem.psvc_->parse_pkt(elem.puniq_, elem.hdr_, elem.pdata_);
+		}	
+
+		currtype_ = RdrType(int(currtype_) + 1);
+
+		if (currtype_ == RdrMax) {
+			currtype_ = RdrNone;
+		}	
+	}	
+};
+
+static TestRdr				gtestrdr[MAX_API_PARSERS];		
+static GY_PCAP_WRITER			gpcapwr("/tmp/test_rdr_gyeeta.pcap", true /* use_unlocked_io */, false /* throw_if_exists */, GY_UP_GB(1));
+
+static bool test_reorders(uint8_t parseridx, SVC_INFO_CAP *psvc, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+
+	if (parseridx < MAX_API_PARSERS) {
+		return gtestrdr[parseridx].do_rdr_test(psvc, puniq, hdr, pdata);
+	}
+
+	return false;
+}	
+
+#endif
 
 API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx)
 		: svcnet_(svcnet), parseridx_(parseridx)
@@ -114,9 +300,9 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 }	
 
 /*
- * Called from capture threads...
+ * Called from capture and probe threads...
  */
-bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id, const PARSE_PKT_HDR & msghdr, const uint8_t *pdata, const uint32_t len)
+bool API_PARSE_HDLR::send_pkt_to_parser(const PARSE_PKT_HDR & msghdr, const uint8_t *pdata, const uint32_t len, SVC_INFO_CAP *psvccap, uint64_t glob_id)
 {
 	if (0 == len && (0 == (msghdr.tcpflags_ & (GY_TH_SYN | GY_TH_FIN | GY_TH_RST)))) {	// Ignore ACKs
 		return true;
@@ -181,20 +367,20 @@ bool API_PARSE_HDLR::send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id,
 		nbytesdone += nbytes; 
 
 		// Now send the msg
-		for (int ntries = 0; ntries < 3; ++ntries) {
+		for (int ntries = 0; ;) {
 			bret = msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_PKT_SVCCAP>, psvccap, glob_id, std::move(puniq)));
 
 			if (bret == true) {
 				break;
 			}
+			else {
+				if (++ntries >= 3) {
+					stats_.nskip_pool_.fetch_add_relaxed(1);
+					return false;
+				}
 
-			sched_yield();
-		}	
-
-		if (bret == false) {
-			stats_.nskip_pool_.fetch_add_relaxed(1);
-
-			return false;
+				sched_yield();
+			}	
 		}	
 	}	
 
@@ -336,7 +522,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	}
 	
 	if (hdr.dir_ == DirPacket::DirInbound) {
-		auto p = is_tcp_drop(sess.nxt_cli_seq_, hdr.start_cli_seq_, sess.nxt_ser_seq_, hdr.start_ser_seq_, is_syn);
+		auto p = is_tcp_drop(sess.nxt_cli_seq_, hdr.start_cli_seq_, sess.nxt_ser_seq_, hdr.start_ser_seq_, is_syn, hdr.tcpflags_ & GY_TH_FIN);
 
 		droptype 	= p.first;
 		droptypeack 	= p.second;
@@ -346,7 +532,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}	
 	}
 	else {
-		auto p = is_tcp_drop(sess.nxt_ser_seq_, hdr.start_ser_seq_, sess.nxt_cli_seq_, hdr.start_cli_seq_, is_syn);
+		auto p = is_tcp_drop(sess.nxt_ser_seq_, hdr.start_ser_seq_, sess.nxt_cli_seq_, hdr.start_cli_seq_, is_syn, hdr.tcpflags_ & GY_TH_FIN);
 
 		droptype 	= p.first;
 		droptypeack 	= p.second;
@@ -824,7 +1010,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 			if (stop_parser_tusec_.load(mo_relaxed) == 0) {
 
 				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture being stopped as Protocol Detected as TLS Encrypted for Listener %s Port %hu ID %lx : "
-					"But SSL Capture cannot be enabled which may be because of unsupported binary (Go Lang, Java or Python based) or an unsupported SSL Library\n", 
+					"But SSL Capture cannot be enabled which may be because of unsupported binary (Golang, Java based) or an unsupported SSL Library\n", 
 					comm_, ns_ip_port_.ip_port_.port_, glob_id_);
 
 				schedule_stop_capture();
@@ -1088,7 +1274,7 @@ void COMMON_PROTO::upd_stats(PARSE_PKT_HDR & hdr) noexcept
 	currdir_			= hdr.dir_;
 }	
 
-SVC_SESSION::SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+SVC_SESSION::SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr)
 	: common_(hdr), psvc_(&svc), proto_(svc.proto_)
 {
 	svc.stats_.nsessions_new_++;
@@ -1201,7 +1387,7 @@ bool SVC_INFO_CAP::parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & h
 			return false;
 		}	
 
-		it = sessmap_.try_emplace(ipport, *this, hdr, pdata).first;
+		it = sessmap_.try_emplace(ipport, *this, hdr).first;
 	}	
 
 	auto				& sess = it->second;
@@ -1284,10 +1470,10 @@ bool SVC_INFO_CAP::add_to_reorder_list(SVC_SESSION & sess, REORDER_PKT_HDR *pnew
 	}
 
 	if (dir == DirPacket::DirInbound) {
-		dtype = is_tcp_drop(sess.common_.nxt_cli_seq_, seq, sess.common_.nxt_ser_seq_, ack, hdr.tcpflags_ & GY_TH_SYN).first;
+		dtype = is_tcp_drop(sess.common_.nxt_cli_seq_, seq, sess.common_.nxt_ser_seq_, ack, hdr.tcpflags_ & GY_TH_SYN, hdr.tcpflags_ & GY_TH_FIN).first;
 	}
 	else {
-		dtype = is_tcp_drop(sess.common_.nxt_ser_seq_, seq, sess.common_.nxt_cli_seq_, ack, hdr.tcpflags_ & GY_TH_SYN).first;
+		dtype = is_tcp_drop(sess.common_.nxt_ser_seq_, seq, sess.common_.nxt_cli_seq_, ack, hdr.tcpflags_ & GY_TH_SYN, hdr.tcpflags_ & GY_TH_FIN).first;
 	}	
 
 	if (dtype == DT_RETRANSMIT) {
@@ -1512,7 +1698,7 @@ bool SVC_INFO_CAP::set_pkt_drops(SVC_SESSION & sess, PARSE_PKT_HDR & hdr)
 	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN;
 
 	if (hdr.dir_ == DirPacket::DirInbound) {
-		auto 			p = is_tcp_drop(sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, is_syn);
+		auto 			p = is_tcp_drop(sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, is_syn, hdr.tcpflags_ & GY_TH_FIN);
 
 		if (p.first == DT_RETRANSMIT) {
 			return false;
@@ -1522,7 +1708,7 @@ bool SVC_INFO_CAP::set_pkt_drops(SVC_SESSION & sess, PARSE_PKT_HDR & hdr)
 		common.serdroptype_ 	= p.second;
 	}
 	else {
-		auto 			p = is_tcp_drop(sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, is_syn);
+		auto 			p = is_tcp_drop(sess.common_.nxt_ser_seq_, hdr.start_ser_seq_, sess.common_.nxt_cli_seq_, hdr.start_cli_seq_, is_syn, hdr.tcpflags_ & GY_TH_FIN);
 
 		if (p.first == DT_RETRANSMIT) {
 			return false;
@@ -1541,25 +1727,42 @@ bool SVC_INFO_CAP::chk_drops_and_parse(SVC_SESSION & sess, ParserMemPool::Unique
 	auto				& common = sess.common_;
 	bool				bret;
 
+	if (hdr.datalen_ == 0 && hdr.tcpflags_ & GY_TH_SYN) {
+
+#ifdef	GY_TEST_REORDER_PKTS
+		if (hdr.dir_ == DirPacket::DirInbound) {
+			gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+		}
+		else {
+			gpcapwr.write_tcp_pkt(hdr.tv_, hdr.serip_, hdr.cliip_, hdr.serport_, hdr.cliport_, hdr.start_ser_seq_, hdr.nxt_cli_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+		}	
+
+		gpcapwr.flush_file();
+#endif
+		
+		return true;
+	}
+
 	bret = set_pkt_drops(sess, hdr);
 	if (!bret) {
+		// Retransmit
 		return true;
 	}	
 
-	if (common.clidroptype_ == DT_NO_DROP && common.serdroptype_ == DT_NO_DROP) {
-		return do_proto_parse(sess, hdr, pdata);
-	}
-	else if (common.clidroptype_ == DT_DROP_NEW_SESS || common.serdroptype_ == DT_DROP_NEW_SESS) {
+	if (common.clidroptype_ == DT_DROP_NEW_SESS || common.serdroptype_ == DT_DROP_NEW_SESS) {
 		stats_.nsess_drop_new_++;
 
 		sess.~SVC_SESSION();
 
-		new (&sess) SVC_SESSION(*this, hdr, pdata);
+		new (&sess) SVC_SESSION(*this, hdr);
 
 		do_proto_parse(sess, hdr, pdata);
 
 		return false;
 	}	
+	else if (common.clidroptype_ != DT_DROP_SEEN && common.serdroptype_ != DT_DROP_SEEN) {
+		return do_proto_parse(sess, hdr, pdata);
+	}
 
 	if (ign_reorder || hdr.src_ != SRC_PCAP || (sess.reorder_active())) {
 		return do_proto_parse(sess, hdr, pdata);
@@ -1605,23 +1808,26 @@ bool SVC_INFO_CAP::send_reorder_to_parser(SVC_SESSION & sess, uint64_t tcurrusec
 			continue;
 		}	
 		
-		if (common.clidroptype_ == DT_NO_DROP && common.serdroptype_ == DT_NO_DROP) {
+		if (common.clidroptype_ == DT_DROP_NEW_SESS || common.serdroptype_ == DT_DROP_NEW_SESS) {
+			auto			hdrcpy = hdr;
+
+			stats_.nsess_drop_new_++;
+
+			sess.~SVC_SESSION();
+
+			new (&sess) SVC_SESSION(*this, hdrcpy);
+
+			return true;
+		}	
+		else if (common.clidroptype_ != DT_DROP_SEEN && common.serdroptype_ != DT_DROP_SEEN) {
 			do_proto_parse(sess, hdr, pdata);
 			npkts++;
 			continue;
 		}
 
-		if (common.clidroptype_ == DT_DROP_NEW_SESS || common.serdroptype_ == DT_DROP_NEW_SESS) {
-			stats_.nsess_drop_new_++;
-
-			sess.~SVC_SESSION();
-
-			new (&sess) SVC_SESSION(*this, hdr, pdata);
-
-			return true;
-		}	
-
 		// Drops exist
+
+		npkts++;
 
 		if (!clear_all) {
 			if (npkts > minpkts || tcurrusec < timeval_to_usec(hdr.tv_) + GY_USEC_PER_SEC) {
@@ -1771,6 +1977,17 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 	if (sess.reorder_active()) {
 		sess.reorder_.set_head_info(sess, hdr);
 	}	
+
+#ifdef	GY_TEST_REORDER_PKTS
+	if (hdr.dir_ == DirPacket::DirInbound) {
+		gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+	}
+	else {
+		gpcapwr.write_tcp_pkt(hdr.tv_, hdr.serip_, hdr.cliip_, hdr.serport_, hdr.cliport_, hdr.start_ser_seq_, hdr.nxt_cli_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+	}	
+
+	gpcapwr.flush_file();
+#endif
 
 	bool				is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST);
 
@@ -2113,7 +2330,15 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 		}	
 
 		if (psvc->proto_ != PROTO_UNINIT) {
+#ifndef GY_TEST_REORDER_PKTS
 			return psvc->parse_pkt(puniq, *phdr, pdata);
+#else
+			if (phdr->src_ == SRC_PCAP) {
+				return test_reorders(parseridx_, psvc, puniq, *phdr, pdata);
+			}
+
+			return psvc->parse_pkt(puniq, *phdr, pdata);
+#endif			
 		}
 
 		return false;
@@ -2395,7 +2620,7 @@ void API_PARSE_HDLR::print_stats() noexcept
 
 		psvc->print_stats(strbuf, tcurrusec, tlast_print_usec_);	
 
-		if (strbuf.bytes_left() < 1024) {
+		if (strbuf.bytes_left() < 1500) {
 			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
 			strbuf.reset();
 		}	

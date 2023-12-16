@@ -48,7 +48,7 @@ public :
 
 	static constexpr const char	*opensslfuncs[] = {
 		"SSL_do_handshake", "SSL_read", "SSL_read_ex", "SSL_write", "SSL_write_ex", "SSL_shutdown",
-		"SSL_set_ex_data",
+		"SSL_set_ex_data", "SSL_set_accept_state",
 	};
 
 	static_assert(GY_ARRAY_SIZE(opensslfuncs) < MAX_LIB_UPROBE_FUNCS, "Please update MAX_LIB_UPROBE_FUNCS");

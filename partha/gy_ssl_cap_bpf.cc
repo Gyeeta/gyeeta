@@ -285,6 +285,8 @@ int GY_SSLCAP::attach_uprobes(pid_t pid, char (&errorbuf)[256])
 		bpf_link			*plink;
 		off_t				offset;
 		
+		vec.reserve(GY_ARRAY_SIZE(SSL_LIB_INFO::opensslfuncs));
+
 		offset = pssllib->get_func_offset("SSL_do_handshake");
 
 		if (offset == 0) {
@@ -441,7 +443,23 @@ int GY_SSLCAP::attach_uprobes(pid_t pid, char (&errorbuf)[256])
 		}	
 
 		vec.emplace_back(plink);
+
+		offset = pssllib->get_func_offset("SSL_set_accept_state");
+
+		if (offset == 0) {
+			snprintf(errorbuf, sizeof(errorbuf), "Failed to get SSL Lib Function SSL_set_accept_state offset for PID %d", pid);
+			return -1;
+		}	
+
+		plink = bpf_program__attach_uprobe(obj_.get()->progs.ssl_set_accept_state, false /* retprobe */, -1, path, offset);
 		
+		if (!plink) {
+			snprintf(errorbuf, sizeof(errorbuf), "BPF : Failed to attach Function ssl_set_accept_state for PID %d due to %s", pid, gy_get_perror().get());
+			return -1;
+		}	
+
+		vec.emplace_back(plink);
+
 	}	
 	else if (libtype == SSL_LIB_GNUTLS || libtype == SSL_LIB_BORINGSSL) {
 		// TODO
@@ -734,7 +752,7 @@ void SVC_NET_CAPTURE::handle_uprobe_cb(void *pdata, int data_size)
 	hdr.src_			= SRC_UPROBE_SSL;
 
 	if (apihdlr_) {
-		apihdlr_->send_pkt_to_parser(nullptr, 0, hdr, (const uint8_t *)pdata + sizeof(event), hdr.datalen_);
+		apihdlr_->send_pkt_to_parser(hdr, (const uint8_t *)pdata + sizeof(event), hdr.datalen_);
 	}
 }
 

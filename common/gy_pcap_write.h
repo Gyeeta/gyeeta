@@ -34,6 +34,11 @@ public :
 		return filename_.data();
 	}	
 
+	int flush_file() noexcept
+	{
+		return fflush(sfile_.get());
+	}	
+
 protected :
 
 	SCOPE_FILE			sfile_;

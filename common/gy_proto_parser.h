@@ -109,7 +109,7 @@ enum DROP_TYPES : uint8_t
 
 
 // Returns drop status for both dirs (current and other)
-static std::pair<DROP_TYPES, DROP_TYPES> is_tcp_drop(uint32_t exp_seq, uint32_t act_seq, uint32_t exp_ack, uint32_t act_ack, bool is_syn = false) noexcept
+static std::pair<DROP_TYPES, DROP_TYPES> is_tcp_drop(uint32_t exp_seq, uint32_t act_seq, uint32_t exp_ack, uint32_t act_ack, bool is_syn = false, bool is_finack = false) noexcept
 {
 	int			diff = exp_seq - act_seq, diffack = exp_ack - act_ack;
 
@@ -117,6 +117,10 @@ static std::pair<DROP_TYPES, DROP_TYPES> is_tcp_drop(uint32_t exp_seq, uint32_t 
 		if (diffack >= 0) {
 			return {DT_NO_DROP, diffack == 0 ? DT_NO_DROP : DT_RETRANSMIT};
 		}
+
+		if (is_finack && diffack == -1) {
+			return {DT_NO_DROP, DT_NO_DROP};
+		}	
 
 		return {DT_NO_DROP, DT_DROP_SEEN};
 	}
@@ -419,7 +423,7 @@ struct SVC_SESSION
 
 	SVC_SESSION() 				= default;
 
-	SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+	SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr);
 
 	~SVC_SESSION() noexcept;
 
@@ -695,7 +699,7 @@ public :
 
 	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx);
 
-	bool send_pkt_to_parser(SVC_INFO_CAP *psvccap, uint64_t glob_id, const PARSE_PKT_HDR & msghdr, const uint8_t *pdata, const uint32_t len);
+	bool send_pkt_to_parser(const PARSE_PKT_HDR & msghdr, const uint8_t *pdata, const uint32_t len, SVC_INFO_CAP *psvccap = nullptr, uint64_t glob_id = 0ul);
 
 	void api_parse_rd_thr() noexcept;
 

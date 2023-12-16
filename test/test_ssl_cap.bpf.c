@@ -716,6 +716,57 @@ void BPF_UPROBE(ssl_set_ex_data, void *ssl)
 	gy_bpf_printk("SSL_set_ex_data : SSL ctx %p : Conn Map conn %p\n", ssl, pssl);
 }	
 
+SEC("uprobe")
+void BPF_UPROBE(ssl_set_accept_state, void *ssl) 
+{
+	u64 				pidtid = bpf_get_current_pid_tgid(), pid = pidtid >> 32;
+
+	if (!valid_cap_pid(pid, true /* checkppid */)) {
+		return;
+	}	
+
+	struct tssl_conn_info		*psslinfo;
+	struct tssl_key			tkey = {};
+
+	tkey.ssl			= ssl;
+	tkey.pid			= pid;
+
+	psslinfo = bpf_map_lookup_elem(&ssl_conn_map, &tkey);
+
+	if (psslinfo) {
+		struct tssl_rw_args		args = {};
+
+		args.pssl			= ssl;
+
+		struct ClearArgs		clearargs = 
+		{
+			.psslinfo		= psslinfo,
+			.pargs			= &args,
+			.nbytes			= 0,
+			.pid			= pidtid >> 32,
+			.tcp_flags		= GY_TH_FIN | GY_TH_ACK,
+			.is_write		= true,
+		};
+
+		if (psslinfo->ser_started || psslinfo->cli_started) {
+			gy_bpf_printk("ssl_set_accept_state Shutdown call : SSL ctx %p : Conn Map conn %p\n", ssl, psslinfo);
+
+			get_cleartext(ctx, &clearargs);
+		}
+
+		bpf_map_delete_elem(&ssl_conn_map, &tkey);
+	}	
+
+	u32				tval = 0;
+		
+	bpf_map_update_elem(&ssl_unmap, &tkey, &tval, BPF_ANY);
+	bpf_map_update_elem(&ssl_initmap, &tkey, &tval, BPF_ANY);
+		
+	if (!psslinfo) {
+		gy_bpf_printk("ssl_set_accept_state init : SSL ctx %p : Conn Map conn %p\n", ssl, psslinfo);
+	}
+}	
+
 SEC("fentry/tcp_sendmsg")
 int BPF_PROG(fentry_tcp_sendmsg_entry, struct sock *sk)
 {
