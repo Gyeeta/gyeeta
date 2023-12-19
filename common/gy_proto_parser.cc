@@ -304,7 +304,7 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 			isssl =  typeinfo::ssl_enabled_listener(ns_ip_port_.ip_port_.port_, listenshr->comm_, listenshr->cmdline_);
 		}
 
-		if (isssl != false) {
+		if (isssl == true) {
 			schedule_ssl_probe();
 		}	
 	}
@@ -987,7 +987,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 						svc_ssl_ = SSL_SVC_E::SSL_YES;
 					}
 				}
-				else if (sslreq == SSL_REQ_E::SSL_REJECTED || sslreq == SSL_REQ_E::SSL_NO_REQ) {
+				else if (sslreq == SSL_REQ_E::SSL_REJECTED) {
 					svcshr->api_is_ssl_.store(false, mo_relaxed);
 					svc_ssl_ = SSL_SVC_E::SSL_NO;
 				}	
@@ -996,6 +996,10 @@ void SVC_INFO_CAP::analyze_detect_status()
 
 					if (true == ssl_multiplexed_proto(apistat.proto_)) {
 						svc_ssl_ = SSL_SVC_E::SSL_MULTIPLEXED;
+						
+						if  (sslreq == SSL_REQ_E::SSL_NO_REQ) {
+							schedule_ssl_probe();
+						}
 					}
 					else if (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 0) {
 						svc_ssl_ = SSL_SVC_E::SSL_YES;
