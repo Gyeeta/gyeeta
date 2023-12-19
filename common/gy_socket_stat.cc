@@ -6858,6 +6858,14 @@ int TCP_SOCK_HANDLER::upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 
 						vec.emplace_back(plistener->shared_from_this());
 					}
+
+					/*
+					 * XXX Testing TODO Remove
+					 */
+					if (bool(svcnetcap_) && svcnetcap_->is_svc_cap_allowed(true /* isapicall */)) {
+						svcnetcap_->sched_add_listener(1, gy_to_charbuf<128>("API Capture for Svc %s %016lx", plistener->comm_, plistener->glob_id_).get(),
+							inode, plistener->shared_from_this(), true /* isapicall */);
+					}
 				}	
 			}
 		}

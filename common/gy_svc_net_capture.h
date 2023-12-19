@@ -321,7 +321,9 @@ public :
 		return ncap_api_svc_.load(mo_acquire) < MAX_SVC_API_CAP && last_apimapsize_.load(mo_acquire) < MAX_NETNS_CAP_API;
 	}
 
-	bool sched_add_listeners(uint64_t start_after_msec, const char *name, SvcInodeMap && nslistmap, bool isapicallmap);
+	bool sched_add_listeners(uint64_t start_after_msec, const char *name, SvcInodeMap && nslistmap, bool isapicall);
+	
+	bool sched_add_listener(uint64_t start_after_msec, const char *name, ino_t inode, std::shared_ptr<TCP_LISTENER> svcshr, bool isapicall);
 
 	bool sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap, bool onlyapi = false);
 

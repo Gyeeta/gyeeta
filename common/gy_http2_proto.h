@@ -197,7 +197,7 @@ public :
 		return (finfo.type_ == HTYPE_SETTINGS);
 	}	
 
-	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir) noexcept
+	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir, bool is_init = false) noexcept
 	{
 		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, wirelen);
 

@@ -42,6 +42,7 @@ public :
 	{
 		RdrNone				= 0,
 		RdrRandom,
+		RdrReverse,
 		RdrBlock,
 		RdrDirBlock,
 
@@ -88,7 +89,7 @@ public :
 				}	
 
 				if (list_.size() >= MAX_RDR_BLOCK) {
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Reorder Test : Flushing Random Reorder packets %lu : Next Reorder Test is Block Reorders...\n", list_.size());
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Reorder Test : Flushing Random Reorder packets %lu : Next Reorder Test is Reverse Reorders...\n", list_.size());
 					
 					flush();
 				}	
@@ -98,6 +99,20 @@ public :
 			}	
 
 			return true;
+
+		case RdrReverse :
+
+			list_.emplace_back(psvc, puniq, hdr, pdata);
+
+			if (list_.size() >= MAX_RDR_BLOCK) {
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Reorder Test : Flushing Random Reorder packets %lu : Next Reorder Test is Block Reorders...\n", list_.size());
+
+				list_.reverse();
+				flush();
+			}	
+
+			return true;
+
 
 		case RdrBlock :
 
@@ -198,7 +213,7 @@ static bool test_reorders(uint8_t parseridx, SVC_INFO_CAP *psvc, ParserMemPool::
 	return false;
 }	
 
-#endif
+#endif /* GY_TEST_REORDER_PKTS */
 
 API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx)
 		: svcnet_(svcnet), parseridx_(parseridx)
@@ -430,7 +445,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
 	PROTO_DETECT::SessInfo		*psess = nullptr;
 	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST), skip_parse = false, skipdone = false;
-	bool				new_sess = false;
+	bool				new_sess = false, is_init = false;
 	DROP_TYPES			droptype, droptypeack;
 
 	auto				it = detect.smap_.find(ipport);
@@ -596,11 +611,13 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (sess.tfirstreq_ == 0) {
 
 			if (sess.syn_seen_) {
+				is_init = true;
+
 				// Check if TLS encrypted
 				if (hdr.src_ == SRC_UPROBE_SSL) {
 					sess.ssl_init_req_ = true;
 				}
-				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init_msg */)) {
+				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
 					sess.ssl_init_req_ = true;
 					skip_parse = true;
 				}	
@@ -611,7 +628,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					return true;
 				}
 			}	
-			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nreq_++;
 				skip_parse = true;
 			}	
@@ -619,7 +636,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			sess.tfirstreq_ = hdr.tv_.tv_sec;
 		}
 		else if (!sess.is_ssl_ && sess.ssl_nreq_ > 0) {
-			if ((hdr.src_ == SRC_UPROBE_SSL) || (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */))) {
+			if ((hdr.src_ == SRC_UPROBE_SSL) || (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */))) {
 				sess.ssl_nreq_++;
 
 				if (sess.ssl_nresp_ > 1) {
@@ -659,6 +676,8 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (sess.tfirstresp_ == 0) {
 
 			if (sess.syn_seen_) {
+				is_init = true;
+
 				// Check if TLS encrypted
 				if (hdr.src_ == SRC_UPROBE_SSL) {
 					sess.ssl_init_resp_ = true;
@@ -674,7 +693,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 						schedule_ssl_probe();
 					}	
 				}
-				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init_msg */)) {
+				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
 					sess.ssl_init_resp_ = true;
 					skip_parse = true;
 
@@ -697,7 +716,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				sess.skip_to_req_after_resp_ = 1;
 				return true;
 			}	
-			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nresp_++;
 				skip_parse = true;
 			}	
@@ -720,7 +739,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					}	
 				}
 			}
-			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nresp_++;
 
 				if (sess.ssl_nreq_ > 1) {
@@ -765,17 +784,17 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		switch (apistat.proto_) {
 
 		case PROTO_HTTP1 :
-			isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+			isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 			break;
 
 		case PROTO_HTTP2 :
-			isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+			isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 			break;
 		
 		case PROTO_POSTGRES :
-			isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+			isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 			break;
 			
@@ -797,7 +816,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				apistat.nis_not_++;
 			}	
 
-			if (apistat.nis_not_ > 2) {
+			if (apistat.nis_not_ > 2 && apistat.nconfirm_ < 5) {
 				if (apistat.nconfirm_ > 0) {
 					for (int i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
 						if (detect.apistats_[i].proto_ == apistat.proto_) {
@@ -875,7 +894,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}	
 	}	
 
-	if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init_msg */)) {
+	if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, is_init)) {
 		if (hdr.dir_ == DirPacket::DirInbound) {
 			sess.ssl_nreq_++;
 		}
@@ -903,7 +922,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		apistat.proto_ = proto;
 	};	
 
-	isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+	isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 	if (true == isvalid) {
 		init_apistat(PROTO_HTTP1);
@@ -911,7 +930,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		return true;
 	}	
 
-	isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
+	isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 		
 	if (true == isvalid) {
 		init_apistat(PROTO_HTTP2);
@@ -919,12 +938,15 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		return true;
 	}
 
-	isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_);
-		
-	if (true == isvalid) {
-		init_apistat(PROTO_POSTGRES);
+	if (!is_init || hdr.dir_ == DirPacket::DirInbound) {
+		// Postgres Init Outbound ignored for detection
+		isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			
+		if (true == isvalid) {
+			init_apistat(PROTO_POSTGRES);
 
-		return true;
+			return true;
+		}
 	}
 
 	return true;

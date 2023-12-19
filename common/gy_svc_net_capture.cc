@@ -966,16 +966,42 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 	);
 }
 
-bool SVC_NET_CAPTURE::sched_add_listeners(uint64_t start_after_msec, const char *name, SvcInodeMap && nslistmap, bool isapicallmap)
+bool SVC_NET_CAPTURE::sched_add_listeners(uint64_t start_after_msec, const char *name, SvcInodeMap && nslistmap, bool isapicall)
 {
-	if (!isapicallmap) {
-		/*
-		 * XXX Testing
-		 */
-		auto			tmap = nslistmap;
-		
-		sched_add_listeners(start_after_msec, name, std::move(tmap), true);
+	if (!isapicall) {
+		return errschedthr_.add_oneshot_schedule(start_after_msec, name,
+			[this, svcinodemap = std::move(nslistmap)]() mutable 
+			{
+				add_err_listeners(svcinodemap);
 
+				last_errmapsize_.store(errcodemap_.size(), mo_release);
+			});	
+	}
+	else {
+		return apischedthr_.add_oneshot_schedule(start_after_msec, name,
+			[this, svcinodemap = std::move(nslistmap)]() mutable 
+			{
+				add_api_listeners(svcinodemap);
+
+				last_apimapsize_.store(apicallmap_.size(), mo_release);
+			});	
+	}	
+}	
+
+bool SVC_NET_CAPTURE::sched_add_listener(uint64_t start_after_msec, const char *name, ino_t inode, std::shared_ptr<TCP_LISTENER> svcshr, bool isapicall)
+{
+	SvcInodeMap					nslistmap;
+	std::vector<std::shared_ptr<TCP_LISTENER>>	vec;
+
+	if (!svcshr) {
+		return false;
+	}
+
+	vec.push_back(std::move(svcshr));
+
+	nslistmap.try_emplace(inode, std::move(vec));
+
+	if (!isapicall) {
 		return errschedthr_.add_oneshot_schedule(start_after_msec, name,
 			[this, svcinodemap = std::move(nslistmap)]() mutable 
 			{

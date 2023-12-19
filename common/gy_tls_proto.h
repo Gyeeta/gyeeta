@@ -40,7 +40,7 @@ public :
 		HS_Max,
 	};	
 
-	static bool is_tls_req_resp(const uint8_t *porigdata, uint32_t caplen, DirPacket dir, bool is_init_msg = false) noexcept
+	static bool is_tls_req_resp(const uint8_t *porigdata, uint32_t caplen, DirPacket dir, bool is_init = false) noexcept
 	{
 		int				len = caplen;
 
@@ -58,7 +58,7 @@ public :
 			return false;
 		}	
 
-		if (is_init_msg && (type != TYPE_Handshake)) {
+		if (is_init && (type != TYPE_Handshake)) {
 			return false;
 		}	
 		
@@ -111,7 +111,7 @@ public :
 					return false;
 				}	
 
-				if (is_init_msg) {
+				if (is_init) {
 					if (dir == DirPacket::DirInbound) {
 						if (htype != HS_ClientHello) {
 							return false;
