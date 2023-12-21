@@ -1,40 +1,48 @@
 //  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
 //  SPDX-License-Identifier: GPL-3.0-or-later
 
+#include			"gy_http_proto.h"
 #include			"gy_http_proto_detail.h"
 #include			"gy_proto_parser.h"
 
 namespace gyeeta {
 
-void http1_sessinfo::handle_request_pkt(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+HTTP1_PROTO::HTTP1_PROTO(API_PARSE_HDLR & apihdlr)
+	: apihdlr_(apihdlr)
+{}	
+
+HTTP1_PROTO::~HTTP1_PROTO() noexcept		= default;
+
+std::pair<HTTP1_SESSINFO *, void *> HTTP1_PROTO::alloc_sess(SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr)
 {
-
-}
-
-void http1_sessinfo::handle_response_pkt(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
-{
-
-}
-
-void http1_sessinfo::handle_session_end(SVC_SESSION & sess, PARSE_PKT_HDR & hdr)
-{
-
+	return { new HTTP1_SESSINFO(), nullptr };
 }	
 
-void http1_sessinfo::handle_ssl_change(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
-{
-
-}
-
-std::pair<http1_sessinfo *, void *> http1_sessinfo::alloc_sess(SVC_SESSION & sess, PARSE_PKT_HDR & hdr)
-{
-	return { new http1_sessinfo(), nullptr };
-}	
-
-void http1_sessinfo::destroy(http1_sessinfo *pobj, void * pdata) noexcept
+void HTTP1_PROTO::destroy(HTTP1_SESSINFO *pobj, void *pdata) noexcept
 {
 	delete pobj;
 }	
+
+
+void HTTP1_PROTO::handle_request_pkt(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+
+}
+
+void HTTP1_PROTO::handle_response_pkt(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+
+}
+
+void HTTP1_PROTO::handle_session_end(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr)
+{
+
+}	
+
+void HTTP1_PROTO::handle_ssl_change(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+
+}
 
 } // namespace gyeeta
 

@@ -404,13 +404,18 @@ class API_PARSE_HDLR;
 class SVC_NET_CAPTURE;
 class SVC_INFO_CAP;
 
-class http1_sessinfo;
-class http2_sessinfo;
-class postgres_sessinfo;
+class HTTP1_PROTO;
+class HTTP1_SESSINFO;
+
+class HTTP2_PROTO;
+class HTTP2_SESSINFO;
+
+class POSTGRES_PROTO;
+class POSTGRES_SESSINFO;
 
 struct SVC_SESSION
 {
-	using proto_sess = std::variant<std::monostate, http1_sessinfo *, http2_sessinfo *, postgres_sessinfo *>;
+	using proto_sess = std::variant<std::monostate, HTTP1_SESSINFO *, HTTP2_SESSINFO *, POSTGRES_SESSINFO *>;
 
 	proto_sess				pvarproto_;
 	void					*pdataproto_		{nullptr};
@@ -508,13 +513,13 @@ public :
 	using SessReorderMap 			= folly::F14ValueMap<SVC_SESSION *, uint64_t>;
 	using SessMapIt				= typename SvcSessMap::iterator;
 	
+	API_PARSE_HDLR				& apihdlr_;
+
 	SVC_PARSE_STATS				stats_;
 	std::weak_ptr<TCP_LISTENER>		svcweak_;
 	SvcSessMap				sessmap_;
 	SessReorderMap				sessrdrmap_;
 	SVC_PARSE_STATS				laststats_;
-
-	API_PARSE_HDLR				& apihdlr_;
 
 	/*
 	 * Lazy init fields as the constructor is called under RCU lock
@@ -675,6 +680,10 @@ public :
 	uint64_t				tlast_svc_chk_usec_	{tstartusec_};
 	uint64_t				tlast_print_usec_	{tstartusec_};
 
+	std::unique_ptr<HTTP1_PROTO>		phttp1_;
+	std::unique_ptr<HTTP2_PROTO>		phttp2_;
+	std::unique_ptr<POSTGRES_PROTO>		ppostgres_;
+
 	SVC_NET_CAPTURE				& svcnet_;
 	SSL_CAP_SVC				sslcap_;
 	std::atomic<bool>			allow_ssl_probe_	{SSL_CAP_SVC::ssl_uprobes_allowed()};
@@ -698,6 +707,8 @@ public :
 	static constexpr uint64_t		PRINT_STATS_SEC		{60};
 
 	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx);
+
+	~API_PARSE_HDLR() noexcept;
 
 	bool send_pkt_to_parser(const PARSE_PKT_HDR & msghdr, const uint8_t *pdata, const uint32_t len, SVC_INFO_CAP *psvccap = nullptr, uint64_t glob_id = 0ul);
 

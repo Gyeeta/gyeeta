@@ -1373,11 +1373,11 @@ bool NETNS_HTTP_CAP1::handle_req_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADDR
 	if (psess->last_tcp_syn_ || psess->last_pkt_resp_) { 
 		tribool			tret;
 
-		tret = http_proto::is_valid_req(pdata, caplen, datalen);
+		tret = HTTP1_PROTO::is_valid_req(pdata, caplen, datalen);
 
 		if (tret == false) {
 			if (psess->last_tcp_syn_) {
-				if (http2_proto::is_init_magic(pdata, caplen)) {
+				if (HTTP2_PROTO::is_init_magic(pdata, caplen)) {
 					if ((datalen == 24) || (caplen >= 33 && pdata[27] == 0x04)) {
 						psess->init_http2_req_ = true;
 						psess->http2_seen_ = true;
@@ -1392,7 +1392,7 @@ bool NETNS_HTTP_CAP1::handle_req_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADDR
 				psess->last_http1_req_ = false;
 
 				if (psess->http2_seen_) {
-					bool		bret = http2_proto::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirInbound);
+					bool		bret = HTTP2_PROTO::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirInbound);
 					
 					if (bret) {
 						psess->last_http2_req_ = true;
@@ -1490,7 +1490,7 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 				if (psess->req_seen_ == false) {
 					// Possible only for HTTP2 and some other protocols such as MySQL : Check for HTTP2 Settings
 					
-					bret = http2_proto::is_settings_response(pdata, caplen, datalen);
+					bret = HTTP2_PROTO::is_settings_response(pdata, caplen, datalen);
 
 					// Lets wait for Client request before confirming
 					return bret;
@@ -1502,10 +1502,10 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 					psess->init_http1_req_ = false;
 					psess->last_http1_req_maybe_ = false;
 
-					bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+					bret = HTTP1_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 					if (!bret) {
-						if (true == http2_proto::init_invalid_http2_resp(pdata, caplen)) {
+						if (true == HTTP2_PROTO::init_invalid_http2_resp(pdata, caplen)) {
 							return true;
 						}	
 						else {
@@ -1533,10 +1533,10 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 				else if (psess->init_http2_req_) {
 					psess->init_http2_req_ = false;
 
-					bret = http2_proto::is_settings_response(pdata, caplen, datalen);
+					bret = HTTP2_PROTO::is_settings_response(pdata, caplen, datalen);
 
 					if (!bret) {
-						bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+						bret = HTTP1_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 						if (bret) {
 							return true;
@@ -1554,10 +1554,10 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 					}	
 				}	
 				else {
-					bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+					bret = HTTP1_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 					if (!bret) {
-						if (true == http2_proto::init_invalid_http2_resp(pdata, caplen)) {
+						if (true == HTTP2_PROTO::init_invalid_http2_resp(pdata, caplen)) {
 							return true;
 						}	
 						else {
@@ -1572,20 +1572,20 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 			}	
 			else {
 				// Currently we require fresh connections to confirm...
-				bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+				bret = HTTP1_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 				if (!bret) {
-					bret = http2_proto::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirOutbound);
+					bret = HTTP2_PROTO::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirOutbound);
 				}	
 
 				return bret;
 			}	
 		}
 		else {
-			bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+			bret = HTTP1_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 			if (!bret) {
-				bret = http2_proto::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirOutbound);
+				bret = HTTP2_PROTO::is_valid_req_resp(pdata, caplen, datalen, DirPacket::DirOutbound);
 			}	
 
 			return bret;
@@ -1594,14 +1594,14 @@ bool NETNS_HTTP_CAP1::handle_resp_err_locked(SVC_ERR_HTTP & svc, const GY_IP_ADD
 
 	if (svc.is_http2_) {
 		// First check if HTTP2 response
-		bret = http2_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+		bret = HTTP2_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 
 		if (!bret) {
-			bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+			bret = HTTP1_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 		}	
 	}
 	else {
-		bret = http_proto::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
+		bret = HTTP1_PROTO::get_status_response(pdata, caplen, is_cli_err, is_ser_err);
 	}
 
 	if (is_cli_err && svc.listenshr_) {

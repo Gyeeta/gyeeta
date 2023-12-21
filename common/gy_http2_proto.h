@@ -8,7 +8,13 @@
 
 namespace gyeeta {
 
-class http2_proto 
+
+class API_PARSE_HDLR;
+struct PARSE_PKT_HDR;
+class SVC_SESSION;
+class HTTP2_SESSINFO;
+
+class HTTP2_PROTO 
 {
 public :
 	static constexpr uint32_t	MAX_FRAME_SIZE 	= 16'777'215;
@@ -348,6 +354,27 @@ public :
 
 		return false;
 	}	
+
+
+	API_PARSE_HDLR				& apihdlr_;
+
+	HTTP2_PROTO(API_PARSE_HDLR & apihdlr);
+
+	~HTTP2_PROTO() noexcept;
+	
+	void handle_request_pkt(HTTP2_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void handle_response_pkt(HTTP2_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void handle_session_end(HTTP2_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
+
+	void handle_ssl_change(HTTP2_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	std::pair<HTTP2_SESSINFO *, void *> alloc_sess(SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
+
+	void destroy(HTTP2_SESSINFO *pobj, void *pdata) noexcept;
+
+	
 };	
 
 } // namespace gyeeta

@@ -8,7 +8,7 @@
 
 namespace gyeeta {
 
-class tls_proto
+class TLS_PROTO
 {
 public :
 	static constexpr size_t			TLS_HDR_SZ		{5};

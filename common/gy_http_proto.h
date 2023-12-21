@@ -8,7 +8,12 @@
 
 namespace gyeeta {
 
-class http_proto 
+class API_PARSE_HDLR;
+struct PARSE_PKT_HDR;
+class SVC_SESSION;
+class HTTP1_SESSINFO;
+
+class HTTP1_PROTO 
 {
 public :
 	enum METHODS_E : uint8_t 
@@ -157,6 +162,25 @@ public :
 
 		return true;
 	}
+
+
+	API_PARSE_HDLR				& apihdlr_;
+
+	HTTP1_PROTO(API_PARSE_HDLR & apihdlr);
+
+	~HTTP1_PROTO() noexcept;
+	
+	void handle_request_pkt(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void handle_response_pkt(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void handle_session_end(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
+
+	void handle_ssl_change(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	std::pair<HTTP1_SESSINFO *, void *> alloc_sess(SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
+
+	void destroy(HTTP1_SESSINFO *pobj, void *pdata) noexcept;
 
 };
 

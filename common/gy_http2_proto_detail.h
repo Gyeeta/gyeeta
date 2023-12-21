@@ -7,27 +7,12 @@
 
 namespace gyeeta {
 
-struct PARSE_PKT_HDR;
-class SVC_SESSION;
-
-class http2_sessinfo : public http2_proto
+class HTTP2_SESSINFO
 {
 public :
-	http2_sessinfo()			= default;
+	HTTP2_SESSINFO()			= default;
 	
-	~http2_sessinfo() noexcept		= default;
-
-	void handle_request_pkt(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
-
-	void handle_response_pkt(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
-
-	void handle_session_end(SVC_SESSION & sess, PARSE_PKT_HDR & hdr);
-
-	void handle_ssl_change(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
-
-	static std::pair<http2_sessinfo *, void *> alloc_sess(SVC_SESSION & sess, PARSE_PKT_HDR & hdr);
-
-	static void destroy(http2_sessinfo *pobj, void *pdata) noexcept;
+	~HTTP2_SESSINFO() noexcept		= default;
 };
 
 

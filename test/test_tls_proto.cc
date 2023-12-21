@@ -82,15 +82,15 @@ int main()
 	std::memcpy(combuf, server_hello, sizeof(server_hello) - 1);
 	std::memcpy(combuf + sizeof(server_hello) - 1, change_cipher, sizeof(change_cipher));
 
-	assert(true == tls_proto::is_tls_req_resp((const uint8_t *)client_hello, sizeof(client_hello) - 1, DirPacket::DirInbound, true /* is_init_msg */));
-	assert(true == tls_proto::is_tls_req_resp((const uint8_t *)server_hello, sizeof(server_hello) - 1, DirPacket::DirOutbound, true /* is_init_msg */));
-	assert(true == tls_proto::is_tls_req_resp((const uint8_t *)change_cipher, sizeof(change_cipher) - 1, DirPacket::DirInbound, false /* is_init_msg */));
-	assert(true == tls_proto::is_tls_req_resp((const uint8_t *)app_data, sizeof(app_data) - 1, DirPacket::DirOutbound, false /* is_init_msg */));
+	assert(true == TLS_PROTO::is_tls_req_resp((const uint8_t *)client_hello, sizeof(client_hello) - 1, DirPacket::DirInbound, true /* is_init */));
+	assert(true == TLS_PROTO::is_tls_req_resp((const uint8_t *)server_hello, sizeof(server_hello) - 1, DirPacket::DirOutbound, true /* is_init */));
+	assert(true == TLS_PROTO::is_tls_req_resp((const uint8_t *)change_cipher, sizeof(change_cipher) - 1, DirPacket::DirInbound, false /* is_init */));
+	assert(true == TLS_PROTO::is_tls_req_resp((const uint8_t *)app_data, sizeof(app_data) - 1, DirPacket::DirOutbound, false /* is_init */));
 
-	assert(true == tls_proto::is_tls_req_resp((const uint8_t *)combuf, sizeof(combuf) - 1, DirPacket::DirOutbound, true /* is_init_msg */));
+	assert(true == TLS_PROTO::is_tls_req_resp((const uint8_t *)combuf, sizeof(combuf) - 1, DirPacket::DirOutbound, true /* is_init */));
 
-	assert(false == tls_proto::is_tls_req_resp((const uint8_t *)app_data, sizeof(app_data) - 1, DirPacket::DirOutbound, true /* is_init_msg */));
-	assert(false == tls_proto::is_tls_req_resp((const uint8_t *)server_hello, sizeof(server_hello) - 1, DirPacket::DirInbound, true /* is_init_msg */));
-	assert(false == tls_proto::is_tls_req_resp((const uint8_t *)change_cipher, sizeof(change_cipher) - 1, DirPacket::DirInbound, true /* is_init_msg */));
+	assert(false == TLS_PROTO::is_tls_req_resp((const uint8_t *)app_data, sizeof(app_data) - 1, DirPacket::DirOutbound, true /* is_init */));
+	assert(false == TLS_PROTO::is_tls_req_resp((const uint8_t *)server_hello, sizeof(server_hello) - 1, DirPacket::DirInbound, true /* is_init */));
+	assert(false == TLS_PROTO::is_tls_req_resp((const uint8_t *)change_cipher, sizeof(change_cipher) - 1, DirPacket::DirInbound, true /* is_init */));
 }	
 

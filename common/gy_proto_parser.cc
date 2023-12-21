@@ -220,21 +220,28 @@ API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx)
 {
 	if (parseridx < MAX_API_PARSERS) {
 		REORDER_PKT_HDR::greorderpools_[parseridx] = &reorderpool_;
+
+		phttp1_.reset(new HTTP1_PROTO(*this));
+		phttp2_.reset(new HTTP2_PROTO(*this));
+		ppostgres_.reset(new POSTGRES_PROTO(*this));
 	}	
 	else {	
 		GY_THROW_EXPRESSION("API Parser Initialiation : Invalid Parser Index id specified %hhu : Max allowed is %lu", parseridx, MAX_API_PARSERS);
 	}	
 }	
 
+API_PARSE_HDLR::~API_PARSE_HDLR() noexcept		= default;
+
 SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_PARSE_HDLR & apihdlr)
-	: svcweak_(
+	: apihdlr_(apihdlr), 
+	svcweak_(
 	({
 		if (!listenshr) {
 			GY_THROW_EXCEPTION("Invalid Listen Shared Pointer for API Capture");
 		}	
 		listenshr;
 
-	})), apihdlr_(apihdlr), glob_id_(listenshr->glob_id_), ns_ip_port_(listenshr->ns_ip_port_),
+	})), glob_id_(listenshr->glob_id_), ns_ip_port_(listenshr->ns_ip_port_),
 	is_any_ip_(listenshr->is_any_ip_), is_root_netns_(listenshr->is_root_netns_)
 {
 	GY_STRNCPY(comm_, listenshr->comm_, sizeof(comm_));
@@ -617,7 +624,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				if (hdr.src_ == SRC_UPROBE_SSL) {
 					sess.ssl_init_req_ = true;
 				}
-				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
+				else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
 					sess.ssl_init_req_ = true;
 					skip_parse = true;
 				}	
@@ -628,7 +635,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					return true;
 				}
 			}	
-			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
+			else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nreq_++;
 				skip_parse = true;
 			}	
@@ -636,7 +643,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			sess.tfirstreq_ = hdr.tv_.tv_sec;
 		}
 		else if (!sess.is_ssl_ && sess.ssl_nreq_ > 0) {
-			if ((hdr.src_ == SRC_UPROBE_SSL) || (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */))) {
+			if ((hdr.src_ == SRC_UPROBE_SSL) || (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */))) {
 				sess.ssl_nreq_++;
 
 				if (sess.ssl_nresp_ > 1) {
@@ -693,7 +700,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 						schedule_ssl_probe();
 					}	
 				}
-				else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
+				else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
 					sess.ssl_init_resp_ = true;
 					skip_parse = true;
 
@@ -716,7 +723,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				sess.skip_to_req_after_resp_ = 1;
 				return true;
 			}	
-			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
+			else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nresp_++;
 				skip_parse = true;
 			}	
@@ -739,7 +746,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					}	
 				}
 			}
-			else if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
+			else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nresp_++;
 
 				if (sess.ssl_nreq_ > 1) {
@@ -784,17 +791,17 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		switch (apistat.proto_) {
 
 		case PROTO_HTTP1 :
-			isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			isvalid	= HTTP1_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 			break;
 
 		case PROTO_HTTP2 :
-			isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			isvalid	= HTTP2_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 			break;
 		
 		case PROTO_POSTGRES :
-			isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			isvalid	= POSTGRES_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 			break;
 			
@@ -894,7 +901,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}	
 	}	
 
-	if (true == tls_proto::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, is_init)) {
+	if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, is_init)) {
 		if (hdr.dir_ == DirPacket::DirInbound) {
 			sess.ssl_nreq_++;
 		}
@@ -922,7 +929,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		apistat.proto_ = proto;
 	};	
 
-	isvalid	= http_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+	isvalid	= HTTP1_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 	if (true == isvalid) {
 		init_apistat(PROTO_HTTP1);
@@ -930,7 +937,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		return true;
 	}	
 
-	isvalid	= http2_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+	isvalid	= HTTP2_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 		
 	if (true == isvalid) {
 		init_apistat(PROTO_HTTP2);
@@ -940,7 +947,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	if (!is_init || hdr.dir_ == DirPacket::DirInbound) {
 		// Postgres Init Outbound ignored for detection
-		isvalid	= postgres_proto::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+		isvalid	= POSTGRES_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 			
 		if (true == isvalid) {
 			init_apistat(PROTO_POSTGRES);
@@ -1300,6 +1307,10 @@ void COMMON_PROTO::upd_stats(PARSE_PKT_HDR & hdr) noexcept
 	currdir_			= hdr.dir_;
 }	
 
+/*
+ * TODO : Cleanup missed Session FINs using diag info
+ */
+ 
 SVC_SESSION::SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr)
 	: common_(hdr), psvc_(&svc), proto_(svc.proto_)
 {
@@ -1322,28 +1333,28 @@ SVC_SESSION::~SVC_SESSION() noexcept
 		}	
 	}	
 
-	if (pvarproto_.index() != 0) {
+	if (pvarproto_.index() != 0 && psvc_) {
 		bool				del = false;
 
 		switch (proto_) {
 
 		case PROTO_HTTP1 :
-			if (auto phttp1 = std::get_if<http1_sessinfo *>(&pvarproto_); phttp1) {
-				if (*phttp1) http1_sessinfo::destroy(*phttp1, pdataproto_);
+			if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&pvarproto_); phttp1) {
+				if (*phttp1) psvc_->apihdlr_.phttp1_->destroy(*phttp1, pdataproto_);
 				del = true;
 			}	
 			break;
 
 		case PROTO_HTTP2 :
-			if (auto phttp2 = std::get_if<http2_sessinfo *>(&pvarproto_); phttp2) {
-				if (*phttp2) http2_sessinfo::destroy(*phttp2, pdataproto_);
+			if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&pvarproto_); phttp2) {
+				if (*phttp2) psvc_->apihdlr_.phttp2_->destroy(*phttp2, pdataproto_);
 				del = true;
 			}	
 			break;
 
 		case PROTO_POSTGRES :
-			if (auto ppostgres = std::get_if<postgres_sessinfo *>(&pvarproto_); ppostgres) {
-				if (*ppostgres) postgres_sessinfo::destroy(*ppostgres, pdataproto_);
+			if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&pvarproto_); ppostgres) {
+				if (*ppostgres) psvc_->apihdlr_.ppostgres_->destroy(*ppostgres, pdataproto_);
 				del = true;
 			}	
 			break;
@@ -1353,14 +1364,14 @@ SVC_SESSION::~SVC_SESSION() noexcept
 		}	
 
 		if (!del) {
-			if (auto phttp1 = std::get_if<http1_sessinfo *>(&pvarproto_); phttp1) {
-				if (*phttp1) http1_sessinfo::destroy(*phttp1, pdataproto_);
+			if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&pvarproto_); phttp1) {
+				if (*phttp1) psvc_->apihdlr_.phttp1_->destroy(*phttp1, pdataproto_);
 			}	
-			else if (auto phttp2 = std::get_if<http2_sessinfo *>(&pvarproto_); phttp2) {
-				if (*phttp2) http2_sessinfo::destroy(*phttp2, pdataproto_);
+			else if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&pvarproto_); phttp2) {
+				if (*phttp2) psvc_->apihdlr_.phttp2_->destroy(*phttp2, pdataproto_);
 			}	
-			else if (auto ppostgres = std::get_if<postgres_sessinfo *>(&pvarproto_); ppostgres) {
-				if (*ppostgres) postgres_sessinfo::destroy(*ppostgres, pdataproto_);
+			else if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&pvarproto_); ppostgres) {
+				if (*ppostgres) psvc_->apihdlr_.ppostgres_->destroy(*ppostgres, pdataproto_);
 			}	
 		}	
 	}
@@ -1753,25 +1764,26 @@ bool SVC_INFO_CAP::chk_drops_and_parse(SVC_SESSION & sess, ParserMemPool::Unique
 	auto				& common = sess.common_;
 	bool				bret;
 
-	if (hdr.datalen_ == 0 && hdr.tcpflags_ & GY_TH_SYN) {
-
-#ifdef	GY_TEST_REORDER_PKTS
-		if (hdr.dir_ == DirPacket::DirInbound) {
-			gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
-		}
-		else {
-			gpcapwr.write_tcp_pkt(hdr.tv_, hdr.serip_, hdr.cliip_, hdr.serport_, hdr.cliport_, hdr.start_ser_seq_, hdr.nxt_cli_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
-		}	
-
-		gpcapwr.flush_file();
-#endif
-		
-		return true;
-	}
-
 	bret = set_pkt_drops(sess, hdr);
 	if (!bret) {
 		// Retransmit
+
+		if (hdr.tcpflags_ & GY_TH_SYN) {
+			// Need to set here as session could be initialized with a succeeding req due to reorder misses
+			common.tconnect_usec_ = timeval_to_usec(hdr.tv_);
+
+#ifdef	GY_TEST_REORDER_PKTS
+			if (hdr.dir_ == DirPacket::DirInbound) {
+				gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+			}
+			else {
+				gpcapwr.write_tcp_pkt(hdr.tv_, hdr.serip_, hdr.cliip_, hdr.serport_, hdr.cliport_, hdr.start_ser_seq_, hdr.nxt_cli_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+			}	
+
+			gpcapwr.flush_file();
+#endif
+		}
+
 		return true;
 	}	
 
@@ -2030,7 +2042,7 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 		
 		case PROTO_HTTP1 :
 			if (true) {
-				auto [psess, pdata]	 	= http1_sessinfo::alloc_sess(sess, hdr);
+				auto [psess, pdata]	 	= apihdlr_.phttp1_->alloc_sess(sess, hdr);
 
 				sess.pvarproto_ 		= psess;
 				sess.pdataproto_		= pdata;
@@ -2039,7 +2051,7 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 
 		case PROTO_HTTP2 :
 			if (true) {
-				auto [psess, pdata]		= http2_sessinfo::alloc_sess(sess, hdr);
+				auto [psess, pdata]		= apihdlr_.phttp2_->alloc_sess(sess, hdr);
 
 				sess.pvarproto_ 		= psess;
 				sess.pdataproto_		= pdata;
@@ -2048,7 +2060,7 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 
 		case PROTO_POSTGRES :
 			if (true) {
-				auto [psess, pdata]		= postgres_sessinfo::alloc_sess(sess, hdr);
+				auto [psess, pdata]		= apihdlr_.ppostgres_->alloc_sess(sess, hdr);
 
 				sess.pvarproto_ 		= psess;
 				sess.pdataproto_		= pdata;
@@ -2072,37 +2084,37 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 		switch (sess.proto_) {
 
 		case PROTO_HTTP1 :
-			if (auto phttp1 = std::get_if<http1_sessinfo *>(&sess.pvarproto_); phttp1 && *phttp1) {
+			if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&sess.pvarproto_); phttp1 && *phttp1) {
 
 				if (hdr.dir_ == DirPacket::DirInbound) {
-					(*phttp1)->handle_request_pkt(sess, hdr, pdata);
+					apihdlr_.phttp1_->handle_request_pkt(**phttp1, sess, hdr, pdata);
 				}	
 				else {
-					(*phttp1)->handle_response_pkt(sess, hdr, pdata);
+					apihdlr_.phttp1_->handle_response_pkt(**phttp1, sess, hdr, pdata);
 				}	
 			}
 			break;
 
 		case PROTO_HTTP2 :
-			if (auto phttp2 = std::get_if<http2_sessinfo *>(&sess.pvarproto_); phttp2 && *phttp2) {
+			if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&sess.pvarproto_); phttp2 && *phttp2) {
 
 				if (hdr.dir_ == DirPacket::DirInbound) {
-					(*phttp2)->handle_request_pkt(sess, hdr, pdata);
+					apihdlr_.phttp2_->handle_request_pkt(**phttp2, sess, hdr, pdata);
 				}	
 				else {
-					(*phttp2)->handle_response_pkt(sess, hdr, pdata);
+					apihdlr_.phttp2_->handle_response_pkt(**phttp2, sess, hdr, pdata);
 				}	
 			}
 			break;
 
 		case PROTO_POSTGRES :
-			if (auto ppostgres = std::get_if<postgres_sessinfo *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+			if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
 
 				if (hdr.dir_ == DirPacket::DirInbound) {
-					(*ppostgres)->handle_request_pkt(sess, hdr, pdata);
+					apihdlr_.ppostgres_->handle_request_pkt(**ppostgres, sess, hdr, pdata);
 				}	
 				else {
-					(*ppostgres)->handle_response_pkt(sess, hdr, pdata);
+					apihdlr_.ppostgres_->handle_response_pkt(**ppostgres, sess, hdr, pdata);
 				}	
 			}
 			break;
@@ -2119,20 +2131,20 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 		switch (sess.proto_) {
 
 		case PROTO_HTTP1 :
-			if (auto phttp1 = std::get_if<http1_sessinfo *>(&sess.pvarproto_); phttp1 && *phttp1) {
-				(*phttp1)->handle_session_end(sess, hdr);
+			if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&sess.pvarproto_); phttp1 && *phttp1) {
+				apihdlr_.phttp1_->handle_session_end(**phttp1, sess, hdr);
 			}
 			break;
 
 		case PROTO_HTTP2 :
-			if (auto phttp2 = std::get_if<http2_sessinfo *>(&sess.pvarproto_); phttp2 && *phttp2) {
-				(*phttp2)->handle_session_end(sess, hdr);
+			if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&sess.pvarproto_); phttp2 && *phttp2) {
+				apihdlr_.phttp2_->handle_session_end(**phttp2, sess, hdr);
 			}
 			break;
 
 		case PROTO_POSTGRES :
-			if (auto ppostgres = std::get_if<postgres_sessinfo *>(&sess.pvarproto_); ppostgres && *ppostgres) {
-				(*ppostgres)->handle_session_end(sess, hdr);
+			if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+				apihdlr_.ppostgres_->handle_session_end(**ppostgres, sess, hdr);
 			}
 			break;
 
@@ -2152,20 +2164,20 @@ bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr,
 	switch (sess.proto_) {
 
 	case PROTO_HTTP1 :
-		if (auto phttp1 = std::get_if<http1_sessinfo *>(&sess.pvarproto_); phttp1 && *phttp1) {
-			(*phttp1)->handle_ssl_change(sess, hdr, pdata);
+		if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&sess.pvarproto_); phttp1 && *phttp1) {
+			apihdlr_.phttp1_->handle_ssl_change(**phttp1, sess, hdr, pdata);
 		}
 		break;
 
 	case PROTO_HTTP2 :
-		if (auto phttp2 = std::get_if<http2_sessinfo *>(&sess.pvarproto_); phttp2 && *phttp2) {
-			(*phttp2)->handle_ssl_change(sess, hdr, pdata);
+		if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&sess.pvarproto_); phttp2 && *phttp2) {
+			apihdlr_.phttp2_->handle_ssl_change(**phttp2, sess, hdr, pdata);
 		}
 		break;
 
 	case PROTO_POSTGRES :
-		if (auto ppostgres = std::get_if<postgres_sessinfo *>(&sess.pvarproto_); ppostgres && *ppostgres) {
-			(*ppostgres)->handle_ssl_change(sess, hdr, pdata);
+		if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+			apihdlr_.ppostgres_->handle_ssl_change(**ppostgres, sess, hdr, pdata);
 		}
 		break;
 

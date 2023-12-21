@@ -8,7 +8,12 @@
 
 namespace gyeeta {
 
-class postgres_proto 
+class API_PARSE_HDLR;
+struct PARSE_PKT_HDR;
+class SVC_SESSION;
+class POSTGRES_SESSINFO;
+
+class POSTGRES_PROTO 
 {
 public :
 	/*
@@ -379,6 +384,24 @@ public :
 		return is_valid_resp(pdata, caplen, is_init);
 	}	
 
+
+	API_PARSE_HDLR				& apihdlr_;
+
+	POSTGRES_PROTO(API_PARSE_HDLR & apihdlr);
+
+	~POSTGRES_PROTO() noexcept;
+	
+	void handle_request_pkt(POSTGRES_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void handle_response_pkt(POSTGRES_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	void handle_session_end(POSTGRES_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
+
+	void handle_ssl_change(POSTGRES_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+
+	std::pair<POSTGRES_SESSINFO *, void *> alloc_sess(SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
+
+	void destroy(POSTGRES_SESSINFO *pobj, void *pdata) noexcept;
 };
 
 } // namespace gyeeta
