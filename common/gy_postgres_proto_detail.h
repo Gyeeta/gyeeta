@@ -221,6 +221,7 @@ public :
 
 	static inline uint64_t		gstats[STATPG_MAX]		{};
 	static inline uint64_t		gstats_old[STATPG_MAX]		{};
+	static inline uint64_t		gtotal_queries = 0, glast_queries = 0, gtotal_resp = 0, glast_resp = 0;
 
 
 	PG_REQSTAT			statpg_;

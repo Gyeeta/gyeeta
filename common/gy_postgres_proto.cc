@@ -401,10 +401,11 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*thdr);
 			tknlen = unaligned_read_be32(thdr + 1);
 
-			if (tknlen < 4) {
+			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
 				reset_on_error();
 				return -1;	
 			}		
+			tknlen -= 4;
 
 			if (lenpkt < tknlen) {
 				statpg_.req_tkn_frag_ = 1;
@@ -438,10 +439,11 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*statpg_.reqhdr_);
 			tknlen = unaligned_read_be32(&statpg_.reqhdr_[1]);
 
-			if (tknlen < 4) {
+			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
 				reset_on_error();
 				return -1;	
 			}		
+			tknlen -= 4;
 
 			if (statpg_.nbytes_req_frag_ > (uint32_t)tknlen || statpg_.nbytes_req_frag_ > prot_.max_pg_req_token_) {
 				reset_on_error();
@@ -569,10 +571,11 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*thdr);
 			tknlen = unaligned_read_be32(thdr + 1);
 
-			if (tknlen < 4) {
+			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
 				reset_on_error();
 				return -1;	
 			}		
+			tknlen -= 4;
 
 			if (lenpkt < tknlen) {
 				statpg_.resp_tkn_frag_ = 1;
@@ -606,10 +609,11 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*statpg_.resphdr_);
 			tknlen = unaligned_read_be32(&statpg_.resphdr_[1]);
 
-			if (tknlen < 4) {
+			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
 				reset_on_error();
 				return -1;	
 			}		
+			tknlen -= 4;
 
 			if (statpg_.nbytes_resp_frag_ > (uint32_t)tknlen || statpg_.nbytes_req_frag_ > prot_.max_pg_resp_token_) {
 				reset_on_error();
@@ -1961,6 +1965,9 @@ bool POSTGRES_SESSINFO::print_req() noexcept
 		ptran->set_resp_times();
 		ptran->set_padding_len();
 		
+		gtotal_queries++;
+		gtotal_resp += ptran->response_usec_;
+
 		return apihdlr.set_xfer_buf_sz(ptran->get_elem_size());
 	}
 	catch(...) {
@@ -1971,30 +1978,39 @@ bool POSTGRES_SESSINFO::print_req() noexcept
 
 void POSTGRES_SESSINFO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept
 {
-	auto				diffstats = gstats;
+	uint64_t			diffstats[STATPG_MAX];
 
-	strbuf << "Postgres Interval Stats for "sv << tcur - tlast << " sec : "sv;
+	std::memcpy(diffstats, gstats, sizeof(gstats));
+
+	strbuf << "\nPostgres Interval Stats for "sv << tcur - tlast << " sec : "sv;
 	
 	for (int i = 0; i < (int)STATPG_MAX; ++i) {
 		diffstats[i] -= gstats_old[i];
 
 		if (diffstats[i] > 0) {
-			strbuf << gstatstr[i] << ' ' << diffstats[i] << ',';
+			strbuf << ' ' << gstatstr[i] << ' ' << diffstats[i] << ',';
 		}	
 	}	
+	
+	strbuf << " Queries "sv << gtotal_queries - glast_queries << ", Avg Response usec "sv << (gtotal_resp - glast_resp)/(NUM_OR_1(gtotal_queries - glast_queries));
+	
+	std::memcpy(gstats_old, gstats, sizeof(gstats));
 
-	strbuf--;
+	glast_queries = gtotal_queries;
+	glast_resp = gtotal_resp;
+
 	strbuf << '\n';
 
 	strbuf << "Postgres Cumulative Stats : "sv;
 	
 	for (int i = 0; i < (int)STATPG_MAX; ++i) {
 		if (gstats[i] > 0) {
-			strbuf << gstatstr[i] << ' ' << gstats[i] << ',';
+			strbuf << ' ' << gstatstr[i] << ' ' << gstats[i] << ',';
 		}	
 	}	
 
-	strbuf--;
+	strbuf << " Total Queries "sv << gtotal_queries;
+
 	strbuf << "\n\n"sv;
 }	
 

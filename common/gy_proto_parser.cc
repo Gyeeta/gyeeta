@@ -11,7 +11,7 @@
 #include			"gy_http2_proto_detail.h"
 #include			"gy_postgres_proto_detail.h"
 #include			"gy_pcap_write.h"
-
+#include			"gy_server_int.h"
 
 namespace gyeeta {
 
@@ -1279,6 +1279,7 @@ int API_PARSE_HDLR::api_xfer_thread(void * _) noexcept
 try1 :
 	try {
 		auto				& tranpool = *API_PARSE_HDLR::gtranpool_;
+		const auto			conn_magic = (SERVER_COMM::get_singleton() ? SERVER_COMM::get_singleton()->get_conn_magic() : COMM_HEADER::PM_HDR_MAGIC);
 
 		do {
 			DATA_BUFFER_ELEM 		elem;
@@ -1292,14 +1293,14 @@ try1 :
 					continue;
 				}
 
-				const COMM_HEADER		*phdr = (const COMM_HEADER *)elem.palloc_;
-				const EVENT_NOTIFY		*pnotify = (const EVENT_NOTIFY *)(phdr + 1);
-				ssize_t				totallen = phdr->get_act_len();
+				COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(elem.palloc_);
+				EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1); 
 
-				if (totallen < (ssize_t)fixed_sz || totallen > (ssize_t)elem.sz_) {
-					continue;
-				}	
-					
+				new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, elem.sz_, conn_magic);
+
+				new (pnot) EVENT_NOTIFY(NOTIFY_API_TRAN, elem.nelems_);
+
+				ssize_t				totallen = phdr->get_act_len();
 
 #ifdef GY_API_PRINT
 				CONDEXEC(
@@ -1309,8 +1310,8 @@ try1 :
 
 						char				trec[32767];
 						PARSE_ALL_FIELDS		fields;
-						uint32_t			nelems = pnotify->nevents_;
-						API_TRAN			*pone = (API_TRAN *)(pnotify + 1);
+						uint32_t			nelems = pnot->nevents_;
+						API_TRAN			*pone = (API_TRAN *)(pnot + 1);
 
 						totallen -= fixed_sz;
 
@@ -2646,6 +2647,8 @@ bool API_PARSE_HDLR::handle_parse_timer(MSG_TIMER_SVCCAP & msg) noexcept
 			print_stats();
 		}	
 
+		set_xfer_buf_sz(0, true /* force_flush */);
+
 		return true;
 	}
 	GY_CATCH_MSG("Exception Caught while handling API Parser Timer");
@@ -2703,6 +2706,7 @@ bool API_PARSE_HDLR::handle_ssl_rejected(MSG_SVC_SSL_CAP & msg) noexcept
 bool API_PARSE_HDLR::handle_parse_no_msg() noexcept
 {
 	try {
+		set_xfer_buf_sz(0, true /* force_flush */);
 
 		return true;
 	}
