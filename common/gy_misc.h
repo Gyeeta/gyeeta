@@ -980,7 +980,7 @@ public :
 			ncurr_++;
 		}
 
-		if (pcur_ != palloc_ + init_reserve_sz_) {
+		if (ncurr_ > 0 && pcur_ != palloc_ + init_reserve_sz_) {
 			szpend	= pendptr_ - pcur_;
 		}	
 		else {
