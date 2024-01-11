@@ -375,7 +375,7 @@ static void *memcpy_or_move(void *dest, const void *src, size_t n) noexcept
 })
 
 
-// Will use strnlen for upto 512 bytes maxlen
+// Will use strnlen for upto 512 bytes maxlen and strlen thererafter
 static size_t gy_strnlen(const char *str, size_t maxlen) noexcept
 {
 	if (maxlen <= 512) {
@@ -6311,6 +6311,68 @@ static int gy_fdprintf(int ofd, bool is_non_block, const char *format, ...) noex
 	return ret;									
 }	
 
+/*
+ * fprintf style prints to a file descriptor/socket along with a user provided write buffer
+ * If the size of the message is > szbuf, then if is_non_block is specified, the message is truncated to szbuf, else
+ * if is_non_block is false, then we first try using alloca and then heap allocation to store the message.
+ */ 
+[[gnu::format (printf, 5, 6)]] 
+static int gy_fdprintf(int ofd, char * wrbuf, size_t szbuf, bool is_non_block, const char *format, ...) noexcept
+{
+	char 			*pwrbuf = wrbuf;				
+	int			retc, retw, ret, ismal = 0;				
+	va_list 		va, vacopy;
+										
+	va_start(va, format);
+	va_copy(vacopy, va);
+	retc = vsnprintf(wrbuf, szbuf - 1, format, va);
+	va_end(va);
+								
+	if (retc > 0 && (uint32_t)retc >= szbuf - 1) {
+		if (!is_non_block) {
+			GY_CC_BARRIER();
+
+			size_t		currstacksz =  gy_get_thread_local().get_thread_stack_freespace();
+
+			if (retc < 48 * 1024 && (uint32_t)retc + 16 * 1024 < currstacksz) {
+				pwrbuf = (char *)alloca(retc + 8);			
+			}							
+			else {			
+				pwrbuf = new (std::nothrow) char[retc + 8];
+				ismal = 1;				
+			}				
+
+			if (!pwrbuf) {	
+				ismal = 0;					
+				pwrbuf = wrbuf; 
+				retc = szbuf - 1;
+			}						
+			else {							
+				(void)vsnprintf(pwrbuf, retc + 1, format, vacopy);
+			}						
+		}
+		else {
+			// Truncate
+			retc = szbuf - 1;
+		}	
+	}						
+	else if (retc < 0) {
+		va_end(vacopy);
+		return retc;
+	}	
+											
+	va_end(vacopy);
+
+	ret = gy_writebuffer(ofd, pwrbuf, retc);				
+											
+	if (gy_unlikely(ismal == 1)) { 							
+		int olderrno = errno; 
+		delete [] pwrbuf; 
+		errno = olderrno;		
+	}											
+	return ret;									
+}	
+
 
 /*
  * Set up predefined signal handlers : SIGSEGV, SIGBUS, SIGILL, SIGQUIT, SIGFPE and SIGINT, SIGTERM, SIGUSR2 and some others. 
@@ -7557,7 +7619,7 @@ public :
 
 
 /*
- * Stateful string parsing of an already populated string buffer.
+ * Stateful Streaming String parsing of an already populated string buffer.
  * If case insensitive searches needed, the input string must be a NULL terminated string.
  */ 
 class STR_RD_BUF
@@ -7574,9 +7636,30 @@ public :
 		assert(pbuffer);
 	}		
 
+	STR_RD_BUF(std::string_view v) noexcept
+		: STR_RD_BUF(v.data(), v.size())
+	{}	
+
 	explicit STR_RD_BUF(const char *pbuffer) noexcept
 		: STR_RD_BUF(pbuffer, pbuffer ? strlen(pbuffer) : 0)
 	{}	
+
+	// returns number of bytes copied
+	size_t get_next_nchars(char *poutput, size_t bytes_to_copy) noexcept
+	{
+		if (gy_unlikely(pcurrbuf_ >= pendbuf_)) {
+			return 0;
+		}	
+		
+		size_t			ncopy;
+		
+		ncopy = std::min<size_t>(bytes_to_copy, pendbuf_ - pcurrbuf_);
+
+		std::memcpy(poutput, pcurrbuf_, ncopy);
+		pcurrbuf_ += ncopy;
+
+		return ncopy;
+	}	
 
 	/* 
 	 * Returns the next line starting from current postion. Number of bytes in line is set in nbytes
@@ -8084,7 +8167,7 @@ public :
 };
 
 /*
- * Stateful string updation and manipulation of a preallocated fixed size char buffer (upto 4 GB). No heap allocations done. 
+ * Stateful Streaming String updation and manipulation of a preallocated fixed size char buffer (upto 4 GB). No heap allocations done. 
  * On overflow, string is truncated to max buffer len.
  * Callback options are available to handle string truncation (buffer overflows). See comments for appendfmtcb() below...
  *
@@ -8117,11 +8200,16 @@ protected :
 	uint32_t			maxsz_			{0};
 
 public :		
-	STR_WR_BUF(char *pbuffer, size_t maxsz)
+	STR_WR_BUF(char *pbuffer, size_t maxsz, bool no_throw = false)
 		: pwritebuf_(pbuffer), currsz_(0), maxsz_(uint32_t(maxsz ? maxsz - 1 : 0))
 	{
 		if (gy_unlikely(!pbuffer)) {
-			GY_THROW_EXCEPTION("String Buffer : Nullptr passed as buffer");
+			if (!no_throw) {
+				GY_THROW_EXCEPTION("String Buffer : Nullptr passed as buffer");
+			}
+			else {
+				return;
+			}	
 		}
 
 		if (maxsz >= ~0u) {
@@ -8412,17 +8500,13 @@ public :
 	}	
 
 	/*
-	 * Same as appendcb() but for String lieterals only
-	 * See comments for appendcb() and appendconst() above
+	 * See comments for appendcb() above
 	 */
-	template <typename FCB, size_t N>
-	char *appendconstcb(FCB & overflowcb, const char (&str)[N]) noexcept(noexcept(overflowcb(nullptr, 0, false, false)))
+	template <typename FCB>
+	char *appendcb(FCB & overflowcb, std::string_view v) noexcept(noexcept(overflowcb(nullptr, 0, false, false)))
 	{
-		return appendcb(overflowcb, static_cast<const char *>(str), N - 1);
+		return appendcb(overflowcb, v.data(), v.size());
 	}	
-
-	template <typename FCB, size_t N>
-	char *appendconstcb(FCB & overflowcb, char (&str)[N]) 	= delete;
 
 	// Will ignore '\0'. If need to add '\0' within string, use appendconst("\x0") method
 	char *append(char c) noexcept
@@ -8548,10 +8632,12 @@ public :
 		return *this;
 	}
 
-	void reset() noexcept
+	STR_WR_BUF & reset() noexcept
 	{
 		*pwritebuf_ 	= '\0';
 		currsz_ 	= 0;
+
+		return *this;
 	}
 
 		
@@ -8731,7 +8817,7 @@ public :
 
 	size_t max_buf_size() const noexcept
 	{
-		return maxsz_ + 1;
+		return maxsz_ ? maxsz_ + 1 : 0;
 	}	
 
 	void infoprint(const char *prefix = "", bool use_offload = true) const noexcept
@@ -8902,6 +8988,687 @@ public :
 		return *this;
 	}	
 };	
+
+
+
+/*
+ * Stateful Streaming Binary Buffer updation and manipulation of a preallocated fixed size uint8_t buffer (upto 4 GB). No heap allocations done. 
+ * On overflow, buffer is truncated to max buffer len.
+ *
+ * Will do a stateful binary memcpy from input param. Not '\0' Terminated.
+ *
+ * BIN_BUFFER<256>		stackbuf;				// Use STR_WR_BIN if external buffer
+ * int				i = 1;
+ *	
+ * stackbuf << "\nTuple <int, char, uint16_t, float> : "sv;		// stringview append
+ * stackbuf << std::tuple<int, char, uint16_t, float>(1,'Z',0, 0.1f);	// memcpy of tuple
+ * stackbuf << 3.14159;							// double appended in binary 
+ * stackbuf << mystruct;						// memcpy of mystruct will be done
+ * stackbuf << i;							// memcpy of int i
+ */ 
+class STR_WR_BIN
+{
+protected :	
+	uint8_t				*pwritebuf_		{nullptr};
+	uint32_t			currsz_			{0};
+	uint32_t			maxsz_			{0};
+
+public :		
+	STR_WR_BIN(void *pbuffer, size_t maxsz, bool no_throw = false)
+		: pwritebuf_((uint8_t *)pbuffer), currsz_(0), maxsz_(maxsz)
+	{
+		if (gy_unlikely(!pbuffer)) {
+			if (!no_throw) {
+				GY_THROW_EXCEPTION("STR_WR_BIN : Nullptr passed as buffer");
+			}
+			else {
+				return;
+			}	
+		}
+
+		if (maxsz >= ~0u) {
+			maxsz_ = ~0u - 1;
+		}	
+	}		
+
+	STR_WR_BIN() 							= delete;
+
+	~STR_WR_BIN() noexcept						= default;
+
+	STR_WR_BIN(const STR_WR_BIN &) noexcept				= default;
+	STR_WR_BIN & operator= (const STR_WR_BIN & other) noexcept	= default;
+
+	STR_WR_BIN(STR_WR_BIN && other) noexcept
+		: pwritebuf_(other.pwritebuf_), currsz_(std::exchange(other.currsz_, 0)), maxsz_(std::exchange(other.maxsz_, 0))
+	{}	
+
+	STR_WR_BIN & operator= (STR_WR_BIN && other) noexcept
+	{
+		if (this != &other) {
+			pwritebuf_	= other.pwritebuf_;
+			currsz_		= std::exchange(other.currsz_, 0);
+			maxsz_		= std::exchange(other.maxsz_, 0);
+		}
+
+		return *this;
+	}	
+
+	uint8_t *append(const void *pinput, size_t leninput) noexcept
+	{
+		if (gy_unlikely(currsz_ >= maxsz_)) {
+			return pwritebuf_;
+		}	
+
+		size_t			sz;
+
+		GY_SAFE_MEMCPY(pwritebuf_ + currsz_, maxsz_ - currsz_, pinput, leninput, sz);
+		currsz_ += sz;
+
+		return pwritebuf_;
+	}	
+
+	/*
+	 * Optimized append for String literals. 
+	 * Use only for string literals and not char arrays as no run time strlen calculated...
+	 */
+	template <size_t N>
+	uint8_t * appendconst(const char (&str)[N]) noexcept
+	{
+		return append(static_cast<const char *>(str), N - 1);
+	}
+
+	template <size_t N>
+	uint8_t * appendconst(char (&str)[N]) 	= delete;
+
+	uint8_t *append(const char *pstr) noexcept
+	{
+		size_t 		dlen;
+		
+		dlen = gy_strnlen(pstr, maxsz_ - currsz_);
+
+		return append(pstr, dlen);
+	}	
+
+	uint8_t *appendutf(const char *utf8str) noexcept
+	{
+		size_t 		dlen;
+		
+		(void)gy_utf8_nlen(utf8str, maxsz_ - currsz_, &dlen);	
+
+		return append(utf8str, dlen);
+	}	
+
+	uint8_t *append(const STR_WR_BIN & strbuf) noexcept
+	{
+		return append(strbuf.buffer(), strbuf.length());
+	}	
+
+	uint8_t *append(const STR_WR_BUF & strbuf) noexcept
+	{
+		return append(strbuf.buffer(), strbuf.length());
+	}	
+
+	uint8_t *append(char c) noexcept
+	{
+		if (gy_unlikely(currsz_ >= maxsz_)) {
+			return pwritebuf_;
+		}	
+
+		pwritebuf_[currsz_++] 	= c;
+
+		return pwritebuf_;
+	}	
+
+	uint8_t * append(std::pair<const char *, size_t> p) noexcept
+	{
+		return append(p.first, p.second);
+	}
+
+	uint8_t * append(const std::string_view & v) noexcept
+	{
+		return append(v.data(), v.size());
+	}
+
+	template <typename T>
+	uint8_t * append(const T & val) noexcept
+	{
+		return append(&val, sizeof(T));
+	}
+
+	/*
+	 * NOTE : Do not overload the non-template const char * << function to enable string literal
+	 * handling using the const char array ref method below...
+	 */
+	template <typename T>
+	STR_WR_BIN & operator<< (const T & val) noexcept
+	{
+		append(&val, sizeof(T));
+		return *this;
+	}
+
+	template <size_t N>
+	STR_WR_BIN & operator<< (const char (&str)[N]) noexcept
+	{
+		/*
+		 * Disabing the optimization as compiler will invoke this for a class array member in a const method as well :(
+		 *
+			append(static_cast<const char *>(str), N - 1);
+		 */	
+		append(static_cast<const char *>(str), ::strnlen(str, std::min<size_t>(N - 1, maxsz_ - currsz_)));
+		return *this;
+	}
+
+	STR_WR_BIN & operator<< (const std::string_view & v) noexcept
+	{
+		append(v.data(), v.size());
+		return *this;
+	}
+
+	STR_WR_BIN & reset() noexcept
+	{
+		currsz_ = 0;
+		return *this;
+	}
+
+		
+	/*
+	 * Reduce the strlen by truncate_bytes bytes
+	 */
+	uint8_t * truncate_by(size_t truncate_bytes) noexcept
+	{
+		if (currsz_ == 0) {
+			return pwritebuf_;
+		}	
+		
+		if (truncate_bytes <= currsz_) {
+			currsz_ -= truncate_bytes;	
+		}
+		else {
+			currsz_ = 0;
+		}	
+				
+		return pwritebuf_;
+	}
+			
+	uint8_t * truncate_to(size_t len) noexcept
+	{
+		if (currsz_ > len) {
+			currsz_ = len;
+		}	
+		return pwritebuf_;
+	}	
+
+	// Truncate by nbytes
+	uint8_t * operator-= (size_t nbytes) noexcept
+	{
+		return truncate_by(nbytes);
+	}
+
+	// Truncate by 1 byte
+	uint8_t * operator--() noexcept
+	{
+		return truncate_by(1);
+	}
+
+	// Truncate by 1 byte
+	uint8_t * operator--(int) noexcept
+	{
+		return truncate_by(1);
+	}
+
+	/*
+	 * Set the strlen to str_len bytes to be used if buffer is externally modified
+	 */
+	uint8_t * set_len_external(size_t len) noexcept
+	{
+		if (len <= maxsz_) {
+			currsz_ = len;
+		}	
+
+		return pwritebuf_;
+	}	
+			
+	bool is_overflow() const noexcept
+	{
+		return currsz_ >= maxsz_;
+	}	
+
+	size_t length() const noexcept
+	{
+		return currsz_;
+	}	
+
+	size_t size() const noexcept
+	{
+		return length();
+	}	
+
+	// same as size() but with int as return type
+	int sizeint() const noexcept
+	{
+		return (int)length();
+	}	
+
+	size_t bytes_left() const noexcept
+	{
+		return maxsz_ - currsz_;
+	}	
+
+	uint8_t *get_current() const noexcept
+	{
+		return pwritebuf_ + currsz_;
+	}	
+
+	uint8_t *buffer() noexcept
+	{
+		return pwritebuf_;
+	}	
+
+	const uint8_t *buffer() const noexcept
+	{
+		return pwritebuf_;
+	}	
+
+	uint8_t *data() noexcept
+	{
+		return buffer();
+	}	
+
+	const uint8_t *data() const noexcept
+	{
+		return buffer();
+	}	
+
+	// Returns 0 on invalid id
+	uint8_t operator[](size_t id) const noexcept
+	{
+		if (id < currsz_) {
+			return pwritebuf_[id];
+		}	
+		
+		return 0;
+	}
+
+	std::string_view get_view() const noexcept
+	{
+		return std::string_view((const char *)data(), size());
+	}
+
+	size_t max_buf_size() const noexcept
+	{
+		return maxsz_;
+	}	
+};	
+
+/*
+ * Class with inline buffer and STR_WR_BIN associated with that buffer
+ * See comments for STR_WR_BIN above
+ */
+template <size_t szbuf_, size_t align_bytes = 8>
+class BIN_BUFFER : public UCHAR_BUF<szbuf_, align_bytes>, public STR_WR_BIN 
+{
+public :	
+	static_assert(szbuf_ > 0 && szbuf_ < ~0u);
+
+	BIN_BUFFER() noexcept 
+		: STR_WR_BIN(this->buf_, szbuf_)
+	{}
+
+	~BIN_BUFFER() noexcept		= default;
+
+	BIN_BUFFER(const BIN_BUFFER & other) noexcept
+		: STR_WR_BIN(this->buf_, szbuf_)
+	{
+		append(other.buf_, other.size());
+	}	
+
+	BIN_BUFFER & operator= (const BIN_BUFFER & other) noexcept
+	{
+		if (this != &other) {
+			this->reset();
+			this->append(other.buf_, other.size());
+		}	
+
+		return *this;
+	}	
+
+	BIN_BUFFER(BIN_BUFFER && other) noexcept
+		: STR_WR_BIN(this->buf_, szbuf_)
+	{
+		append(other.buf_, other.size());
+		other.reset();
+	}	
+
+	BIN_BUFFER & operator= (BIN_BUFFER && other) noexcept
+	{
+		if (this != &other) {
+			this->reset();
+			this->append(other.buf_, other.size());
+			other.reset();
+		}	
+
+		return *this;
+	}
+
+	/*
+	 * XXX Will not work in case of structure appends where padding present...
+	 */
+	template <size_t osz>
+	friend bool operator== (const BIN_BUFFER & lhs, const BIN_BUFFER<osz> & rhs) noexcept
+	{
+		const auto len = lhs.length();
+
+		return ((len == rhs.length()) && (0 == std::memcmp(lhs.buffer(), rhs.buffer(), len)));
+	}
+
+	// Get an lvalue ref to STR_WR_BIN (For a temporary object, ensure not used after the statement) 
+	STR_WR_BIN & get_str_buf() noexcept
+	{
+		return *this;
+	}	
+};	
+
+
+/*
+ * Class with Heap allocated buffer and STR_WR_BIN associated with that buffer
+ * See comments for STR_WR_BIN above
+ */
+class BIN_HEAP_BUF final : public std::unique_ptr<uint8_t []>, public STR_WR_BIN 
+{
+public :	
+	using CharUniq		= std::unique_ptr<uint8_t []>;
+	
+	using STR_WR_BIN::reset;
+
+	explicit BIN_HEAP_BUF(size_t szbuf) 
+		:  CharUniq(
+			({
+				if (szbuf == 0 || szbuf >= ~0u) {
+					GY_THROW_EXCEPTION("U8 Heap size limited to 4 GB : %lu", szbuf);
+				}	
+				new uint8_t[szbuf];
+			})	
+			), STR_WR_BIN(CharUniq::get(), szbuf)
+	{}
+
+	BIN_HEAP_BUF()			= delete;
+
+	~BIN_HEAP_BUF() noexcept		= default;
+
+	BIN_HEAP_BUF(const BIN_HEAP_BUF & other) 
+		: CharUniq(new uint8_t[other.max_buf_size()]), STR_WR_BIN(CharUniq::get(), other.max_buf_size())
+	{
+		append(other.buffer(), other.size());
+	}	
+
+	BIN_HEAP_BUF & operator= (const BIN_HEAP_BUF & other)
+	{
+		if (this != &other) {
+			if (max_buf_size() > other.size()) {
+				reset();
+				append(other.buffer(), other.size());
+			}
+			else {
+				this->~BIN_HEAP_BUF();
+
+				new (this) BIN_HEAP_BUF(other);
+			}	
+		}	
+
+		return *this;
+	}	
+
+	BIN_HEAP_BUF(BIN_HEAP_BUF && other) noexcept	= default;
+
+	BIN_HEAP_BUF & operator= (BIN_HEAP_BUF && other) noexcept	= default;
+
+	/*
+	 * XXX Will not work in case of structure appends where padding present...
+	 */
+	friend bool operator== (const BIN_HEAP_BUF & lhs, const BIN_HEAP_BUF & rhs) noexcept
+	{
+		const auto len = lhs.length();
+
+		return ((len == rhs.length()) && (0 == std::memcmp(lhs.buffer(), rhs.buffer(), len)));
+	}
+
+	STR_WR_BIN & get_str_buf() noexcept
+	{
+		return *this;
+	}	
+
+	CharUniq & get_unique_ptr() noexcept
+	{
+		return *this;
+	}	
+};	
+
+
+/*
+ * Stateful Streaming binary parsing of an already populated binary buffer.
+ * 
+ * e.g.
+ * uint32_t			i;
+ * uint16_t			s;
+ *
+ * STR_RD_BIN("\x00\x01\x02\x03\x04\xFF"sv) >> i >> s;					// i == 0x03020100, s == 0xFF04 for Little endian
+ *
+ * Binary structs can alse be read directly as in :
+ *
+ * struct { int i; char c[4]; float f; } s;
+ * 
+ * STR_RD_BIN("\x00\x01\x02\x03\x41\x42\x43\x44\x00\x00\x00\x00\xFF\xFF"sv) >> s;	// s.i == 0x03020100, s.c is "ABCD", s.f == 0 for Little endian
+ *
+ */ 
+class STR_RD_BIN
+{
+protected :	
+	const uint8_t 			* const	prdbuf_;
+	const uint8_t 			* const pendbuf_;
+	const uint8_t			* pcurrbuf_; 
+
+public :		
+	STR_RD_BIN(const uint8_t *pbuffer, size_t len) noexcept
+		: prdbuf_(pbuffer), pendbuf_(prdbuf_ + len), pcurrbuf_(pbuffer)
+	{
+		assert(pbuffer);
+	}		
+
+	STR_RD_BIN(std::string_view v) noexcept
+		: STR_RD_BIN((const uint8_t *)v.data(), v.size())
+	{}	
+
+	// returns number of bytes copied
+	size_t get_next_nbytes(uint8_t *poutput, size_t bytes_to_copy) noexcept
+	{
+		if (gy_unlikely(pcurrbuf_ >= pendbuf_)) {
+			return 0;
+		}	
+		
+		size_t			ncopy;
+		
+		ncopy = std::min<size_t>(bytes_to_copy, pendbuf_ - pcurrbuf_);
+
+		std::memcpy(poutput, pcurrbuf_, ncopy);
+		pcurrbuf_ += ncopy;
+
+		return ncopy;
+	}	
+
+	// Returns number of bytes read into val : Users can check bytes returned == sizeof(val) for success
+	template <typename T>
+	size_t get_value(T & val) noexcept
+	{
+		return get_next_nbytes((uint8_t *)&val, sizeof(T));
+	}
+
+	// No error indication if none or partial copy
+	template <typename T>
+	STR_RD_BIN & operator>> (T & val) noexcept
+	{
+		get_next_nbytes((uint8_t *)&val, sizeof(T));
+		return *this;
+	}
+
+	// returns number of bytes copied
+	size_t peek_next_nbytes(uint8_t *poutput, size_t bytes_to_copy) const noexcept
+	{
+		if (gy_unlikely(pcurrbuf_ >= pendbuf_)) {
+			return 0;
+		}	
+		
+		size_t			ncopy;
+		
+		ncopy = std::min<size_t>(bytes_to_copy, pendbuf_ - pcurrbuf_);
+
+		std::memcpy(poutput, pcurrbuf_, ncopy);
+
+		return ncopy;
+	}	
+
+	// returns number of bytes copied
+	size_t peek_prev_nbytes(uint8_t *poutput, size_t bytes_to_copy) const noexcept
+	{
+		if (gy_unlikely(pcurrbuf_ == prdbuf_)) {
+			return 0;
+		}	
+		
+		size_t			nrd = 0;
+		const uint8_t		*ptmp = pcurrbuf_ - 1;
+
+		while ((ptmp >= prdbuf_) && (nrd < bytes_to_copy)) {
+			poutput[nrd] = *ptmp;
+			ptmp--;
+			nrd ++;
+		}	
+
+		return nrd;
+	}	
+
+	const uint8_t * operator+= (size_t nbytes) noexcept
+	{
+		size_t			noff = std::min(nbytes, bytes_left());
+
+		pcurrbuf_ += noff;
+
+		return pcurrbuf_;
+	}
+
+	const uint8_t * operator++() noexcept
+	{
+		return this->operator+= (1ul);
+	}
+
+	const uint8_t * operator++(int) noexcept
+	{
+		return this->operator+= (1ul);
+	}
+
+	const uint8_t * operator-= (size_t nbytes) noexcept
+	{
+		size_t			noff = std::min(nbytes, curr_offset());
+
+		pcurrbuf_ -= noff;
+
+		return pcurrbuf_;
+	}
+
+	const uint8_t * operator--() noexcept
+	{
+		return this->operator-= (1ul);
+	}
+
+	const uint8_t * operator--(int) noexcept
+	{
+		return this->operator-= (1ul);
+	}
+
+	// Skip to delim + 1 char 
+	const uint8_t * skip_till_next_delim(char delim, bool ignore_escape = true) noexcept
+	{
+		char			c, prevc = '\0';
+		const char		*ptmp = (const char *)pcurrbuf_;
+
+		if (gy_unlikely(pcurrbuf_ == pendbuf_)) {
+			return nullptr;
+		}	
+
+		while (pcurrbuf_ < pendbuf_) {
+			c = (char)*pcurrbuf_++;
+
+			if (c == delim) {
+				if (ignore_escape || (prevc != '\\')) {
+					return pcurrbuf_;
+				}	
+			}	
+
+			prevc = c;
+		}	
+
+		return nullptr;
+	}
+		
+	// Skip to delimitter + 1 char
+	const uint8_t * skip_till_next_delim(const char delimarr[], uint32_t ndelim, bool ignore_escape = true) noexcept
+	{
+		char			c, prevc = '\0';
+		const char		*ptmp = (const char *)pcurrbuf_;
+
+		if (gy_unlikely(pcurrbuf_ == pendbuf_)) {
+			return nullptr;
+		}	
+
+		while (pcurrbuf_ < pendbuf_) {
+			c = (char)*pcurrbuf_++;
+
+			for (uint32_t i = 0; i < ndelim; ++i) {
+				if (c == delimarr[i]) {
+					if (ignore_escape || (prevc != '\\')) {
+						return pcurrbuf_;
+					}	
+					break;
+				}	
+			}
+
+			prevc = c;
+		}	
+
+		return nullptr;
+	}
+
+	size_t bytes_left() const noexcept
+	{
+		return pendbuf_ - pcurrbuf_;
+	}	
+
+	size_t curr_offset() const noexcept
+	{
+		return pcurrbuf_ - prdbuf_;
+	}	
+
+	const uint8_t * get_curr_pos() const noexcept
+	{
+		return pcurrbuf_;
+	}	
+
+	const uint8_t * set_cur_pos(size_t offset_from_start) noexcept
+	{
+		size_t			maxsz = pendbuf_ - prdbuf_;
+
+		if (offset_from_start > maxsz) {
+			offset_from_start = maxsz;
+		}
+		
+		pcurrbuf_ = prdbuf_ + offset_from_start;	
+
+		return pcurrbuf_;
+	}
+
+	void reset() noexcept
+	{
+		pcurrbuf_ = prdbuf_;
+	}	
+};
 
 
 /*
@@ -9816,7 +10583,7 @@ public :
 	// size must be minimum INET_ADDRSTRLEN (16) for IPv4 and INET6_ADDRSTRLEN (48) for IPv6
 	const char * printaddr(char *pdstbuf, size_t size) const noexcept
 	{
-		if (aftype_ == AF_INET) {
+		if (aftype_ != AF_INET6) {
 			struct in_addr		addr;
 
 			memcpy(&addr, &ip32_be_, sizeof(ip32_be_));

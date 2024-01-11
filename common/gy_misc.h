@@ -882,6 +882,9 @@ public :
 		}
 	}	
 	
+	/*
+	 * Returns the start of the allocated buffer
+	 */
 	void * get_alloc_buf(FREE_FPTR & free_fp, size_t & sz) const noexcept
 	{
 		free_fp 	= free_fp_;
@@ -892,8 +895,9 @@ public :
 
 	/*
 	 * Will throw an exception if no memory can be allocated
+	 * Specify use_malloc_hdr as true if Pool used and THR_POOL_ALLOC::dealloc needs to be the free function
 	 */
-	void * get_next_buffer() 
+	void * get_next_buffer(bool use_malloc_hdr = false) 
 	{
 		if (palloc_ && pcur_ >= palloc_) {
 			return pcur_;
@@ -901,14 +905,13 @@ public :
 
 		assert(palloc_ == nullptr && ncurr_ == 0);
 
-		uint32_t 	ncachelem, act_size;
+		uint8_t  		*ptmp;
+		uint32_t 		ncachelem, act_size;
 
-		ncachelem 	= min_cache_elem_ + gy_div_round_up(init_reserve_sz_, max_elem_sz_);
-
-		uint8_t  	*ptmp;
+		ncachelem 		= min_cache_elem_ + gy_div_round_up(init_reserve_sz_, max_elem_sz_);
 		
 		if (pmem_pool_) {
-			ptmp 	= (uint8_t *)pmem_pool_->safe_ordered_malloc(ncachelem, free_fp_, act_size);
+			ptmp 	= (uint8_t *)pmem_pool_->safe_ordered_malloc(ncachelem, free_fp_, act_size, use_malloc_hdr);
 		}
 		else {
 			ptmp	= (uint8_t *)malloc_or_throw(ncachelem * max_elem_sz_);
@@ -924,6 +927,27 @@ public :
 
 		return pcur_;
 	}
+
+	/*
+	 * Same as get_next_buffer() but check if new allocations allowed using chkfcb()
+	 * If false == chkfcb(), and new buffer needs to be allocated will return nullptr;
+	 * Can still cause exception if chkfcb() returns true and new buffer cannot be allocated...
+	 * Specify use_malloc_hdr as true if Pool used and THR_POOL_ALLOC::dealloc needs to be the free function
+	 */
+	template <typename FCB>
+	void * get_buffer_chked(FCB & chkfcb, bool use_malloc_hdr = false)
+	{
+		if (palloc_ && pcur_ >= palloc_) {
+			return pcur_;
+		}	
+
+		if (false == chkfcb()) {
+			// Don't allocate a new buffer
+			return nullptr;
+		}	
+
+		return get_next_buffer(use_malloc_hdr);
+	}	
 
 	/*
 	 * This call will update the internal cache size and if no more elements possible in cache will
@@ -954,9 +978,11 @@ public :
 
 			pcur_ 	+= sz;
 			ncurr_++;
-		
-			szpend	= pendptr_ - pcur_;
 		}
+
+		if (pcur_ != palloc_ + init_reserve_sz_) {
+			szpend	= pendptr_ - pcur_;
+		}	
 		else {
 			szpend = max_elem_sz_;
 		}	
@@ -1007,6 +1033,11 @@ public :
 		return ncurr_;
 	}
 
+	size_t get_max_elem_size() const noexcept
+	{
+		return max_elem_sz_;
+	}	
+
 	/*
 	 * Purge existing cache elems without freeing the memory
 	 */
@@ -1028,6 +1059,52 @@ public :
 	THR_POOL_ALLOC * get_pool() const noexcept
 	{
 		return pmem_pool_;
+	}	
+};	
+
+/*
+ * For use with struct DATA_BUFFER : See above...
+ */
+struct DATA_BUFFER_ELEM
+{
+	void 			*palloc_		{nullptr};
+	size_t 			sz_			{0};
+	FREE_FPTR 		free_fp_		{nullptr};
+	size_t 			nelems_			{0};
+
+	DATA_BUFFER_ELEM(void *palloc, size_t sz, FREE_FPTR free_fp, size_t nelems) noexcept
+		: palloc_(palloc), sz_(sz), free_fp_(free_fp), nelems_(nelems)
+	{}
+
+	DATA_BUFFER_ELEM() noexcept			= default;
+
+	~DATA_BUFFER_ELEM() noexcept
+	{
+		if (palloc_ && free_fp_) {
+			(*free_fp_)(palloc_);
+		}	
+
+		palloc_ = nullptr;
+	}
+
+	DATA_BUFFER_ELEM(const DATA_BUFFER_ELEM &)		= delete;
+
+	DATA_BUFFER_ELEM & operator= (const DATA_BUFFER_ELEM &)	= delete;
+
+	DATA_BUFFER_ELEM(DATA_BUFFER_ELEM && other) noexcept
+		: palloc_(std::exchange(other.palloc_, nullptr)), sz_(std::exchange(other.sz_, 0)),
+		free_fp_(other.free_fp_), nelems_(std::exchange(other.nelems_, 0))
+	{}
+
+	DATA_BUFFER_ELEM & operator= (DATA_BUFFER_ELEM && other) noexcept
+	{
+		if (this != &other) {
+			this->~DATA_BUFFER_ELEM();
+
+			new (this) DATA_BUFFER_ELEM(std::move(other));
+		}	
+
+		return *this;
 	}	
 };	
 

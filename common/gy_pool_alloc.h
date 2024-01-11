@@ -205,6 +205,7 @@ public :
 	}	
 };	
 
+
 /*
  * Allocations from a fixed thread with deallocations possible from multiple threads.
  * 
@@ -805,6 +806,24 @@ use_mal :
 		return false;
 	}	
 
+	using UNIQUE_PTR 		= FUNC_DELETE_PTR<void, THR_POOL_ALLOC::dealloc>;
+
+	/*
+	 * Calls this->malloc(). Must be called only from alloc thread only
+	 */
+	UNIQUE_PTR get_uniq(bool ignore_frees = false)
+	{
+		return UNIQUE_PTR(this->malloc(ignore_frees));
+	}	
+
+	/*
+	 * Calls this->ordered_malloc(). Must be called only from alloc thread only
+	 */
+	UNIQUE_PTR get_uniq_ordered(bool ignore_frees = false)
+	{
+		return UNIQUE_PTR(this->ordered_malloc(ignore_frees));
+	}	
+
 private :
 	int check_freeq(bool ignore_frees = false)
 	{
@@ -876,6 +895,9 @@ public :
 		THR_POOL_ALLOC::dealloc(pdata);
 	}	
 };	
+
+template <typename T = void>
+using UNIQUE_PTR_TPOOL = std::unique_ptr<T, TPOOL_DEALLOC<T>>;
 
 /*
  * User specified Bucketed Array of Threaded Allocator pools.

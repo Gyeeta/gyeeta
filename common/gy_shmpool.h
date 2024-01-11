@@ -8,7 +8,7 @@
 #include 			<sys/uio.h>
 
 /*
- * Non-blocking single/multi writer and a single blocking reader pool.
+ * Non-blocking single/multi writer and a single blocking reader variable length contiguous pool.
  * If multiple writers, the writers need to be synchronized externally using a mutex for e.g.
  *
  * Allows the reader to sweep multiple data sets in a single go due to the contiguous nature of the
@@ -334,7 +334,7 @@ start:
 			return 1;
 		}
 
-		if (lhead > 0xF7000000) { /*do not let logical values grow too big*/
+		if (lhead > 0xFD000000) { /*do not let logical values grow too big*/
 			if (use_lock == 0) {
 				use_lock_.store(1, std::memory_order_release);
 				use_lock = 1;

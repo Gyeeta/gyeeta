@@ -357,8 +357,9 @@ public :
 
 
 	API_PARSE_HDLR				& apihdlr_;
+	uint32_t				api_max_len_;
 
-	HTTP2_PROTO(API_PARSE_HDLR & apihdlr);
+	HTTP2_PROTO(API_PARSE_HDLR & apihdlr, uint32_t api_max_len);
 
 	~HTTP2_PROTO() noexcept;
 	
@@ -374,7 +375,7 @@ public :
 
 	void destroy(HTTP2_SESSINFO *pobj, void *pdata) noexcept;
 
-	
+	static void print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept;
 };	
 
 } // namespace gyeeta

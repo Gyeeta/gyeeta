@@ -5021,7 +5021,7 @@ CB_RET_E SHCONN_HANDLER::coalesce_svc_mesh_locked(SvcClusterMapsOne *pcluster, M
 			if (stmtstart == false) {
 				stmtstart = true;
 retry0 :
-				poutstr = pdbstr->appendconstcb(dbstrovf, "insert into public.svcmeshtbl values ");
+				poutstr = pdbstr->appendcb(dbstrovf, "insert into public.svcmeshtbl values "sv);
 
 				if (!poutstr && retrystr) {
 					retrystr = false;
@@ -5054,7 +5054,7 @@ retry2 :
 			}	
 
 retry3 :
-			poutstr = pdbstr->appendconstcb(dbstrovf, "]\')"); 
+			poutstr = pdbstr->appendcb(dbstrovf, "]\')"sv); 
 			
 			if (!poutstr && retrystr) {
 				retrystr = false;
@@ -5128,7 +5128,7 @@ retry3 :
 
 		if (stmtstart == true) {
 retry4 :
-			poutstr = pdbstr->appendconstcb(dbstrovf, ";\n"); 
+			poutstr = pdbstr->appendcb(dbstrovf, ";\n"sv); 
 			
 			if (!poutstr && retrystr) {
 				retrystr = false;
@@ -5599,7 +5599,7 @@ retry2 :
 		if (stmtstart == false) {
 			stmtstart = true;
 retry0 :
-			poutstr = pdbstr->appendconstcb(dbstrovf, "insert into public.svcnatiptbl values ");
+			poutstr = pdbstr->appendcb(dbstrovf, "insert into public.svcnatiptbl values "sv);
 
 			if (!poutstr && retrystr) {
 				retrystr = false;
@@ -5622,7 +5622,7 @@ retry1 :
 		pnat->elemtbl_.walk_hash_table(ewalk, pnat);
 		
 retry2 :
-		poutstr = pdbstr->appendconstcb(dbstrovf, "]\')"); 
+		poutstr = pdbstr->appendcb(dbstrovf, "]\')"sv); 
 		
 		if (!poutstr && retrystr) {
 			retrystr = false;
@@ -5636,7 +5636,7 @@ retry2 :
 	
 	if (stmtstart == true) {
 retry4 :
-		poutstr = pdbstr->appendconstcb(dbstrovf, ";\n"); 
+		poutstr = pdbstr->appendcb(dbstrovf, ";\n"sv); 
 		
 		if (!poutstr && retrystr) {
 			retrystr = false;

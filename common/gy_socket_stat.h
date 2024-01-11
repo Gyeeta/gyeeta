@@ -1062,7 +1062,8 @@ public :
 	SvcInodeMap				svcinodemap_;		// Only updated by inet_diag_thr_
 	std::optional<SVC_NET_CAPTURE>		svcnetcap_;
 	bool					capture_errcode_	{true};
-	bool					capture_api_call_	{false};
+	bool					disable_api_capture_	{false};
+	uint32_t				api_max_len_		{0};
 
 	int64_t					next_listen_stat_tsec_	{last_listener_nat_tsec_ + 5 * 60};
 
@@ -1083,7 +1084,7 @@ public :
 	MAKE_CLASS_FUNC_WRAPPER_NO_ARG(TCP_SOCK_HANDLER, inet_diag_thread);
 
 
-	TCP_SOCK_HANDLER(uint8_t resp_sampling_percent = 50, bool capture_errcode = true, bool capture_api_call = false);
+	TCP_SOCK_HANDLER(uint8_t resp_sampling_percent = 50, bool capture_errcode = true, bool disable_api_capture = false, uint32_t api_max_len = 0);
 
 	~TCP_SOCK_HANDLER()			= delete;		// No deletion allowed	
 
@@ -1185,7 +1186,7 @@ public :
 	using SOCK_INODE_SET			= std::unordered_set<ino_t, GY_JHASHER<ino_t>>;
 
 	static TCP_SOCK_HANDLER *		get_singleton() noexcept;
-	static int				init_singleton(uint8_t resp_sampling_percent = 30, bool capture_errcode = true, bool capture_api_call = false);
+	static int				init_singleton(uint8_t resp_sampling_percent = 30, bool capture_errcode = true, bool disable_api_capture = false, uint32_t api_max_len = 0);
 
 	struct LISTEN_STATS_CB
 	{

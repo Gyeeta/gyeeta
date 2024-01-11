@@ -6,6 +6,7 @@
 #include			"gy_net_parse.h"
 #include			"gy_task_types.h"
 #include			"gy_tls_proto.h"
+#include			"gy_proto_common.h"
 #include			"gy_http_proto_detail.h"
 #include			"gy_http2_proto_detail.h"
 #include			"gy_postgres_proto_detail.h"
@@ -14,7 +15,12 @@
 
 namespace gyeeta {
 
-POOL_ALLOC			*REORDER_PKT_HDR::greorderpools_[MAX_API_PARSERS] = {};		
+POOL_ALLOC					*REORDER_PKT_HDR::greorderpools_[MAX_API_PARSERS] = {};		
+std::optional<API_PARSE_HDLR::TranMsgPool>	API_PARSE_HDLR::gtranpool_;
+std::optional<GY_THREAD>			API_PARSE_HDLR::gtran_thr_;
+
+// Uncomment this to enable API Records print to file
+#define				GY_API_PRINT	"/tmp/gy_api_records___.txt"
 
 // Uncomment this to test the reorder handling
 /*#define				GY_TEST_REORDER_PKTS	10*/
@@ -215,19 +221,31 @@ static bool test_reorders(uint8_t parseridx, SVC_INFO_CAP *psvc, ParserMemPool::
 
 #endif /* GY_TEST_REORDER_PKTS */
 
-API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx)
-		: svcnet_(svcnet), parseridx_(parseridx)
+API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint32_t api_max_len)
+		: reqbuffer_(API_TRAN::get_max_elem_size(api_max_len), 256, 32, 128, sizeof(comm::COMM_HEADER) + sizeof(comm::EVENT_NOTIFY), false), 
+		svcnet_(svcnet), api_max_len_(api_max_len), parseridx_(parseridx)
 {
+	if (api_max_len_ > MAX_PARSE_API_LEN) {
+		GY_THROW_EXPRESSION("API Parser Initialiation : Invalid Max API Capture Length specified %u : Max allowed is %u", api_max_len_, MAX_PARSE_API_LEN);
+	}	
+
+	static_assert(MAX_API_PARSERS <= 4, "Please limit to max 4");
+
 	if (parseridx < MAX_API_PARSERS) {
 		REORDER_PKT_HDR::greorderpools_[parseridx] = &reorderpool_;
 
-		phttp1_.reset(new HTTP1_PROTO(*this));
-		phttp2_.reset(new HTTP2_PROTO(*this));
-		ppostgres_.reset(new POSTGRES_PROTO(*this));
+		phttp1_.reset(new HTTP1_PROTO(*this, api_max_len_));
+		phttp2_.reset(new HTTP2_PROTO(*this, api_max_len_));
+		ppostgres_.reset(new POSTGRES_PROTO(*this, api_max_len_));
 	}	
 	else {	
 		GY_THROW_EXPRESSION("API Parser Initialiation : Invalid Parser Index id specified %hhu : Max allowed is %lu", parseridx, MAX_API_PARSERS);
 	}	
+
+	if (parseridx == 0) {
+		gtranpool_.emplace(MAX_TRAN_STR_ELEM);
+		gtran_thr_.emplace("API Tranfer Thread", API_PARSE_HDLR::GET_PTHREAD_WRAPPER(api_xfer_thread), nullptr, nullptr, nullptr, true /* start_immed */, GY_UP_MB(2));
+	}
 }	
 
 API_PARSE_HDLR::~API_PARSE_HDLR() noexcept		= default;
@@ -1103,6 +1121,8 @@ void API_PARSE_HDLR::api_parse_rd_thr() noexcept
 {
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "API Capture initialized : API Parser thread init completed as well\n");
 
+	reqbuffer_.set_alloc_thrid(pthread_self());
+
 try1 :
 	try {
 		MSG_PKT_SVCCAP			*pmsgpkt;
@@ -1115,7 +1135,7 @@ try1 :
 		do {
 			PARSE_MSG_BUF			msg;
 
-			bret = msgpool_.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::microseconds(2 * GY_USEC_PER_SEC), msg);
+			bret = msgpool_.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::milliseconds(500), msg);
 			if (bret) {
 
 				switch (msg.index()) {
@@ -1202,6 +1222,143 @@ try1 :
 	goto try1;
 }	
 	
+
+uint8_t * API_PARSE_HDLR::get_xfer_pool_buf()
+{
+	uint8_t			*pbuf = (uint8_t *)reqbuffer_.get_buffer_chked(xfer_pool_allowed, true /* use_malloc_hdr */);
+
+	if (!pbuf) {
+		stats_.nxfer_pool_fail_++;
+	}	
+
+	return pbuf;
+}	
+
+
+bool API_PARSE_HDLR::set_xfer_buf_sz(size_t elemsz, bool force_flush)
+{
+	auto sendcb = [this](void *palloc, size_t sz, FREE_FPTR free_fp, size_t nelems) -> bool
+	{
+		DATA_BUFFER_ELEM		elem(palloc, sz, free_fp, nelems);
+		bool				bret;
+
+		// Now send the msg
+		for (int ntries = 0; ntries < 3; ++ntries) {
+			bret = gtranpool_->write(std::move(elem));
+
+			if (bret == true) {
+				return true;
+			}
+		}
+		
+		stats_.nxfer_pool_fail_ += nelems;
+
+		return false;
+	};	
+
+	return reqbuffer_.set_buffer_sz(sendcb, elemsz, force_flush);
+}	
+
+#ifdef GY_API_PRINT
+
+CONDDECLARE(
+static int			gapi_print_fd = open(GY_API_PRINT, O_RDWR | O_TRUNC | O_CREAT, 0644);	
+);
+
+#endif
+
+int API_PARSE_HDLR::api_xfer_thread(void * _) noexcept
+{
+	using namespace			comm;
+
+	if (!API_PARSE_HDLR::gtranpool_) {
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "API Transfer Pool not yet initialized. Returning from Transfer Thread...\n");
+		return -1;
+	}
+
+try1 :
+	try {
+		auto				& tranpool = *API_PARSE_HDLR::gtranpool_;
+
+		do {
+			DATA_BUFFER_ELEM 		elem;
+			bool				bret;
+
+			bret = tranpool.tryReadUntil(std::chrono::steady_clock::now() + std::chrono::seconds(5), elem);
+			if (bret) {
+				static constexpr size_t 	fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
+
+				if (!elem.palloc_ || elem.sz_ < fixed_sz) {
+					continue;
+				}
+
+				const COMM_HEADER		*phdr = (const COMM_HEADER *)elem.palloc_;
+				const EVENT_NOTIFY		*pnotify = (const EVENT_NOTIFY *)(phdr + 1);
+				ssize_t				totallen = phdr->get_act_len();
+
+				if (totallen < (ssize_t)fixed_sz || totallen > (ssize_t)elem.sz_) {
+					continue;
+				}	
+					
+
+#ifdef GY_API_PRINT
+				CONDEXEC(
+					static uint64_t			gnrecs = 0;
+
+					if (gapi_print_fd > 0 && gnrecs < 1'000'000) {
+
+						char				trec[32767];
+						PARSE_ALL_FIELDS		fields;
+						uint32_t			nelems = pnotify->nevents_;
+						API_TRAN			*pone = (API_TRAN *)(pnotify + 1);
+
+						totallen -= fixed_sz;
+
+						for (int i = 0; (unsigned)i < nelems && totallen >= (ssize_t)sizeof(API_TRAN); ++i) {
+							ssize_t elem_sz = pone->get_elem_size();
+
+							if (totallen < elem_sz) {
+								break;
+							}
+
+							auto			sv = get_api_tran(pone, fields);
+
+							if (sv.size()) {
+								char				stimebuf[128];
+
+								gy_time_print(stimebuf, sizeof(stimebuf), GY_USEC_TO_TIMEVAL(pone->treq_usec_));
+
+								gy_fdprintf(gapi_print_fd, trec, sizeof(trec) - 1, false, 
+									"[#%lu : Time %s, Req %s, Response %lu usec, Username %s, Appname %s, DBName %s, "
+									"Error Code %d, Error Text %s, Bytes In %lu, Bytes Out %lu]\n",
+									++gnrecs, stimebuf, sv.data(), pone->response_usec_, fields.username_.data(), fields.appname_.data(),
+									fields.dbname_.data(), pone->errorcode_, fields.errtxt_.data(), pone->reqlen_, pone->reslen_);
+							}
+
+							totallen -= elem_sz;
+
+							pone = (API_TRAN *)((uint8_t *)pone + elem_sz);
+						}
+
+					}
+				);
+
+#endif
+				// Send data TODO
+				
+			}	
+			else {
+				
+			}	
+
+		} while (true);	
+
+	}
+	GY_CATCH_MSG("Exception Caught in API Transfer Thread");
+
+	goto try1;
+}	
+	
 bool SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
 {
 	tlastpkt_	= hdr.tv_.tv_sec;
@@ -1229,8 +1386,8 @@ bool SVC_PARSE_STATS::update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept
 }
 
 
-COMMON_PROTO::COMMON_PROTO(PARSE_PKT_HDR & hdr) noexcept
-	: cli_ipport_(hdr.cliip_, hdr.cliport_), ser_ipport_(hdr.serip_, hdr.serport_)
+COMMON_PROTO::COMMON_PROTO(uint64_t glob_id, PARSE_PKT_HDR & hdr) noexcept
+	: cli_ipport_(hdr.cliip_, hdr.cliport_), ser_ipport_(hdr.serip_, hdr.serport_), glob_id_(glob_id)
 {
 	uint64_t			tusec = timeval_to_usec(hdr.tv_);
 
@@ -1312,7 +1469,7 @@ void COMMON_PROTO::upd_stats(PARSE_PKT_HDR & hdr) noexcept
  */
  
 SVC_SESSION::SVC_SESSION(SVC_INFO_CAP & svc, PARSE_PKT_HDR & hdr)
-	: common_(hdr), psvc_(&svc), proto_(svc.proto_)
+	: common_(svc.glob_id_, hdr), psvc_(&svc), proto_(svc.proto_)
 {
 	svc.stats_.nsessions_new_++;
 }	
@@ -2002,159 +2159,165 @@ void REORDER_PKT_HDR::operator delete(void *ptr, size_t sz)
 }	
 	
 
-bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata) noexcept
 {
-	auto				& common = sess.common_;
+	try {
+		auto				& common = sess.common_;
 
-	common.upd_stats(hdr);
+		common.upd_stats(hdr);
 
-	if (sess.to_delete()) {
-		return true;
-	}
-	
-	if (sess.reorder_active()) {
-		sess.reorder_.set_head_info(sess, hdr);
-	}	
+		if (sess.to_delete()) {
+			return true;
+		}
+		
+		if (sess.reorder_active()) {
+			sess.reorder_.set_head_info(sess, hdr);
+		}	
 
 #ifdef	GY_TEST_REORDER_PKTS
-	if (hdr.dir_ == DirPacket::DirInbound) {
-		gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
-	}
-	else {
-		gpcapwr.write_tcp_pkt(hdr.tv_, hdr.serip_, hdr.cliip_, hdr.serport_, hdr.cliport_, hdr.start_ser_seq_, hdr.nxt_cli_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
-	}	
+		if (hdr.dir_ == DirPacket::DirInbound) {
+			gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+		}
+		else {
+			gpcapwr.write_tcp_pkt(hdr.tv_, hdr.serip_, hdr.cliip_, hdr.serport_, hdr.cliport_, hdr.start_ser_seq_, hdr.nxt_cli_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
+		}	
 
-	gpcapwr.flush_file();
+		gpcapwr.flush_file();
 #endif
 
-	bool				is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST);
+		bool				is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST);
 
-	if (sess.pvarproto_.index() == 0) {
-		if (hdr.datalen_ == 0) {
-			if (is_finrst) {
-				sess.set_to_delete(true);
-			}
+		if (sess.pvarproto_.index() == 0) {
+			if (hdr.datalen_ == 0) {
+				if (is_finrst) {
+					sess.set_to_delete(true);
+				}
 
-			return true;
-		}	
+				return true;
+			}	
+			
+			switch (sess.proto_) {
+			
+			case PROTO_HTTP1 :
+				if (true) {
+					auto [psess, pdata]	 	= apihdlr_.phttp1_->alloc_sess(sess, hdr);
+
+					sess.pvarproto_ 		= psess;
+					sess.pdataproto_		= pdata;
+				}
+				break;
+
+			case PROTO_HTTP2 :
+				if (true) {
+					auto [psess, pdata]		= apihdlr_.phttp2_->alloc_sess(sess, hdr);
+
+					sess.pvarproto_ 		= psess;
+					sess.pdataproto_		= pdata;
+				}
+				break;
+
+			case PROTO_POSTGRES :
+				if (true) {
+					auto [psess, pdata]		= apihdlr_.ppostgres_->alloc_sess(sess, hdr);
+
+					sess.pvarproto_ 		= psess;
+					sess.pdataproto_		= pdata;
+				}
+				break;
+
+			default :
+				break;	
+			}	
+		}
+			
+		if (sess.is_pkt_drop()) {
+			stats_.ndroppkts_++;
+
+			stats_.ndropbytes_	+= (uint64_t)common.curr_req_drop_bytes_ + common.curr_resp_drop_bytes_;
+			stats_.ndropbytesin_	+= common.curr_req_drop_bytes_;
+			stats_.ndropbytesout_	+= common.curr_resp_drop_bytes_;
+		}
+			
+		if (hdr.datalen_ > 0) {	
+			switch (sess.proto_) {
+
+			case PROTO_HTTP1 :
+				if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&sess.pvarproto_); phttp1 && *phttp1) {
+
+					if (hdr.dir_ == DirPacket::DirInbound) {
+						apihdlr_.phttp1_->handle_request_pkt(**phttp1, sess, hdr, pdata);
+					}	
+					else {
+						apihdlr_.phttp1_->handle_response_pkt(**phttp1, sess, hdr, pdata);
+					}	
+				}
+				break;
+
+			case PROTO_HTTP2 :
+				if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&sess.pvarproto_); phttp2 && *phttp2) {
+
+					if (hdr.dir_ == DirPacket::DirInbound) {
+						apihdlr_.phttp2_->handle_request_pkt(**phttp2, sess, hdr, pdata);
+					}	
+					else {
+						apihdlr_.phttp2_->handle_response_pkt(**phttp2, sess, hdr, pdata);
+					}	
+				}
+				break;
+
+			case PROTO_POSTGRES :
+				if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+
+					if (hdr.dir_ == DirPacket::DirInbound) {
+						apihdlr_.ppostgres_->handle_request_pkt(**ppostgres, sess, hdr, pdata);
+					}	
+					else {
+						apihdlr_.ppostgres_->handle_response_pkt(**ppostgres, sess, hdr, pdata);
+					}	
+				}
+				break;
+
+			default :
+				break;	
+
+			}	
+		}
+
+		if (is_finrst) {
+			sess.set_to_delete(true);
 		
-		switch (sess.proto_) {
+			switch (sess.proto_) {
+
+			case PROTO_HTTP1 :
+				if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&sess.pvarproto_); phttp1 && *phttp1) {
+					apihdlr_.phttp1_->handle_session_end(**phttp1, sess, hdr);
+				}
+				break;
+
+			case PROTO_HTTP2 :
+				if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&sess.pvarproto_); phttp2 && *phttp2) {
+					apihdlr_.phttp2_->handle_session_end(**phttp2, sess, hdr);
+				}
+				break;
+
+			case PROTO_POSTGRES :
+				if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
+					apihdlr_.ppostgres_->handle_session_end(**ppostgres, sess, hdr);
+				}
+				break;
+
+			default :
+				break;	
+
+			}	
+		}
 		
-		case PROTO_HTTP1 :
-			if (true) {
-				auto [psess, pdata]	 	= apihdlr_.phttp1_->alloc_sess(sess, hdr);
-
-				sess.pvarproto_ 		= psess;
-				sess.pdataproto_		= pdata;
-			}
-			break;
-
-		case PROTO_HTTP2 :
-			if (true) {
-				auto [psess, pdata]		= apihdlr_.phttp2_->alloc_sess(sess, hdr);
-
-				sess.pvarproto_ 		= psess;
-				sess.pdataproto_		= pdata;
-			}
-			break;
-
-		case PROTO_POSTGRES :
-			if (true) {
-				auto [psess, pdata]		= apihdlr_.ppostgres_->alloc_sess(sess, hdr);
-
-				sess.pvarproto_ 		= psess;
-				sess.pdataproto_		= pdata;
-			}
-			break;
-
-		default :
-			break;	
-		}	
+		return false;
 	}
-		
-	if (sess.is_pkt_drop()) {
-		stats_.ndroppkts_++;
-
-		stats_.ndropbytes_	+= (uint64_t)common.curr_req_drop_bytes_ + common.curr_resp_drop_bytes_;
-		stats_.ndropbytesin_	+= common.curr_req_drop_bytes_;
-		stats_.ndropbytesout_	+= common.curr_resp_drop_bytes_;
-	}
-		
-	if (hdr.datalen_ > 0) {	
-		switch (sess.proto_) {
-
-		case PROTO_HTTP1 :
-			if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&sess.pvarproto_); phttp1 && *phttp1) {
-
-				if (hdr.dir_ == DirPacket::DirInbound) {
-					apihdlr_.phttp1_->handle_request_pkt(**phttp1, sess, hdr, pdata);
-				}	
-				else {
-					apihdlr_.phttp1_->handle_response_pkt(**phttp1, sess, hdr, pdata);
-				}	
-			}
-			break;
-
-		case PROTO_HTTP2 :
-			if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&sess.pvarproto_); phttp2 && *phttp2) {
-
-				if (hdr.dir_ == DirPacket::DirInbound) {
-					apihdlr_.phttp2_->handle_request_pkt(**phttp2, sess, hdr, pdata);
-				}	
-				else {
-					apihdlr_.phttp2_->handle_response_pkt(**phttp2, sess, hdr, pdata);
-				}	
-			}
-			break;
-
-		case PROTO_POSTGRES :
-			if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
-
-				if (hdr.dir_ == DirPacket::DirInbound) {
-					apihdlr_.ppostgres_->handle_request_pkt(**ppostgres, sess, hdr, pdata);
-				}	
-				else {
-					apihdlr_.ppostgres_->handle_response_pkt(**ppostgres, sess, hdr, pdata);
-				}	
-			}
-			break;
-
-		default :
-			break;	
-
-		}	
-	}
-
-	if (is_finrst) {
-		sess.set_to_delete(true);
-	
-		switch (sess.proto_) {
-
-		case PROTO_HTTP1 :
-			if (auto phttp1 = std::get_if<HTTP1_SESSINFO *>(&sess.pvarproto_); phttp1 && *phttp1) {
-				apihdlr_.phttp1_->handle_session_end(**phttp1, sess, hdr);
-			}
-			break;
-
-		case PROTO_HTTP2 :
-			if (auto phttp2 = std::get_if<HTTP2_SESSINFO *>(&sess.pvarproto_); phttp2 && *phttp2) {
-				apihdlr_.phttp2_->handle_session_end(**phttp2, sess, hdr);
-			}
-			break;
-
-		case PROTO_POSTGRES :
-			if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
-				apihdlr_.ppostgres_->handle_session_end(**ppostgres, sess, hdr);
-			}
-			break;
-
-		default :
-			break;	
-
-		}	
-	}
-	
-	return false;
+	GY_CATCH_EXPRESSION(
+		DEBUGEXECN(1, WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while parsing API protocol : %s", GY_GET_EXCEPT_STRING););
+		return false;
+	);	
 }	
 
 bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
@@ -2624,6 +2787,7 @@ void API_PARSER_STATS::operator -= (const API_PARSER_STATS & other) noexcept
 	ninvalid_pkt_		-=	other.ninvalid_pkt_;
 	ninvalid_msg_		-=	other.ninvalid_msg_;
 	nrdr_alloc_fails_	-=	other.nrdr_alloc_fails_;
+	nxfer_pool_fail_	-=	other.nxfer_pool_fail_;
 
 	nskip_pool_.fetch_sub_relaxed_0(other.nskip_pool_.load(mo_relaxed));
 }
@@ -2633,8 +2797,9 @@ void API_PARSER_STATS::print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint
 	strbuf << "Stats for "sv << (tcurrusec - tlastusec)/GY_USEC_PER_SEC << " sec : Service API Captures Started "sv << nsvcadd_ 
 	<< ", Captures Stopped "sv << nsvcdel_ << ", SSL Captures Started "sv << nsvcssl_on_ << ", SSL Captures Failed "sv << nsvcssl_fail_ 
 	<< ", Invalid Capture Packets "sv << ninvalid_pkt_ << ", Invalid Messages "sv << ninvalid_msg_ << ", Reorder Alloc Fails "sv 
-	<< nrdr_alloc_fails_ << ", Pkts skipped by Pool Blocks "sv << nskip_pool_.load(mo_relaxed) << "\n"sv;
-
+	<< nrdr_alloc_fails_ 
+	<< ", Requests Skipped by Transfer Pool Fails "sv << nxfer_pool_fail_
+	<< ", Pkts skipped by Pool Blocks "sv << nskip_pool_.load(mo_relaxed) << "\n"sv;
 }	
 
 
@@ -2663,7 +2828,33 @@ void API_PARSE_HDLR::print_stats() noexcept
 			strbuf.reset();
 		}	
 	}	
+
+	if (strbuf.bytes_left() < 1500) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+		strbuf.reset();
+	}	
+
+	HTTP1_PROTO::print_stats(strbuf, tcurrusec/GY_USEC_PER_SEC, tlast_print_usec_/GY_USEC_PER_SEC);
+
+	if (strbuf.bytes_left() < 1500) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+		strbuf.reset();
+	}	
+
+	HTTP2_PROTO::print_stats(strbuf, tcurrusec/GY_USEC_PER_SEC, tlast_print_usec_/GY_USEC_PER_SEC);
+
+	if (strbuf.bytes_left() < 1500) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+		strbuf.reset();
+	}	
+
+	POSTGRES_PROTO::print_stats(strbuf, tcurrusec/GY_USEC_PER_SEC, tlast_print_usec_/GY_USEC_PER_SEC);
 	
+	if (strbuf.bytes_left() < 1500) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+		strbuf.reset();
+	}	
+
 	auto				diffstats = stats_, & lstats = laststats_;
 
 	strbuf << "API Parser #"sv << parseridx_ << " Stats : \n"sv; 

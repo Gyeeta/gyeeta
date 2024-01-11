@@ -308,11 +308,16 @@ private :
 public :
 	COND_VAR<SCOPE_GY_MUTEX>		api_cond_;
 	GY_THREAD				api_thr_;		
+
+	/*
+	 * For now, only a single API Parser thread. Change to array if increased to over 1...
+	 */
 	std::unique_ptr<API_PARSE_HDLR>		apihdlr_;		// Updated lazily on API capture start
 	gy_atomic<uint32_t>			ncap_api_svc_		{0};
+	uint32_t				api_max_len_		{0};
 	gy_atomic<bool>				allow_api_cap_		{true};
 
-	SVC_NET_CAPTURE(ino_t rootnsid);
+	SVC_NET_CAPTURE(ino_t rootnsid, bool disable_api_capture = false, uint32_t api_max_len = 0);
 
 	bool is_svc_cap_allowed(bool isapicall) const noexcept
 	{

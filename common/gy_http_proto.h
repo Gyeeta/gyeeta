@@ -165,8 +165,9 @@ public :
 
 
 	API_PARSE_HDLR				& apihdlr_;
+	uint32_t				api_max_len_;
 
-	HTTP1_PROTO(API_PARSE_HDLR & apihdlr);
+	HTTP1_PROTO(API_PARSE_HDLR & apihdlr, uint32_t api_max_len);
 
 	~HTTP1_PROTO() noexcept;
 	
@@ -181,6 +182,8 @@ public :
 	std::pair<HTTP1_SESSINFO *, void *> alloc_sess(SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
 
 	void destroy(HTTP1_SESSINFO *pobj, void *pdata) noexcept;
+
+	static void print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept;
 
 };
 

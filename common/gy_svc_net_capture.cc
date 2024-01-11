@@ -27,22 +27,28 @@ SVC_NET_CAPTURE * SVC_NET_CAPTURE::get_singleton() noexcept
  *
  * Please do not assume the errschedthr_ or apischedthr_ will always run in root Network Namespace
  */
-SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid)
+SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid, bool disable_api_capture, uint32_t api_max_len)
 	: rootnsid_(rootnsid),
-	api_thr_("API Parser Thread", SVC_NET_CAPTURE::GET_PTHREAD_WRAPPER(api_parse_thread), this, nullptr, nullptr, true, 2 * 1024 * 1024, 2000, true, true, true, 10000, false)
+	api_thr_("API Parser Thread", SVC_NET_CAPTURE::GET_PTHREAD_WRAPPER(api_parse_thread), this, nullptr, nullptr, true, 2 * 1024 * 1024, 2000, true, true, true, 10000, false),
+	api_max_len_(api_max_len)
 {
 	const auto		*pcpumem = CPU_MEM_INFO::get_singleton();
 
 	if (pcpumem) {
-		if (auto tcpu = pcpumem->get_number_of_cores(); tcpu == 1) {
+		if (auto tcpu = pcpumem->get_number_of_cores(); tcpu == 1 && !disable_api_capture) {
 			WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Host CPU Count allowed is too low (%u). API Captures Disabled..\n", tcpu);
 			allow_api_cap_.store(false, mo_relaxed);
 		}	
-		else if (auto tmem = GY_DOWN_GB(pcpumem->get_total_memory()); tmem < 2) {
+		else if (auto tmem = GY_DOWN_GB(pcpumem->get_total_memory()); tmem < 2 && !disable_api_capture) {
 			WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Host System Memory is too low (%lu GB). API Captures Disabled..\n", tmem);
 			allow_api_cap_.store(false, mo_relaxed);
 		}	
 	}
+
+	if (disable_api_capture) {
+		WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "API Captures Disabled due to config option...\n");
+		allow_api_cap_.store(false, mo_relaxed);
+	}	
 
 	if (nullptr == GY_READ_ONCE(pgsvccap)) {
 		pgsvccap = this;
@@ -328,7 +334,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 		uint32_t			naddsvc = 0, ndelsvc = 0, ncapsvc = ncap_api_svc_.load(mo_relaxed), ncapcache = 0;
 
 		if (allow_api_cap_.load(mo_relaxed) == false) {
-			WARNPRINT_OFFLOAD("Cannot start Network API Capture as Capture disabled which may be because of inadequate hardware resources...\n");
+			WARNPRINT_OFFLOAD("Cannot start Network API Capture as Capture disabled which may be because of inadequate hardware resources or config option...\n");
 			return;
 		}
 
@@ -2029,7 +2035,7 @@ void SVC_NET_CAPTURE::init_api_cap_handler()
 
 	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Initializing API Capture Data structures : API Captures can be initiated thereafter...\n");
 
-	apihdlr_.reset(new API_PARSE_HDLR(*this, 0 /* parseridx */));
+	apihdlr_.reset(new API_PARSE_HDLR(*this, 0 /* parseridx */, api_max_len_));
 	
 	auto lam1 = []() { return true; };
 

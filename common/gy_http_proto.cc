@@ -7,8 +7,8 @@
 
 namespace gyeeta {
 
-HTTP1_PROTO::HTTP1_PROTO(API_PARSE_HDLR & apihdlr)
-	: apihdlr_(apihdlr)
+HTTP1_PROTO::HTTP1_PROTO(API_PARSE_HDLR & apihdlr, uint32_t api_max_len)
+	: apihdlr_(apihdlr), api_max_len_(api_max_len)
 {}	
 
 HTTP1_PROTO::~HTTP1_PROTO() noexcept		= default;
@@ -40,6 +40,11 @@ void HTTP1_PROTO::handle_session_end(HTTP1_SESSINFO & sess, SVC_SESSION & svcses
 }	
 
 void HTTP1_PROTO::handle_ssl_change(HTTP1_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
+{
+
+}
+
+void HTTP1_PROTO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept
 {
 
 }

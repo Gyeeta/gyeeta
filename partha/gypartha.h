@@ -34,10 +34,11 @@ public :
 
 		uint8_t				response_sampling_percent			{100};
 		bool				capture_errcode					{true};
-		bool				capture_api_call				{false};
+		bool				disable_api_capture				{false};
 		uint8_t				enable_task_delays				{1};
 		bool				auto_respawn_on_exit				{true};
 		bool				is_kubernetes					{false};
+		uint32_t			api_max_len					{4096};
 		bool				log_use_utc_time				{false};
 
 		PA_SETTINGS_C(char *pjson);

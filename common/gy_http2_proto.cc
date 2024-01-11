@@ -7,8 +7,8 @@
 
 namespace gyeeta {
 
-HTTP2_PROTO::HTTP2_PROTO(API_PARSE_HDLR & apihdlr)
-	: apihdlr_(apihdlr)
+HTTP2_PROTO::HTTP2_PROTO(API_PARSE_HDLR & apihdlr, uint32_t api_max_len)
+	: apihdlr_(apihdlr), api_max_len_(api_max_len)
 {}	
 
 HTTP2_PROTO::~HTTP2_PROTO() noexcept		= default;
@@ -43,6 +43,12 @@ void HTTP2_PROTO::handle_ssl_change(HTTP2_SESSINFO & sess, SVC_SESSION & svcsess
 {
 
 }
+
+void HTTP2_PROTO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept
+{
+
+}
+
 
 } // namespace gyeeta
 

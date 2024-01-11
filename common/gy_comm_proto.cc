@@ -2,6 +2,7 @@
 //  SPDX-License-Identifier: GPL-3.0-or-later
 
 #include 			"gy_comm_proto.h"
+#include			"gy_proto_common.h"
 
 namespace gyeeta {
 namespace comm {
@@ -1444,6 +1445,62 @@ bool ALERT_STAT_INFO::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnot
 	return (i == nelems);
 }	
 
+} // namespace comm
+
+
+bool API_TRAN::validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY *pnotify) noexcept
+{
+	using namespace			comm;
+
+	static constexpr size_t 	fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
+
+	if (phdr->get_act_len() < fixed_sz) {
+		return false;
+	}	
+	
+	ssize_t				totallen = phdr->get_act_len();
+	const uint32_t			nelems = pnotify->nevents_;
+	API_TRAN			*pone = (API_TRAN *)(pnotify + 1);
+	uint32_t			i;
+
+	if (nelems > MAX_NUM_REQS) {
+		return false;
+	}
+
+	totallen -= fixed_sz;
+
+	for (i = 0; i < nelems && totallen >= (ssize_t)sizeof(API_TRAN); ++i) {
+		ssize_t elem_sz = pone->get_elem_size();
+
+		if (totallen < elem_sz) {
+			return false;
+		}
+
+		if (elem_sz & (8 - 1)) {
+			// Padding issue
+			return false;
+		}	
+
+		if (pone->request_len_ == 0 || pone->request_len_ > MAX_PARSE_API_LEN) {
+			return false;
+		}
+		
+		if (pone->lenext_ > MAX_PARSE_EXT_LEN) {
+			return false;
+		}	
+
+		*((uint8_t *)pone + sizeof(*pone) + pone->request_len_  - 1) = '\0';
+
+		totallen -= elem_sz;
+
+		pone = (API_TRAN *)((uint8_t *)pone + elem_sz);
+	}
+	
+	return (i == nelems);
+}	
+
+namespace comm {
+
 bool MS_REG_PARTHA::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 {
 	static constexpr size_t 	fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
@@ -1475,8 +1532,8 @@ bool MS_REG_PARTHA::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotif
 	return true;
 }	
 
-
-
 } // namespace comm
+
+
 } // namespace gyeeta
 

@@ -39,7 +39,7 @@ namespace gyeeta {
 
 using namespace gyeeta::comm;	
 
-TCP_SOCK_HANDLER::TCP_SOCK_HANDLER(uint8_t resp_sampling_percent, bool capture_errcode, bool capture_api_call) : 
+TCP_SOCK_HANDLER::TCP_SOCK_HANDLER(uint8_t resp_sampling_percent, bool capture_errcode, bool disable_api_capture, uint32_t api_max_len) : 
 	ptask_handler_( 
 		({	
 			if (nullptr == SYSTEM_STATS::get_singleton()) {
@@ -85,7 +85,7 @@ TCP_SOCK_HANDLER::TCP_SOCK_HANDLER(uint8_t resp_sampling_percent, bool capture_e
 	diag_cache_(comm::TCP_CONN_NOTIFY::get_max_elem_size(), 4096, 256, comm::TCP_CONN_NOTIFY::MAX_NUM_CONNS, sizeof(comm::COMM_HEADER) + sizeof(comm::EVENT_NOTIFY), false), 
 	netns_tbl_(128),
 	inet_diag_thr_("Inet Diag Thread", TCP_SOCK_HANDLER::GET_PTHREAD_WRAPPER(inet_diag_thread), this, nullptr, nullptr, true, 1024 * 1024, 2000, true, true, true, 10000, false),
-	capture_errcode_(capture_errcode || capture_api_call), capture_api_call_(capture_api_call),
+	capture_errcode_(capture_errcode), disable_api_capture_(disable_api_capture), api_max_len_(api_max_len),
 	missed_cache_(comm::TCP_CONN_NOTIFY::get_max_elem_size(), 128, 16, 64, sizeof(comm::COMM_HEADER) + sizeof(comm::EVENT_NOTIFY), false), 
 	pebpf_(
 		({
@@ -118,7 +118,7 @@ TCP_SOCK_HANDLER::TCP_SOCK_HANDLER(uint8_t resp_sampling_percent, bool capture_e
 	auto schedshr = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION);
 	auto schedshrmain = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_MAINTENANCE);
 
-	svcnetcap_.emplace(SYS_HARDWARE::get_root_ns_inodes()->net_inode);
+	svcnetcap_.emplace(SYS_HARDWARE::get_root_ns_inodes()->net_inode, disable_api_capture_, api_max_len_);
 
 	schedshr->add_schedule(1400, 1000, 0, "Check for NAT from cache", 
 	[this] { 
@@ -8623,7 +8623,7 @@ int TCP_SOCK_HANDLER::inet_diag_thread() noexcept
 
 				if (svcinodemap_.size() > 0 && bool(svcnetcap_)) {
 					// Need to send svc net captures
-					svcnetcap_->sched_add_listeners(0, "Service Network Capture Add Listeners", std::move(svcinodemap_), capture_api_call_);
+					svcnetcap_->sched_add_listeners(0, "Service Network Capture Add Listeners", std::move(svcinodemap_), false /* isapicall */);
 				}
 				
 				CONDEXEC( 
@@ -9286,7 +9286,7 @@ TCP_SOCK_HANDLER * TCP_SOCK_HANDLER::get_singleton() noexcept
 	return pgtcp_sock_;
 }	
 	
-int TCP_SOCK_HANDLER::init_singleton(uint8_t resp_sampling_percent, bool capture_errcode, bool capture_api_call)
+int TCP_SOCK_HANDLER::init_singleton(uint8_t resp_sampling_percent, bool capture_errcode, bool disable_api_capture, uint32_t api_max_len)
 {
 	int					texp = 0, tdes = 1;
 	static std::atomic<int>			is_init_done(0);
@@ -9309,7 +9309,7 @@ int TCP_SOCK_HANDLER::init_singleton(uint8_t resp_sampling_percent, bool capture
 
 		pgtcp_sock_ = (TCP_SOCK_HANDLER *)ptmpalloc;
 
-		new (pgtcp_sock_) TCP_SOCK_HANDLER(resp_sampling_percent, capture_errcode, capture_api_call);
+		new (pgtcp_sock_) TCP_SOCK_HANDLER(resp_sampling_percent, capture_errcode, disable_api_capture, api_max_len);
 
 		return 0;
 	}

@@ -9,6 +9,7 @@
 #include			"gy_ssl_cap_common.h"
 #include			"gy_stack_container.h"
 #include			"gy_pool_alloc.h"
+#include			"gy_proto_common.h"
 
 #include 			"folly/container/F14Map.h"
 #include			"folly/MPMCQueue.h"
@@ -19,57 +20,11 @@
 
 namespace gyeeta {
 
-static constexpr uint32_t			MAX_PARSE_API_LEN	{16 * 1024};	
 static constexpr uint32_t			MAX_PARSE_CONC_SESS	{16 * 1024};	
 static constexpr uint32_t			MAX_PARSE_POOL_PKT	{100'000};
 static constexpr uint32_t			MAX_REORDER_PKTS	{20000};
 static constexpr size_t				MAX_API_PARSERS		{1};			// Currently only single threaded parser
 
-enum PROTO_TYPES : uint16_t 
-{
-	PROTO_UNINIT				= 0,
-
-	PROTO_HTTP1,
-	PROTO_HTTP2,
-	PROTO_POSTGRES,
-	PROTO_MYSQL,
-	PROTO_MONGO,
-	PROTO_REDIS,
-
-	PROTO_UNKNOWN
-};	
-
-static constexpr const char * proto_to_string(PROTO_TYPES proto) noexcept
-{
-	constexpr const char		*protostr[PROTO_UNKNOWN + 1] = {
-		[PROTO_UNINIT] = "Uninitialized", [PROTO_HTTP1] = "HTTP1.x", [PROTO_HTTP2] = "HTTP2", 
-		[PROTO_POSTGRES] = "Postgres", [PROTO_MYSQL] = "MySQL", [PROTO_MONGO] = "Mongo", 
-		[PROTO_REDIS] = "Redis", 
-
-		[PROTO_UNKNOWN] = "Unknown",
-	};	
-
-	if ((unsigned)proto < PROTO_UNKNOWN) {
-		return protostr[proto] ? protostr[proto] : "";
-	}	
-
-	return "Invalid";
-}	
-
-static bool ssl_multiplexed_proto(PROTO_TYPES proto) noexcept
-{
-	switch (proto) {
-	
-	case PROTO_POSTGRES :
-	case PROTO_MYSQL :
-	case PROTO_MONGO :
-	case PROTO_REDIS :
-		return true;
-
-	default :
-		return false;
-	}	
-}
 
 enum API_CAP_SRC : uint8_t
 {
@@ -98,6 +53,21 @@ static constexpr const char * capsrc_to_string(API_CAP_SRC src) noexcept
 
 	return "Invalid";
 }	
+
+static bool ssl_multiplexed_proto(PROTO_TYPES proto) noexcept
+{
+	switch (proto) {
+	
+	case PROTO_POSTGRES :
+	case PROTO_MYSQL :
+	case PROTO_MONGO :
+	case PROTO_REDIS :
+		return true;
+
+	default :
+		return false;
+	}	
+}
 
 enum DROP_TYPES : uint8_t 
 {
@@ -374,6 +344,7 @@ struct COMMON_PROTO
 
 	IP_PORT					cli_ipport_;
 	IP_PORT					ser_ipport_;
+	uint64_t				glob_id_		{0};
 
 	uint32_t				nxt_cli_seq_		{0};
 	uint32_t				nxt_ser_seq_		{0};
@@ -393,7 +364,7 @@ struct COMMON_PROTO
 
 	COMMON_PROTO() noexcept			= default;
 
-	COMMON_PROTO(PARSE_PKT_HDR & hdr) noexcept;
+	COMMON_PROTO(uint64_t glob_id, PARSE_PKT_HDR & hdr) noexcept;
 
 	void set_src_chg(PARSE_PKT_HDR & hdr) noexcept;
 
@@ -563,7 +534,7 @@ public :
 
 	bool parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
-	bool do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
+	bool do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata) noexcept;
 
 	bool proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
@@ -655,6 +626,7 @@ struct API_PARSER_STATS
 	uint64_t				ninvalid_pkt_		{0};
 	uint64_t				ninvalid_msg_		{0};
 	uint64_t				nrdr_alloc_fails_	{0};
+	uint64_t				nxfer_pool_fail_	{0};
 
 	alignas(64) gy_atomic<uint64_t>		nskip_pool_		{0};
 
@@ -666,6 +638,7 @@ class API_PARSE_HDLR
 {
 public :
 	using ParMsgPool			= folly::MPMCQueue<PARSE_MSG_BUF>;
+	using TranMsgPool			= folly::MPMCQueue<DATA_BUFFER_ELEM>;
 	using SvcInfoIdMap 			= folly::F14NodeMap<uint64_t, std::shared_ptr<SVC_INFO_CAP>, HASH_SAME_AS_KEY<uint64_t>>;
 	using SvcInfoIdPtrMap 			= folly::F14NodeMap<uint64_t, SVC_INFO_CAP *, HASH_SAME_AS_KEY<uint64_t>>;
 	using SvcInfoPortMap 			= folly::F14NodeMap<NS_IP_PORT, std::shared_ptr<SVC_INFO_CAP>, NS_IP_PORT::ANY_IP, NS_IP_PORT::ANY_IP>;
@@ -673,8 +646,10 @@ public :
 	ParserMemPool				parsepool_		{MAX_PARSE_POOL_PKT};
 	ParMsgPool				msgpool_		{MAX_PARSE_POOL_PKT + 1000};
 	POOL_ALLOC				reorderpool_		{sizeof(REORDER_PKT_HDR), MAX_REORDER_PKTS};	// Only from parser thread
+	DATA_BUFFER				reqbuffer_;
 	API_PARSER_STATS			stats_;
 	API_PARSER_STATS			laststats_;
+
 	uint64_t				tstartusec_		{get_usec_time()};
 	uint64_t				tlast_rdrchk_usec_	{tstartusec_};
 	uint64_t				tlast_svc_chk_usec_	{tstartusec_};
@@ -686,6 +661,7 @@ public :
 
 	SVC_NET_CAPTURE				& svcnet_;
 	SSL_CAP_SVC				sslcap_;
+	uint32_t				api_max_len_		{0};
 	std::atomic<bool>			allow_ssl_probe_	{SSL_CAP_SVC::ssl_uprobes_allowed()};
 	uint8_t					parseridx_		{0};
 	
@@ -701,12 +677,15 @@ protected :
 	friend class				SVC_INFO_CAP;
 
 public :
+
+	static std::optional<TranMsgPool>	gtranpool_;
+	static std::optional<GY_THREAD>		gtran_thr_;
 	
 	static constexpr uint64_t		REORDER_CHK_SEC		{2};
 	static constexpr uint64_t		SVC_CHK_SEC		{30};
 	static constexpr uint64_t		PRINT_STATS_SEC		{60};
 
-	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx);
+	API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint32_t api_max_len);
 
 	~API_PARSE_HDLR() noexcept;
 
@@ -714,6 +693,13 @@ public :
 
 	void api_parse_rd_thr() noexcept;
 
+	static int api_xfer_thread(void *) noexcept;
+
+	MAKE_PTHREAD_FUNC_WRAPPER(api_xfer_thread);
+
+	uint8_t * get_xfer_pool_buf();
+
+	bool set_xfer_buf_sz(size_t elemsz, bool force_flush = false);
 
 	static bool is_valid_pool_idx(uint32_t idx, bool is_reorder) noexcept
 	{
@@ -724,6 +710,11 @@ public :
 	{
 		return src == SRC_PCAP;
 	}	
+
+	static bool xfer_pool_allowed() noexcept
+	{
+		return gtranpool_->sizeGuess() < MAX_TRAN_STR_ELEM * 0.8;
+	};	
 
 private :
 	bool handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept;

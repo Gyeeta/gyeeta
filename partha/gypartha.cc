@@ -22,6 +22,7 @@
 #include		"gy_rapidjson.h"
 #include		"gy_query_common.h"
 #include		"gy_libcurl.h"
+#include		"gy_proto_common.h"
 
 #include 		<sys/utsname.h>
 
@@ -125,7 +126,7 @@ int PARTHA_C::init_all_singletons()
 	
 	DNS_MAPPING::init_singleton();
 
-	TCP_SOCK_HANDLER::init_singleton(psettings_->response_sampling_percent, psettings_->capture_errcode, psettings_->capture_api_call);
+	TCP_SOCK_HANDLER::init_singleton(psettings_->response_sampling_percent, psettings_->capture_errcode, psettings_->disable_api_capture, psettings_->api_max_len);
 
 	TASKSTATS_HDLR::init_singleton();
 
@@ -334,6 +335,13 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);		// kNumberType is just a placeholder
 	}	
 
+	penv = getenv("CFG_DISABLE_API_CAPTURE");
+	if (penv) {
+		ewriter.KeyConst("disable_api_capture");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);		// kNumberType is just a placeholder
+	}	
+
+
 	penv = getenv("CFG_ENABLE_TASK_DELAYS");
 	if (penv) {
 		ewriter.KeyConst("enable_task_delays");
@@ -351,6 +359,13 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		ewriter.KeyConst("is_kubernetes");
 		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
 	}	
+
+	penv = getenv("CFG_API_MAX_LEN");
+	if (penv) {
+		ewriter.KeyConst("api_max_len");
+		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);	
+	}	
+	
 
 	penv = getenv("CFG_LOG_USE_UTC_TIME");
 	if (penv) {
@@ -394,6 +409,7 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		"auto_respawn_on_exit"		:	true,
 		"is_kubernetes"			:	true,
 		"enable_task_delays"		:	2,
+		"api_max_len"			:	4096,
 		"log_use_utc_time"		:	false
 	}
 	 */ 
@@ -523,15 +539,12 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		capture_errcode = aiter->value.GetBool();
 	}	
 
-#if 0		
-	if (aiter = edoc.FindMember("capture_api_call"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
-		capture_api_call = aiter->value.GetBool();
+	if (aiter = edoc.FindMember("disable_api_capture"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
+		disable_api_capture = aiter->value.GetBool();
 	}	
-	else if (aiter = doc.FindMember("capture_api_call"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
-		capture_api_call = aiter->value.GetBool();
+	else if (aiter = doc.FindMember("disable_api_capture"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
+		disable_api_capture = aiter->value.GetBool();
 	}	
-#endif
-
 
 	if (aiter = edoc.FindMember("enable_task_delays"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsInt()))) {
 		enable_task_delays = aiter->value.GetInt();
@@ -553,6 +566,24 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 	else if (aiter = doc.FindMember("is_kubernetes"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		is_kubernetes = aiter->value.GetBool();
 	}	
+
+	if (aiter = edoc.FindMember("api_max_len"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsInt()))) {
+		api_max_len = aiter->value.GetInt();
+	}	
+	else if (aiter = doc.FindMember("api_max_len"); ((aiter != doc.MemberEnd()) && (aiter->value.IsInt()))) {
+		api_max_len = aiter->value.GetInt();
+	}	
+	else {
+		api_max_len = DFLT_MAX_API_LEN;
+	}	
+
+	if (api_max_len < 1024) {
+		api_max_len = 1024;
+	}	
+	else if (api_max_len > MAX_PARSE_API_LEN) {
+		GY_THROW_EXCEPTION("Invalid Partha Config : Config option api_max_len %u not valid : Max allowed %u", api_max_len, MAX_PARSE_API_LEN);
+	}	
+
 
 	if (aiter = edoc.FindMember("log_use_utc_time"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		log_use_utc_time = aiter->value.GetBool();
@@ -1462,9 +1493,13 @@ static int start_partha(int argc, char **argv)
 						hash_cfg_shyama_hosts	= fnv1_consthash("--cfg_shyama_hosts"),	hash_cfg_shyama_ports	= fnv1_consthash("--cfg_shyama_ports"),
 						hash_cfg_response_sampling_pct	= fnv1_consthash("--cfg_response_sampling_percent"),
 						hash_cfg_capture_errcode	= fnv1_consthash("--cfg_capture_errcode"),
+						hash_cfg_disable_api_capture	= fnv1_consthash("--cfg_disable_api_capture"),
 						hash_cfg_enable_task_delays	= fnv1_consthash("--cfg_enable_task_delays"),
 						hash_cfg_auto_respawn_on_exit	= fnv1_consthash("--cfg_auto_respawn_on_exit"),
 						hash_cfg_is_kubernetes		= fnv1_consthash("--cfg_is_kubernetes"),
+						hash_cfg_api_max_len		= fnv1_consthash("--cfg_api_max_len"),
+					
+						// Misc Config Options
 						hash_cfg_log_use_utc_time	= fnv1_consthash("--cfg_log_use_utc_time"),
 						hash_cfg_json_file		= fnv1_consthash("--cfg_json_file");
 
@@ -1588,6 +1623,14 @@ static int start_partha(int argc, char **argv)
 				}
 				break;
 
+			case hash_cfg_disable_api_capture :
+				if (i + 1 < argc) {
+					setenv("CFG_DISABLE_API_CAPTURE", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+
 			case hash_cfg_enable_task_delays :
 				if (i + 1 < argc) {
 					setenv("CFG_ENABLE_TASK_DELAYS", argv[i + 1], 1);
@@ -1609,6 +1652,17 @@ static int start_partha(int argc, char **argv)
 					i++;
 				}
 				break;
+
+
+			case hash_cfg_api_max_len :
+				
+				if (i + 1 < argc) {
+					setenv("CFG_API_MAX_LEN", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+
 
 			case hash_cfg_log_use_utc_time :
 				

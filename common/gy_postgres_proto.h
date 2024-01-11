@@ -89,6 +89,144 @@ public :
 		B_AUTH_SASL			= 10,
 	};	
 
+	/*
+	 * tran_type definitions :
+	 */
+	enum PG_TRAN_TYPES_E : int
+	{
+		TYPE_PG_LOGIN			= 1 << 0,
+		TYPE_PG_NORMAL_REQ		= 1 << 1,
+		TYPE_PG_FUNCTION_CALL		= 1 << 2,
+		TYPE_PG_DSQL_PREPARE		= 1 << 3,
+		TYPE_PG_DSQL_EXEC		= 1 << 4,
+		TYPE_PG_DSQL_BIND		= 1 << 5,
+		TYPE_PG_DSQL_DEALLOC		= 1 << 6,
+		TYPE_PG_DSQL_DESCRIBE		= 1 << 7,
+		TYPE_PG_BULK_TRAN		= 1 << 8,
+		TYPE_PG_CANCEL_QUERY		= 1 << 9,
+
+		TYPE_PG_MISC			= 1 << 30,
+		TYPE_PG_LOGOUT			= 1 << 31,
+	};
+
+
+	/*
+	 * select typname,oid from pg_type;
+	 */ 
+	enum PG_OID_E : int 
+	{
+		OID_PG_BOOL			=    16,
+		OID_PG_BYTEA			=    17,
+		OID_PG_CHAR			=    18,
+		OID_PG_NAME			=    19,
+		OID_PG_INT8			=    20,
+		OID_PG_INT2			=    21,
+		OID_PG_INT2VECTOR		=    22,
+		OID_PG_INT4			=    23,
+		OID_PG_REGPROC			=    24,
+		OID_PG_TEXT			=    25,
+		OID_PG_OID			=    26,
+		OID_PG_TID			=    27,
+		OID_PG_XID			=    28,
+		OID_PG_CID			=    29,
+		OID_PG_OIDVECTOR		=    30,
+		OID_PG_JSON			=   114,
+		OID_PG_XML			=   142,
+		OID_PG_POINT			=   600,
+		OID_PG_LSEG			=   601,
+		OID_PG_PATH			=   602,
+		OID_PG_BOX			=   603,
+		OID_PG_POLYGON			=   604,
+		OID_PG_LINE			=   628,
+		OID_PG_FLOAT4			=   700,
+		OID_PG_FLOAT8			=   701,
+		OID_PG_UNKNOWN			=   705,
+		OID_PG_CIRCLE			=   718,
+		OID_PG_MONEY			=   790,
+		OID_PG_MACADDR			=   829,
+		OID_PG_INET			=   869,
+		OID_PG_CIDR			=   650,
+		OID_PG_MACADDR8			=   774,
+		OID_PG_ACLITEM			=  1033,
+		OID_PG_BPCHAR			=  1042,
+		OID_PG_VARCHAR			=  1043,
+		OID_PG_DATE			=  1082,
+		OID_PG_TIME			=  1083,
+		OID_PG_TIMESTAMP		=  1114,
+		OID_PG_TIMESTAMPTZ		=  1184,
+		OID_PG_INTERVAL			=  1186,
+		OID_PG_TIMETZ			=  1266,
+		OID_PG_BIT			=  1560,
+		OID_PG_VARBIT			=  1562,
+		OID_PG_NUMERIC			=  1700,
+		OID_PG_REFCURSOR		=  1790,
+		OID_PG_UUID			=  2950,
+		OID_PG_TSVECTOR			=  3614,
+		OID_PG_GTSVECTOR		=  3642,
+		OID_PG_TSQUERY			=  3615,
+		OID_PG_JSONB			=  3802,
+		OID_PG_JSONPATH			=  4072,
+		OID_PG_INT4RANGE		=  3904,
+		OID_PG_NUMRANGE			=  3906,
+		OID_PG_TSRANGE			=  3908,
+		OID_PG_TSTZRANGE		=  3910,
+		OID_PG_DATERANGE		=  3912,
+		OID_PG_INT8RANGE		=  3926,
+		OID_PG_INT4MULTIRANGE		=  4451,
+		OID_PG_NUMMULTIRANGE		=  4532,
+		OID_PG_TSMULTIRANGE		=  4533,
+		OID_PG_TSTZMULTIRANGE		=  4534,
+		OID_PG_DATEMULTIRANGE		=  4535,
+		OID_PG_INT8MULTIRANGE		=  4536,
+		OID_PG_XID8			=  5069,
+		OID_PG_RECORD			=  2249,
+		OID_PG_CSTRING			=  2275,
+		OID_PG_VOID			=  2278,
+	};
+
+	/*
+	 * We currently only supports a small subset of binary param types
+	 */
+	static inline bool binary_param_ok(PG_OID_E oid) noexcept
+	{
+		switch (oid) {
+
+		case OID_PG_CHAR : 
+		case OID_PG_INT8 : 
+		case OID_PG_INT2 : 
+		case OID_PG_INT4 : 
+		case OID_PG_FLOAT4 : 
+		case OID_PG_FLOAT8 : 
+		case OID_PG_TEXT : 
+		case OID_PG_VARCHAR : 
+		case OID_PG_CSTRING : 
+			return true;
+
+		default :
+			return false;
+		}	
+	}	
+
+	static inline bool is_int_param(PG_OID_E oid) noexcept
+	{
+		switch (oid) {
+
+		case OID_PG_INT8 : 
+		case OID_PG_INT2 : 
+		case OID_PG_INT4 : 
+			return true;
+
+		default :
+			return false;
+		}	
+	}	
+
+	static inline bool is_float_param(PG_OID_E oid) noexcept
+	{
+		return (oid == OID_PG_FLOAT4 || oid == OID_PG_FLOAT8);
+	}	
+	
+
 	static tribool is_valid_req(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, bool is_init = false) noexcept
 	{
 		if (is_init) {
@@ -386,8 +524,11 @@ public :
 
 
 	API_PARSE_HDLR				& apihdlr_;
+	uint32_t				api_max_len_;
+	uint32_t				max_pg_req_token_;
+	uint32_t				max_pg_resp_token_;
 
-	POSTGRES_PROTO(API_PARSE_HDLR & apihdlr);
+	POSTGRES_PROTO(API_PARSE_HDLR & apihdlr, uint32_t api_max_len);
 
 	~POSTGRES_PROTO() noexcept;
 	
@@ -402,6 +543,8 @@ public :
 	std::pair<POSTGRES_SESSINFO *, void *> alloc_sess(SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr);
 
 	void destroy(POSTGRES_SESSINFO *pobj, void *pdata) noexcept;
+
+	static void print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept;
 };
 
 } // namespace gyeeta
