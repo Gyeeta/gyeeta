@@ -8147,6 +8147,11 @@ public :
 		return pcurrbuf_;
 	}	
 
+	const char * get_buf_start() const noexcept
+	{
+		return prdbuf_;
+	}	
+
 	const char * set_cur_pos(size_t offset_from_start) noexcept
 	{
 		size_t			maxsz = pendbuf_ - prdbuf_;
@@ -8305,6 +8310,8 @@ public :
 	{
 		size_t 		dlen;
 		
+		if (!pstr) return append("(null)", GY_CONST_STRLEN("(null)"));
+
 		dlen = gy_strnlen(pstr, maxsz_ - currsz_);
 
 		return append(pstr, dlen);
@@ -8322,6 +8329,8 @@ public :
 	{
 		size_t 		dlen;
 		
+		if (!utf8str) return append("(null)", GY_CONST_STRLEN("(null)"));
+
 		(void)gy_utf8_nlen(utf8str, maxsz_ - currsz_, &dlen);	
 
 		return append(utf8str, dlen);
@@ -9084,6 +9093,8 @@ public :
 	{
 		size_t 		dlen;
 		
+		if (!pstr) return append("(null)", GY_CONST_STRLEN("(null)"));
+
 		dlen = gy_strnlen(pstr, maxsz_ - currsz_);
 
 		return append(pstr, dlen);
@@ -9093,6 +9104,8 @@ public :
 	{
 		size_t 		dlen;
 		
+		if (!utf8str) return append("(null)", GY_CONST_STRLEN("(null)"));
+
 		(void)gy_utf8_nlen(utf8str, maxsz_ - currsz_, &dlen);	
 
 		return append(utf8str, dlen);
@@ -9649,6 +9662,11 @@ public :
 	const uint8_t * get_curr_pos() const noexcept
 	{
 		return pcurrbuf_;
+	}	
+
+	const uint8_t * get_buf_start() const noexcept
+	{
+		return prdbuf_;
 	}	
 
 	const uint8_t * set_cur_pos(size_t offset_from_start) noexcept

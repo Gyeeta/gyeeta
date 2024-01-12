@@ -401,7 +401,7 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*thdr);
 			tknlen = unaligned_read_be32(thdr + 1);
 
-			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
+			if (tknlen < 4) {
 				reset_on_error();
 				return -1;	
 			}		
@@ -439,7 +439,7 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*statpg_.reqhdr_);
 			tknlen = unaligned_read_be32(&statpg_.reqhdr_[1]);
 
-			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
+			if (tknlen < 4) {
 				reset_on_error();
 				return -1;	
 			}		
@@ -571,7 +571,7 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*thdr);
 			tknlen = unaligned_read_be32(thdr + 1);
 
-			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
+			if (tknlen < 4) {
 				reset_on_error();
 				return -1;	
 			}		
@@ -609,7 +609,7 @@ start1 :
 			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*statpg_.resphdr_);
 			tknlen = unaligned_read_be32(&statpg_.resphdr_[1]);
 
-			if (tknlen < 4 || tknlen > 10 * 1024 * 1024) {
+			if (tknlen < 4) {
 				reset_on_error();
 				return -1;	
 			}		
