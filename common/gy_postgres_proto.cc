@@ -26,7 +26,6 @@ void POSTGRES_PROTO::destroy(POSTGRES_SESSINFO *pobj, void *pdata) noexcept
 	delete pobj;
 }	
 
-
 void POSTGRES_PROTO::handle_request_pkt(POSTGRES_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
 	sess.handle_request_pkt(hdr, pdata);
@@ -54,10 +53,11 @@ void POSTGRES_PROTO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast)
 }	
 	
 POSTGRES_SESSINFO::POSTGRES_SESSINFO(POSTGRES_PROTO & prot, SVC_SESSION & svcsess)
-	: tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, svcsess.common_.glob_id_, svcsess.proto_), 
+	: POSTGRES_PROTO(prot), 
+	tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, svcsess.common_.glob_id_, svcsess.proto_), 
 	tdstrbuf_(prot.api_max_len_ - 1), 
 	preqfragbuf_(new uint8_t[prot.max_pg_req_token_ + 16 + prot.max_pg_resp_token_ + 16]), presfragbuf_(preqfragbuf_ + prot.max_pg_req_token_ + 16), 
-	svcsess_(svcsess), prot_(prot)
+	svcsess_(svcsess)
 {
 	std::memset(tdstrbuf_.get(), 0, 128);
 	std::memset(preqfragbuf_, 0, 128);
@@ -80,6 +80,10 @@ POSTGRES_SESSINFO::~POSTGRES_SESSINFO() noexcept
 {
 	gstats[STATPG_SESS_COMPLETE]++;
 
+	if (part_query_started_ == 1) {
+		drop_partial_req();
+	}
+	
 	delete [] preqfragbuf_;
 }	
 	
@@ -101,9 +105,9 @@ int POSTGRES_SESSINFO::handle_request_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	if (drop_seen_ || common.clidroptype_ == DT_DROP_SEEN || common.serdroptype_ == DT_DROP_SEEN) {
 
-		if (statpg_.part_query_started_ == 1) {
+		if (part_query_started_ == 1) {
 			drop_partial_req();
-			statpg_.part_query_started_ = 0;
+			part_query_started_ = 0;
 		}
 			
 		statpg_.reset_stats_on_resp(true);
@@ -128,10 +132,10 @@ int POSTGRES_SESSINFO::handle_request_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	tran_.update_req_stats(common.tlastpkt_usec_, hdr.datalen_);
 
-	if (tdstrbuf_.size() && statpg_.part_query_started_ == 0) {
+	if (tdstrbuf_.size() && part_query_started_ == 0) {
 		tran_.request_len_ = tdstrbuf_.size() + 1;
-		statpg_.part_query_started_ = 1;
-		print_partial_req();
+		part_query_started_ = 1;
+		set_partial_req();
 	}
 
 	return 0;
@@ -192,9 +196,9 @@ int POSTGRES_SESSINFO::handle_response_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	if (drop_seen_ || common.clidroptype_ == DT_DROP_SEEN || common.serdroptype_ == DT_DROP_SEEN) {
 
 drop_chk :
-		if (statpg_.part_query_started_ == 1) {
+		if (part_query_started_ == 1) {
 			drop_partial_req();
-			statpg_.part_query_started_ = 0;
+			part_query_started_ = 0;
 		}
 			
 		statpg_.reset_stats_on_resp(true);
@@ -225,9 +229,9 @@ void POSTGRES_SESSINFO::handle_session_end(PARSE_PKT_HDR & hdr)
 {
 	auto				& common = svcsess_.common_;
 
-	if (statpg_.part_query_started_ == 1) {
+	if (part_query_started_ == 1) {
 		drop_partial_req();
-		statpg_.part_query_started_ = 0;
+		part_query_started_ = 0;
 	}
 	
 	if (tdstat_.reqnum_ == 0) {
@@ -295,7 +299,7 @@ int POSTGRES_SESSINFO::parse_req_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	uint8_t				*ppkt_end, *sptr = pdata, *startsptr;
 	int64_t 			lenpkt = hdr.datalen_;
 	uint32_t			pktlen = hdr.datalen_, ncopy;
-	POSTGRES_PROTO::PG_MSG_TYPES_E	tkntype;
+	PG_MSG_TYPES_E	tkntype;
 	int 				ret, tknlen;
 	uint8_t				thdr[8] = {};
 	int8_t				tlen;
@@ -317,14 +321,14 @@ int POSTGRES_SESSINFO::parse_req_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				if (len + 1 <= pktlen && (int)len > 4) {
 					switch (tkntype) {
 					
-					case POSTGRES_PROTO::MSG_F_QUERY :
-					case POSTGRES_PROTO::MSG_F_CLOSE :
-					case POSTGRES_PROTO::MSG_F_PARSE :
-					case POSTGRES_PROTO::MSG_F_BIND :
-					case POSTGRES_PROTO::MSG_F_DESCRIBE :
-					case POSTGRES_PROTO::MSG_F_EXECUTE :
-					case POSTGRES_PROTO::MSG_F_SYNC :
-					case POSTGRES_PROTO::MSG_F_FUNCTION_CALL :
+					case MSG_F_QUERY :
+					case MSG_F_CLOSE :
+					case MSG_F_PARSE :
+					case MSG_F_BIND :
+					case MSG_F_DESCRIBE :
+					case MSG_F_EXECUTE :
+					case MSG_F_SYNC :
+					case MSG_F_FUNCTION_CALL :
 
 						statpg_.skip_to_req_after_resp_ = 0;
 						goto start1;
@@ -347,25 +351,25 @@ start1 :
 
 	do {
 		startsptr	= sptr;
-		tkntype 	= POSTGRES_PROTO::MSG_FB_UNKNOWN;
+		tkntype 	= MSG_FB_UNKNOWN;
 		tknlen 		= 0;
 		tlen 		= 0;
 
-		memset(thdr, 0, sizeof(thdr));
+		std::memset(thdr, 0, sizeof(thdr));
 
 		if (!login_complete_) {
 			if (statpg_.skip_till_auth_resp_) {
 				return 0;
 			}	
 
-			thdr[0] = POSTGRES_PROTO::MSG_F_STARTUP;
+			thdr[0] = MSG_F_STARTUP;
 			tlen = 1;
 		}	
 
 		if (statpg_.req_tkn_frag_ == 2 && statpg_.req_hdr_fraglen_ > 0 && statpg_.req_hdr_fraglen_ <= 4) {
 			if (lenpkt + statpg_.req_hdr_fraglen_ > 4) {
-				memcpy(thdr, statpg_.reqhdr_, statpg_.req_hdr_fraglen_);
-				memcpy(thdr + statpg_.req_hdr_fraglen_, sptr, 5 - statpg_.req_hdr_fraglen_);
+				std::memcpy(thdr, statpg_.reqhdr_, statpg_.req_hdr_fraglen_);
+				std::memcpy(thdr + statpg_.req_hdr_fraglen_, sptr, 5 - statpg_.req_hdr_fraglen_);
 				tlen = 5;
 
 				sptr += 5 - statpg_.req_hdr_fraglen_;
@@ -375,7 +379,7 @@ start1 :
 				statpg_.req_hdr_fraglen_ = 0;
 			}	
 			else {
-				memcpy(statpg_.reqhdr_ + statpg_.req_hdr_fraglen_, sptr, lenpkt);
+				std::memcpy(statpg_.reqhdr_ + statpg_.req_hdr_fraglen_, sptr, lenpkt);
 				statpg_.req_hdr_fraglen_ += lenpkt;
 				return 0;
 			}	
@@ -386,19 +390,19 @@ start1 :
 				statpg_.req_tkn_frag_ = 2;
 				statpg_.req_hdr_fraglen_ = tlen + lenpkt;
 
-				memcpy(statpg_.reqhdr_, thdr, tlen);
-				memcpy(statpg_.reqhdr_ + tlen, sptr, lenpkt);
+				std::memcpy(statpg_.reqhdr_, thdr, tlen);
+				std::memcpy(statpg_.reqhdr_ + tlen, sptr, lenpkt);
 				
 				return 0;
 			}	
 
 			if ((unsigned)tlen < 5) {
-				memcpy(thdr + tlen, sptr, 5 - tlen);
+				std::memcpy(thdr + tlen, sptr, 5 - tlen);
 				sptr += 5 - tlen;
 				lenpkt -= 5 - tlen;
 			}
 
-			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*thdr);
+			tkntype = PG_MSG_TYPES_E(*thdr);
 			tknlen = unaligned_read_be32(thdr + 1);
 
 			if (tknlen < 4) {
@@ -413,7 +417,7 @@ start1 :
 				statpg_.nbytes_req_frag_ = 0;
 				statpg_.skip_req_bytes_ = 0;
 
-				memcpy(statpg_.reqhdr_, thdr, 5);
+				std::memcpy(statpg_.reqhdr_, thdr, 5);
 			}	
 			else {
 				ret = handle_req_token(tkntype, tknlen, sptr, tknlen);
@@ -436,7 +440,7 @@ start1 :
 				return -1;
 			}	
 
-			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*statpg_.reqhdr_);
+			tkntype = PG_MSG_TYPES_E(*statpg_.reqhdr_);
 			tknlen = unaligned_read_be32(&statpg_.reqhdr_[1]);
 
 			if (tknlen < 4) {
@@ -445,17 +449,17 @@ start1 :
 			}		
 			tknlen -= 4;
 
-			if (statpg_.nbytes_req_frag_ > (uint32_t)tknlen || statpg_.nbytes_req_frag_ > prot_.max_pg_req_token_) {
+			if (statpg_.nbytes_req_frag_ > (uint32_t)tknlen || statpg_.nbytes_req_frag_ > max_pg_req_token_) {
 				reset_on_error();
 				return -1;
 			}	
 
-			if (statpg_.nbytes_req_frag_ < prot_.max_pg_req_token_) {
-				ncopy = std::min<uint32_t>(prot_.max_pg_req_token_ - statpg_.nbytes_req_frag_, tknlen - statpg_.nbytes_req_frag_);
+			if (statpg_.nbytes_req_frag_ < max_pg_req_token_) {
+				ncopy = std::min<uint32_t>(max_pg_req_token_ - statpg_.nbytes_req_frag_, tknlen - statpg_.nbytes_req_frag_);
 
 				ncopy = std::min<uint32_t>(ncopy, lenpkt);
 
-				memcpy(preqfragbuf_ + statpg_.nbytes_req_frag_, sptr, ncopy);
+				std::memcpy(preqfragbuf_ + statpg_.nbytes_req_frag_, sptr, ncopy);
 
 				statpg_.nbytes_req_frag_ += ncopy;
 				sptr += ncopy;
@@ -491,7 +495,7 @@ int POSTGRES_SESSINFO::parse_resp_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	uint8_t				*ppkt_end, *sptr = pdata, *startsptr;
 	uint32_t			pktlen = hdr.datalen_, ncopy;
 	int64_t 			lenpkt = pktlen;
-	POSTGRES_PROTO::PG_MSG_TYPES_E			tkntype;
+	PG_MSG_TYPES_E			tkntype;
 	int 				ret, tknlen;
 	uint8_t				thdr[8];
 	int8_t				tlen;
@@ -505,7 +509,7 @@ int POSTGRES_SESSINFO::parse_resp_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			uint32_t			len;
 
 			if (0 == memcmp(ptmp, "\x5a\x00\x00\x00\x05", 5)) {
-				// POSTGRES_PROTO::MSG_B_READY_FOR_QUERY hit
+				// MSG_B_READY_FOR_QUERY hit
 				sptr = ptmp;
 				pktlen = lenpkt = 6;
 
@@ -526,16 +530,16 @@ start1 :
 
 	do {
 		startsptr	= sptr;
-		tkntype 	= POSTGRES_PROTO::MSG_FB_UNKNOWN;
+		tkntype 	= MSG_FB_UNKNOWN;
 		tknlen 		= 0;
 		tlen 		= 0;
 
-		memset(thdr, 0, sizeof(thdr));
+		std::memset(thdr, 0, sizeof(thdr));
 
 		if (statpg_.resp_tkn_frag_ == 2 && statpg_.resp_hdr_fraglen_ > 0 && statpg_.resp_hdr_fraglen_ <= 4) {
 			if (lenpkt + statpg_.resp_hdr_fraglen_ > 4) {
-				memcpy(thdr, statpg_.resphdr_, statpg_.resp_hdr_fraglen_);
-				memcpy(thdr + statpg_.resp_hdr_fraglen_, sptr, 5 - statpg_.resp_hdr_fraglen_);
+				std::memcpy(thdr, statpg_.resphdr_, statpg_.resp_hdr_fraglen_);
+				std::memcpy(thdr + statpg_.resp_hdr_fraglen_, sptr, 5 - statpg_.resp_hdr_fraglen_);
 				tlen = 5;
 
 				sptr += 5 - statpg_.resp_hdr_fraglen_;
@@ -545,7 +549,7 @@ start1 :
 				statpg_.resp_hdr_fraglen_ = 0;
 			}	
 			else {
-				memcpy(statpg_.resphdr_ + statpg_.resp_hdr_fraglen_, sptr, lenpkt);
+				std::memcpy(statpg_.resphdr_ + statpg_.resp_hdr_fraglen_, sptr, lenpkt);
 				statpg_.resp_hdr_fraglen_ += lenpkt;
 				return 0;
 			}	
@@ -556,19 +560,19 @@ start1 :
 				statpg_.resp_tkn_frag_ = 2;
 				statpg_.resp_hdr_fraglen_ = tlen + lenpkt;
 
-				memcpy(statpg_.resphdr_, thdr, tlen);
-				memcpy(statpg_.resphdr_ + tlen, sptr, lenpkt);
+				std::memcpy(statpg_.resphdr_, thdr, tlen);
+				std::memcpy(statpg_.resphdr_ + tlen, sptr, lenpkt);
 				
 				return 0;
 			}	
 
 			if ((unsigned)tlen < 5) {
-				memcpy(thdr + tlen, sptr, 5 - tlen);
+				std::memcpy(thdr + tlen, sptr, 5 - tlen);
 				sptr += 5 - tlen;
 				lenpkt -= 5 - tlen;
 			}
 
-			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*thdr);
+			tkntype = PG_MSG_TYPES_E(*thdr);
 			tknlen = unaligned_read_be32(thdr + 1);
 
 			if (tknlen < 4) {
@@ -583,7 +587,7 @@ start1 :
 				statpg_.nbytes_resp_frag_ = 0;
 				statpg_.skip_resp_bytes_ = 0;
 
-				memcpy(statpg_.resphdr_, thdr, 5);
+				std::memcpy(statpg_.resphdr_, thdr, 5);
 			}	
 			else {
 				ret = handle_resp_token(tkntype, tknlen, sptr, tknlen);
@@ -606,7 +610,7 @@ start1 :
 				return -1;
 			}	
 
-			tkntype = POSTGRES_PROTO::PG_MSG_TYPES_E(*statpg_.resphdr_);
+			tkntype = PG_MSG_TYPES_E(*statpg_.resphdr_);
 			tknlen = unaligned_read_be32(&statpg_.resphdr_[1]);
 
 			if (tknlen < 4) {
@@ -615,17 +619,17 @@ start1 :
 			}		
 			tknlen -= 4;
 
-			if (statpg_.nbytes_resp_frag_ > (uint32_t)tknlen || statpg_.nbytes_req_frag_ > prot_.max_pg_resp_token_) {
+			if (statpg_.nbytes_resp_frag_ > (uint32_t)tknlen || statpg_.nbytes_req_frag_ > max_pg_resp_token_) {
 				reset_on_error();
 				return -1;
 			}	
 
-			if (statpg_.nbytes_resp_frag_ < prot_.max_pg_resp_token_) {
-				ncopy = std::min<uint32_t>(prot_.max_pg_resp_token_ - statpg_.nbytes_resp_frag_, tknlen - statpg_.nbytes_resp_frag_);
+			if (statpg_.nbytes_resp_frag_ < max_pg_resp_token_) {
+				ncopy = std::min<uint32_t>(max_pg_resp_token_ - statpg_.nbytes_resp_frag_, tknlen - statpg_.nbytes_resp_frag_);
 
 				ncopy = std::min<uint32_t>(ncopy, lenpkt);
 
-				memcpy(presfragbuf_ + statpg_.nbytes_resp_frag_, sptr, ncopy);
+				std::memcpy(presfragbuf_ + statpg_.nbytes_resp_frag_, sptr, ncopy);
 
 				statpg_.nbytes_resp_frag_ += ncopy;
 				sptr += ncopy;
@@ -656,27 +660,27 @@ start1 :
 	return 0;
 }
 
-int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen)
+int POSTGRES_SESSINFO::handle_req_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen)
 {
 	const bool			istrunc = (maxlen < (int)tknlen);
 	uint8_t				*pstart = sptr, *pend = sptr + maxlen;
 	
 	if (login_complete_ && (tdstrbuf_.size() == 0) && 
-		(tkntype != POSTGRES_PROTO::MSG_F_COPYFAIL) && (tkntype != POSTGRES_PROTO::MSG_FB_COPYDATA) && (tkntype != POSTGRES_PROTO::MSG_FB_COPYDONE)) {
+		(tkntype != MSG_F_COPYFAIL) && (tkntype != MSG_FB_COPYDATA) && (tkntype != MSG_FB_COPYDONE)) {
 
 		set_new_req();
 	}
 
 	switch (tkntype) {
 	
-	case POSTGRES_PROTO::MSG_F_QUERY :
+	case MSG_F_QUERY :
 		if (maxlen > 0) {
 			if (tdstrbuf_.size()) {
 				tdstrbuf_ << ' ';
 			}	
 			tdstrbuf_.append((const char *)sptr, maxlen - 1);
 
-			tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_NORMAL_REQ; /* Normal Transaction */
+			tran_.tran_type_ |= TYPE_PG_NORMAL_REQ; /* Normal Transaction */
 
 			statpg_.nready_resp_pending_++;
 
@@ -690,7 +694,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_PARSE :	
+	case MSG_F_PARSE :	
 		if (true) {
 			const char			*ptmp = (const char *)sptr, *pname, *psql;
 			int				nlen = 0, slen = 0;
@@ -735,7 +739,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 			sptr += slen + 1;
 			maxlen -= slen + 1;
 
-			tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_DSQL_PREPARE; /* DSQL Transaction */
+			tran_.tran_type_ |= TYPE_PG_DSQL_PREPARE; /* DSQL Transaction */
 
 			if (nlen == 0) {
 				if (noname_dsql_.dyn_prep_time_t_ > 0) {
@@ -795,13 +799,13 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 							sptr += 4;
 							maxlen -= 4;
 
-							if (POSTGRES_PROTO::binary_param_ok(POSTGRES_PROTO::PG_OID_E(oid))) {
+							if (binary_param_ok(PG_OID_E(oid))) {
 								oidparams.set(i);
 
-								if (POSTGRES_PROTO::is_int_param(POSTGRES_PROTO::PG_OID_E(oid))) {
+								if (is_int_param(PG_OID_E(oid))) {
 									intparams.set(i);
 								}	
-								else if (POSTGRES_PROTO::is_float_param(POSTGRES_PROTO::PG_OID_E(oid))) {
+								else if (is_float_param(PG_OID_E(oid))) {
 									floatparams.set(i);
 								}	
 							}
@@ -813,7 +817,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_BIND :	
+	case MSG_F_BIND :	
 		if (true) {
 			const char			*ptmp = (char *)sptr, *pname, *psql = nullptr, *pbind = nullptr;
 			int				nlen = 0, slen = 0, sqllen = 0, lenp;
@@ -901,7 +905,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 				tdstat_.dyn_prep_time_t_ = 0;
 			}	
 
-			tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_DSQL_BIND; /* DSQL Transaction */
+			tran_.tran_type_ |= TYPE_PG_DSQL_BIND; /* DSQL Transaction */
 
 			sptr += slen + 1;
 			maxlen -= slen + 1;
@@ -919,7 +923,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 				return -1;
 			}	
 
-			memset(fmtarr, 0, sizeof(fmtarr));
+			std::memset(fmtarr, 0, sizeof(fmtarr));
 
 			if (nfmt == 1) {
 				fmt = unaligned_read_be16(sptr);
@@ -929,7 +933,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 				
 				if (fmt == 1) {
 					// All params are binary
-					memset(fmtarr, 1, sizeof(fmtarr));
+					std::memset(fmtarr, 1, sizeof(fmtarr));
 				}	
 			}
 			else {
@@ -1018,13 +1022,13 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 						
 						case 8 :
 							i64 = unaligned_read_be64(sptr);
-							memcpy(&d, &i64, sizeof(d));
+							std::memcpy(&d, &i64, sizeof(d));
 							tdstrbuf_ << d << ',';
 							break;
 
 						case 4 :
 							i32 = unaligned_read_be32(sptr);	
-							memcpy(&f, &i32, sizeof(f));
+							std::memcpy(&f, &i32, sizeof(f));
 							tdstrbuf_ << f << ',';
 							break;
 
@@ -1095,7 +1099,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_DESCRIBE :
+	case MSG_F_DESCRIBE :
 		
 		if (true) {
 			const char			*ptmp = (const char *)sptr, *pname, *psql = nullptr;
@@ -1133,9 +1137,9 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 			}	
 			tdstrbuf_ << "/* DSQL Describe */ "sv;
 			
-			tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_DSQL_DESCRIBE; /* DSQL Transaction */
+			tran_.tran_type_ |= TYPE_PG_DSQL_DESCRIBE; /* DSQL Transaction */
 
-			if (tran_.tran_type_ & (POSTGRES_PROTO::TYPE_PG_DSQL_PREPARE | POSTGRES_PROTO::TYPE_PG_DSQL_BIND)) {
+			if (tran_.tran_type_ & (TYPE_PG_DSQL_PREPARE | TYPE_PG_DSQL_BIND)) {
 				// No need to add the sql
 				break;
 			}	
@@ -1180,7 +1184,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_EXECUTE :
+	case MSG_F_EXECUTE :
 
 		if (true) {
 			const char			*ptmp = (const char *)sptr, *pname, *psql = nullptr;
@@ -1204,9 +1208,9 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 			}	
 			tdstrbuf_ << "/* DSQL Exec */ "sv;
 			
-			tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_DSQL_EXEC; /* DSQL Transaction */
+			tran_.tran_type_ |= TYPE_PG_DSQL_EXEC; /* DSQL Transaction */
 
-			if (tran_.tran_type_ & POSTGRES_PROTO::TYPE_PG_DSQL_BIND) {
+			if (tran_.tran_type_ & TYPE_PG_DSQL_BIND) {
 				// No need to add the sql
 				break;
 			}
@@ -1233,7 +1237,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_SYNC :
+	case MSG_F_SYNC :
 		
 		if (statpg_.copy_mode_ == 0) {
 			statpg_.nready_resp_pending_++;
@@ -1251,7 +1255,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_CLOSE :
+	case MSG_F_CLOSE :
 		
 		if (true) {
 			const char			*ptmp = (const char *)sptr, *pname, *psql = nullptr;
@@ -1289,7 +1293,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 			}	
 			tdstrbuf_ << "/* DSQL Dealloc */ "sv;
 			
-			tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_DSQL_DEALLOC; /* DSQL Transaction */
+			tran_.tran_type_ |= TYPE_PG_DSQL_DEALLOC; /* DSQL Transaction */
 
 			if (nlen == 0) {
 				if (is_portal) {
@@ -1347,7 +1351,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_FUNCTION_CALL :
+	case MSG_F_FUNCTION_CALL :
 
 		if (true) {
 			const char			*ptmp = (char *)sptr;
@@ -1378,7 +1382,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 				return -1;
 			}	
 
-			memset(fmtarr, 0, sizeof(fmtarr));
+			std::memset(fmtarr, 0, sizeof(fmtarr));
 
 			if (nfmt == 1) {
 				fmt = unaligned_read_be16(sptr);
@@ -1388,7 +1392,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 				
 				if (fmt == 1) {
 					// All params are binary
-					memset(fmtarr, 1, sizeof(fmtarr));
+					std::memset(fmtarr, 1, sizeof(fmtarr));
 				}	
 			}
 			else {
@@ -1452,22 +1456,22 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 				tdstrbuf_ << "..."sv;
 			}	
 
-			tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_FUNCTION_CALL;
+			tran_.tran_type_ |= TYPE_PG_FUNCTION_CALL;
 		}
 
 		break;
 
-	case POSTGRES_PROTO::MSG_F_TERMINATE :
+	case MSG_F_TERMINATE :
 		/* Set the response length to 1 so that error is shown for logout request */
 		tran_.reslen_ = 1;
 
 		break;
 
-	case POSTGRES_PROTO::MSG_FB_COPYDATA :
-	case POSTGRES_PROTO::MSG_F_COPYFAIL :
-	case POSTGRES_PROTO::MSG_FB_COPYDONE :
+	case MSG_FB_COPYDATA :
+	case MSG_F_COPYFAIL :
+	case MSG_FB_COPYDONE :
 		
-		tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_BULK_TRAN; /* Bulk Transaction */
+		tran_.tran_type_ |= TYPE_PG_BULK_TRAN; /* Bulk Transaction */
 
 		statpg_.copy_mode_ = 1;
 		statpg_.nready_resp_pending_ = 1;
@@ -1475,7 +1479,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 		break;
 
 
-	case POSTGRES_PROTO::MSG_F_STARTUP :
+	case MSG_F_STARTUP :
 		
 		if (login_complete_) {
 			return -1;
@@ -1499,7 +1503,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 			ptmp += 4;
 			maxlen -= 4;
 
-			if (version == POSTGRES_PROTO::MSG_F_CANCEL) {
+			if (version == MSG_F_CANCEL) {
 				if (maxlen < 8) {
 					login_complete_ = 1;
 					is_midway_session_ = 1;
@@ -1513,20 +1517,20 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 				tdstrbuf_ << "Cancel Request $*P*$ PID "sv << pid;
 
-				tran_.tran_type_ = POSTGRES_PROTO::TYPE_PG_CANCEL_QUERY;
+				tran_.tran_type_ = TYPE_PG_CANCEL_QUERY;
 				
 				return 0;
 			}	
-			else if (version == POSTGRES_PROTO::MSG_F_SSL_REQ) {
+			else if (version == MSG_F_SSL_REQ) {
 				is_ssl_sess_ = 1;
 				return 0;
 			}
-			else if (version == POSTGRES_PROTO::MSG_F_GSSENC_REQ) {
+			else if (version == MSG_F_GSSENC_REQ) {
 				skip_session_ = 1;
 				gstats[STATPG_SKIP_SESS]++;
 				return 0;
 			}	
-			else if ((version & 0xFFFFFF00) == POSTGRES_PROTO::MSG_F_AUTH_START) {
+			else if ((version & 0xFFFFFF00) == MSG_F_AUTH_START) {
 				/*
 				 * Login Request
 				 */
@@ -1608,7 +1612,7 @@ int POSTGRES_SESSINFO::handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, 
 
 				tdstrbuf_ << "*login* "sv;
 
-				tran_.tran_type_ = POSTGRES_PROTO::TYPE_PG_LOGIN; /* Login Transaction */
+				tran_.tran_type_ = TYPE_PG_LOGIN; /* Login Transaction */
 
 				if (puser || pdb || papp) {
 					struct in_addr 			in = {};
@@ -1651,14 +1655,14 @@ login_err :
 	return 0;
 }
 
-int POSTGRES_SESSINFO::handle_resp_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen)
+int POSTGRES_SESSINFO::handle_resp_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen)
 {
 	const bool			istrunc = (maxlen < (int)tknlen);
 	uint8_t				*pstart = sptr, *pend = sptr + maxlen;
 	
 	switch (tkntype) {
 	
-	case POSTGRES_PROTO::MSG_B_READY_FOR_QUERY :
+	case MSG_B_READY_FOR_QUERY :
 		
 		if (statpg_.nready_resp_pending_ > 0) {
 			statpg_.nready_resp_pending_--;
@@ -1677,7 +1681,7 @@ int POSTGRES_SESSINFO::handle_resp_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype,
 
 		break;
 
-	case POSTGRES_PROTO::MSG_B_ERROR_RESP :
+	case MSG_B_ERROR_RESP :
 		
 		if (true) {
 			char				c;
@@ -1740,7 +1744,7 @@ int POSTGRES_SESSINFO::handle_resp_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype,
 
 		break;
 
-	case POSTGRES_PROTO::MSG_B_CMD_COMPLETE :		
+	case MSG_B_CMD_COMPLETE :		
 		if (!istrunc) {
 			auto				*ptmp = (const char *)sptr;
 			uint32_t			nrow = 0;
@@ -1771,18 +1775,18 @@ int POSTGRES_SESSINFO::handle_resp_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype,
 
 		break;
 
-	case POSTGRES_PROTO::MSG_B_COPYOUT_RESP :
-	case POSTGRES_PROTO::MSG_B_COPYIN_RESP :
-	case POSTGRES_PROTO::MSG_B_COPYBOTH_RESP :
+	case MSG_B_COPYOUT_RESP :
+	case MSG_B_COPYIN_RESP :
+	case MSG_B_COPYBOTH_RESP :
 		
-		tran_.tran_type_ |= POSTGRES_PROTO::TYPE_PG_BULK_TRAN; /* Bulk Transaction */
+		tran_.tran_type_ |= TYPE_PG_BULK_TRAN; /* Bulk Transaction */
 
 		statpg_.copy_mode_ = 1;
 		statpg_.nready_resp_pending_ = 1;
 		
 		break;
 
-	case POSTGRES_PROTO::MSG_B_KEYDATA :
+	case MSG_B_KEYDATA :
 		
 		if (maxlen == 8) {
 			tdstat_.spid_ = unaligned_read_be32(sptr);
@@ -1791,7 +1795,7 @@ int POSTGRES_SESSINFO::handle_resp_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype,
 		break;
 
 
-	case POSTGRES_PROTO::MSG_B_PARAM_STATUS :
+	case MSG_B_PARAM_STATUS :
 
 		if (maxlen > 8) {
 			auto				*ptmp = (const char *)sptr;
@@ -1812,7 +1816,7 @@ int POSTGRES_SESSINFO::handle_resp_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype,
 
 		break;
 
-	case POSTGRES_PROTO::MSG_B_AUTH_RESP :
+	case MSG_B_AUTH_RESP :
 		if (login_complete_) {
 			return -1;
 		}	
@@ -1844,9 +1848,9 @@ void POSTGRES_SESSINFO::request_done(bool flushreq, bool clear_req)
 		tran_.request_len_ = tdstrbuf_.size() + 1;
 	}
 
-	if (statpg_.part_query_started_ == 1) {
+	if (part_query_started_ == 1) {
 		drop_partial_req();
-		statpg_.part_query_started_ = 0;
+		part_query_started_ = 0;
 	}
 
 	if (tran_.reqlen_ > 0) {

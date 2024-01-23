@@ -532,6 +532,10 @@ public :
 
 	~POSTGRES_PROTO() noexcept;
 	
+	POSTGRES_PROTO(const POSTGRES_PROTO & other) noexcept			= default;
+
+	POSTGRES_PROTO & operator=(const POSTGRES_PROTO & other) noexcept	= default;
+
 	void handle_request_pkt(POSTGRES_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
 	void handle_response_pkt(POSTGRES_SESSINFO & sess, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
@@ -545,6 +549,18 @@ public :
 	void destroy(POSTGRES_SESSINFO *pobj, void *pdata) noexcept;
 
 	static void print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept;
+
+	API_PARSE_HDLR & get_api_hdlr() noexcept
+	{
+		return apihdlr_;
+	}
+
+	uint32_t get_api_max_len() const noexcept
+	{
+		return api_max_len_;
+	}	
+
+
 };
 
 } // namespace gyeeta

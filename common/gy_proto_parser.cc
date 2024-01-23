@@ -353,7 +353,7 @@ bool API_PARSE_HDLR::send_pkt_to_parser(const PARSE_PKT_HDR & msghdr, const uint
 	const uint8_t			*psrcstart, *psrc_act_end = pdata + len;
 	bool				bret = false;
 
-	uint32_t			nfrag = gy_div_round_up(len, MAX_PARSE_DATA_LEN);
+	uint32_t			nfrag = gy_div_round_up(len, MAX_PARSE_FRAG_LEN);
 
 	if (nfrag == 0) {
 		nfrag = 1;
@@ -371,7 +371,7 @@ bool API_PARSE_HDLR::send_pkt_to_parser(const PARSE_PKT_HDR & msghdr, const uint
 		pfragstart 			= puniq.get()->get();
 		PARSE_PKT_HDR			*phdr = (PARSE_PKT_HDR *)pfragstart;	
 
-		nbytes				= std::min(len - nbytesdone, MAX_PARSE_DATA_LEN);
+		nbytes				= std::min(len - nbytesdone, MAX_PARSE_FRAG_LEN);
 
 		std::memcpy(phdr, &msghdr, sizeof(*phdr));
 		
@@ -1009,7 +1009,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 						svc_ssl_ = SSL_SVC_E::SSL_MULTIPLEXED;
 					}
 					else if (detect.nssl_confirm_ > 0) {
-						svc_ssl_ = SSL_SVC_E::SSL_YES;
+						svc_ssl_ = SSL_SVC_E::SSL_ONLY;
 					}
 				}
 				else if (sslreq == SSL_REQ_E::SSL_REJECTED) {
@@ -1027,7 +1027,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 						}
 					}
 					else if (detect.nssl_confirm_syn_ > 0 && detect.nssl_confirm_ > 0) {
-						svc_ssl_ = SSL_SVC_E::SSL_YES;
+						svc_ssl_ = SSL_SVC_E::SSL_ONLY;
 					}	
 					else {
 						svc_ssl_ = SSL_SVC_E::SSL_NO;
@@ -1556,7 +1556,7 @@ bool SVC_INFO_CAP::parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & h
 	
 	if (it == sessmap_.end()) {
 
-		if (svc_ssl_ == SSL_SVC_E::SSL_YES && hdr.src_ != SRC_UPROBE_SSL) {
+		if (svc_ssl_ == SSL_SVC_E::SSL_ONLY && hdr.src_ != SRC_UPROBE_SSL) {
 			return false;
 		}	
 
@@ -2488,7 +2488,7 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 		uint8_t				*pdata = (uint8_t *)(phdr + 1);
 		bool				bret;
 		
-		if (phdr->datalen_ > MAX_PARSE_DATA_LEN) {
+		if (phdr->datalen_ > MAX_PARSE_FRAG_LEN) {
 			stats_.ninvalid_pkt_++;
 			return false;
 		}

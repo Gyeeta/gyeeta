@@ -135,9 +135,7 @@ struct PG_REQSTAT
 	uint8_t				skip_req_till_sync_		{0};
 	uint8_t				skip_req_resp_till_ready_	{0};
 	uint8_t				drop_seen_			{0};
-	
 	uint8_t				copy_mode_			{0};
-	uint8_t				part_query_started_		{0};
 
 	void reset_req_frag_stat() noexcept
 	{
@@ -182,7 +180,7 @@ struct PG_REQSTAT
 
 
 
-class POSTGRES_SESSINFO
+class POSTGRES_SESSINFO : public POSTGRES_PROTO
 {
 public :
 	enum PG_STATS_E : uint8_t
@@ -239,7 +237,6 @@ public :
 	PG_DYN_PORTAL			noname_portal_;
 
 	SVC_SESSION 			& svcsess_;
-	POSTGRES_PROTO			& prot_;
 
 	uint8_t				login_complete_			{0};
 	uint8_t				is_midway_session_		{0};
@@ -247,6 +244,7 @@ public :
 	uint8_t				nssl_resp_chk_			{0};
 	uint8_t				skip_session_			{0};
 	uint8_t				drop_seen_			{0};
+	uint8_t				part_query_started_		{0};
 
 	POSTGRES_SESSINFO(POSTGRES_PROTO & prot, SVC_SESSION & svcsess);
 
@@ -266,9 +264,9 @@ public :
 	
 	int parse_resp_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
-	int handle_req_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen);
+	int handle_req_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen);
 
-	int handle_resp_token(POSTGRES_PROTO::PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen);
+	int handle_resp_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen, uint8_t * sptr, int maxlen);
 	
 	void request_done(bool flushreq = true, bool clear_req = false);
 	
@@ -281,19 +279,14 @@ public :
 		// TODO
 	}
 
-	void drop_partial_req()
+	void set_partial_req()
 	{
 		// TODO
 	}	
 
-	API_PARSE_HDLR & get_api_hdlr() noexcept
+	void drop_partial_req()
 	{
-		return prot_.apihdlr_;
-	}
-
-	uint32_t get_api_max_len() const noexcept
-	{
-		return prot_.api_max_len_;
+		// TODO
 	}	
 
 	static void print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept;

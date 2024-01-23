@@ -177,7 +177,7 @@ struct PARSE_PKT_HDR
 };	
 
 static constexpr uint32_t			MAX_PARSE_TOTAL_LEN	{1800};
-static constexpr uint32_t			MAX_PARSE_DATA_LEN	{MAX_PARSE_TOTAL_LEN - sizeof(PARSE_PKT_HDR)};
+static constexpr uint32_t			MAX_PARSE_FRAG_LEN	{MAX_PARSE_TOTAL_LEN - sizeof(PARSE_PKT_HDR)};
 
 using ParserMemPool = folly::IndexedMemPool<UCHAR_BUF<MAX_PARSE_TOTAL_LEN>, 8, 200, std::atomic, folly::IndexedMemPoolTraitsLazyRecycle<UCHAR_BUF<MAX_PARSE_TOTAL_LEN>>>;
 

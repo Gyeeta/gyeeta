@@ -29,7 +29,7 @@ enum PROTO_TYPES : uint16_t
 static constexpr const char * proto_to_string(PROTO_TYPES proto) noexcept
 {
 	constexpr const char		*protostr[PROTO_UNKNOWN + 1] = {
-		[PROTO_UNINIT] = "Uninitialized", [PROTO_HTTP1] = "HTTP1.x", [PROTO_HTTP2] = "HTTP2", 
+		[PROTO_UNINIT] = "Uninitialized", [PROTO_HTTP1] = "HTTP1", [PROTO_HTTP2] = "HTTP2", 
 		[PROTO_POSTGRES] = "Postgres", [PROTO_MYSQL] = "MySQL", [PROTO_MONGO] = "Mongo", 
 		[PROTO_REDIS] = "Redis", 
 
@@ -349,12 +349,12 @@ struct PARSE_ALL_FIELDS
 
 	PARSE_ALL_FIELDS() noexcept	= default;
 
-	PARSE_ALL_FIELDS(uint8_t *pext, uint32_t lenext) noexcept
+	PARSE_ALL_FIELDS(const uint8_t *pext, uint32_t lenext) noexcept
 	{
 		set_fields(pext, lenext);
 	}	
 
-	int set_fields(uint8_t *pext, uint32_t lenext) noexcept
+	int set_fields(const uint8_t *pext, uint32_t lenext) noexcept
 	{
 		if (lenext <= 1) return 0;
 

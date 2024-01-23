@@ -428,6 +428,11 @@ static inline bool gy_isupper_ascii(int c) noexcept
 	return (c >= 'A' && c <= 'Z');
 }	
 
+static inline bool gy_isprint_ascii(int c) noexcept
+{
+	return ((unsigned char)(c) - 32 < '_');
+}	
+
 // tolower only for ASCII else return same char
 static inline int gy_tolower_ascii(int c) noexcept
 {
@@ -4403,7 +4408,7 @@ static size_t get_rtrim_len(const char *str, size_t origlen) noexcept
 {
 	const char		*pend = str + origlen - 1;
 
-	while (pend >= str && ((*pend == ' ') || (*pend == '\t'))) {
+	while (pend >= str && (is_space_tab(*pend))) {
 		pend--;
 	}	
 
@@ -4421,7 +4426,7 @@ std::pair<const char *, size_t> get_ltrim(const char *str, size_t origlen) noexc
 	const char		*pend = str + origlen - 1;
 	const char		*ptmp = str;
 
-	while (ptmp <= pend && ((*ptmp == ' ') || (*ptmp == '\t'))) {
+	while (ptmp <= pend && (is_space_tab(*ptmp))) {
 		ptmp++;
 	}
 
@@ -4438,7 +4443,7 @@ std::pair<const char *, size_t> get_trim_str(const char *str, size_t origlen) no
 	const char		*pend = str + origlen - 1;
 	const char		*ptmp = str;
 
-	while (ptmp <= pend && ((*ptmp == ' ') || (*ptmp == '\t'))) {
+	while (ptmp <= pend && (is_space_tab(*ptmp))) {
 		ptmp++;
 	}
 

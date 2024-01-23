@@ -14,7 +14,7 @@ enum class SSL_SVC_E : uint8_t
 	SSL_UNINIT				= 0,
 
 	SSL_NO,
-	SSL_YES,
+	SSL_ONLY,
 	SSL_MULTIPLEXED,			// TLS and non-TLS on a single listener 
 };	
 

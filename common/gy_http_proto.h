@@ -25,12 +25,13 @@ public :
 		METHOD_HEAD,
 		METHOD_DELETE,
 		METHOD_CONNECT,
+		METHOD_TRACE,
 
 		METHOD_UNKNOWN,
 	};
 
-	static constexpr std::string_view http_methods_sv[] = {
-		"GET ", "POST ", "PUT ", "OPTIONS ", "HEAD ", "DELETE ", "CONNECT ",
+	static constexpr std::string_view http_methods_sv[METHOD_UNKNOWN] = {
+		"GET ", "POST ", "PUT ", "OPTIONS ", "HEAD ", "DELETE ", "CONNECT ", "TRACE ",
 	};	
 
 	static_assert(GY_ARRAY_SIZE(http_methods_sv) == METHOD_UNKNOWN);
@@ -82,6 +83,12 @@ public :
 			}	
 			return METHOD_UNKNOWN;
 
+		case 'T' :
+			if (0 == memcmp(pdata, "TRACE ", 6)) {
+				return METHOD_TRACE;
+			}	
+			return METHOD_UNKNOWN;
+
 		default :
 			return METHOD_UNKNOWN;
 		}
@@ -95,17 +102,39 @@ public :
 			return false;
 		}	
 
-		auto			pend = pdata + caplen;
-		const uint8_t		*phttp = (const uint8_t *)memmem(pdata + 4, caplen - 4, "HTTP/1.", 7);
+		// caplen at least 18 bytes
 
-		if (!phttp) {
-			if (caplen < wirelen) {
+		auto			pend = pdata + caplen;	
+		
+		const uint8_t		*ptmp = (const uint8_t *)memchr(pdata + 4, '\r', caplen - 4);
+		if (!ptmp) {
+			if (caplen < wirelen && caplen < 1024) {
 				// Truncated req
 				return indeterminate;
 			}				
 			return false;
 		}	
-		
+
+		if (ptmp[1] != '\n') {
+			return false;
+		}	
+
+		ptmp -= GY_CONST_STRLEN(" HTTP/1.1");
+
+		if (ptmp <= pdata) {
+			return false;
+		}	
+
+		if (memcmp(ptmp, " HTTP/1.", GY_CONST_STRLEN(" HTTP/1."))) {
+			return false;
+		}	
+
+		const uint8_t		*phttp = ptmp + 1;
+
+		if (phttp > pdata + 2048) {
+			return false;
+		}
+
 		if ((phttp + 9 < pend) && (phttp[7] == '1' || phttp[7] == '0') && phttp[8] == '\r' && phttp[9] == '\n') {
 			return true;
 		}	
