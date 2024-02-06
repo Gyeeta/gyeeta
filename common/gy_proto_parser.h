@@ -435,10 +435,9 @@ struct SVC_SESSION
 		return (is_req_pkt_drop() || is_resp_pkt_drop());
 	}
 
-	void set_new_proto(proto_sess && varproto, PROTO_TYPES proto) noexcept
+	void set_new_proto(PROTO_TYPES newproto) noexcept
 	{
-		pvarproto_ 	= std::move(varproto);
-		proto_		= proto;
+		proto_ = newproto;
 	}	
 };	
 

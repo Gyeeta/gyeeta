@@ -30,15 +30,19 @@ public :
 		METHOD_UNKNOWN,
 	};
 
-	static constexpr std::string_view http_methods_sv[METHOD_UNKNOWN] = {
+	static constexpr std::string_view http_methods[METHOD_UNKNOWN] = {
 		"GET ", "POST ", "PUT ", "OPTIONS ", "HEAD ", "DELETE ", "CONNECT ", "TRACE ",
 	};	
 
-	static_assert(GY_ARRAY_SIZE(http_methods_sv) == METHOD_UNKNOWN);
+	static_assert(GY_ARRAY_SIZE(http_methods) == METHOD_UNKNOWN);
+
+	static constexpr uint32_t		MIN_HTTP_FRAME = 18, MAX_METHOD_LEN = 8, MIN_STATUS_LEN = 19;
+
+	static constexpr std::string_view 	chunked_end_bytes = "\x0d\x0a\x30\x0d\x0a\x0d\x0a";	// If no trailer
 
 	static METHODS_E get_req_method(const uint8_t *pdata, uint32_t len) noexcept
 	{
-		if (len < 18) {
+		if (len < MAX_METHOD_LEN) {
 			return METHOD_UNKNOWN;
 		}	
 		
@@ -98,11 +102,9 @@ public :
 	{
 		auto			method = get_req_method(pdata, caplen);
 		
-		if (method == METHOD_UNKNOWN) {
+		if (method == METHOD_UNKNOWN || caplen < MIN_HTTP_FRAME) {
 			return false;
 		}	
-
-		// caplen at least 18 bytes
 
 		auto			pend = pdata + caplen;	
 		
@@ -146,7 +148,7 @@ public :
 	{
 		bool			is_cli_err, is_ser_err;
 
-		return get_status_response(pdata, len, is_cli_err, is_ser_err);
+		return is_status_response(pdata, len, is_cli_err, is_ser_err);
 	}	
 
 	static tribool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir, bool is_init = false) noexcept
@@ -158,9 +160,9 @@ public :
 		return is_valid_resp(pdata, caplen, is_init);
 	}	
 	
-	static bool get_status_response(const uint8_t *pdata, uint32_t len, bool & is_cli_err, bool & is_ser_err) noexcept
+	static bool is_status_response(const uint8_t *pdata, uint32_t len, bool & is_cli_err, bool & is_ser_err) noexcept
 	{
-		if (len < 19) {
+		if (len < MIN_STATUS_LEN) {
 			return false;
 		}	
 
@@ -176,9 +178,17 @@ public :
 			return false;
 		}	
 
-		const uint8_t		sbyte = pdata[9];
+		const uint8_t			* const pend = pdata + len, *ptmp = pdata + 9;
 
-		if (!((sbyte >= '1' && sbyte <= '5') && (pdata[10] >= '0' && pdata[10] <= '9') && (pdata[11] >= '0' && pdata[11] <= '9') && pdata[12] == ' ')) {
+		while (ptmp < pend && *ptmp == ' ') ptmp++;
+
+		if (ptmp + 5 > pend) {
+			return false;
+		}
+
+		const uint8_t			sbyte = *ptmp;
+
+		if (!((sbyte >= '1' && sbyte <= '9') && (ptmp[1] >= '0' && ptmp[1] <= '9') && (ptmp[2] >= '0' && ptmp[2] <= '9') && (ptmp[3] == ' ' || ptmp[3] == '\r'))) {
 			return false;
 		}	
 
@@ -191,6 +201,126 @@ public :
 
 		return true;
 	}
+
+	// Returns {status, pointer to first byte after status} : Returns {0, nullptr} on error
+	static std::pair<int, const uint8_t *> get_status_response(const uint8_t *pdata, uint32_t len) noexcept
+	{
+		if (len < MIN_STATUS_LEN) {
+			return {};
+		}	
+
+		if (memcmp(pdata, "HTTP/1.", 7)) {
+			return {};
+		}	
+		
+		if (!(pdata[7] == '1' || pdata[7] == '0')) {
+			return {};
+		}	
+
+		if (pdata[8] != ' ') {
+			return {};
+		}	
+
+		const uint8_t			* const pend = pdata + len, *ptmp = pdata + 9;
+
+		while (ptmp < pend && *ptmp == ' ') ptmp++;
+
+		if (ptmp + 5 > pend) {
+			return {};
+		}
+
+		const uint8_t			sbyte1 = *ptmp, sbyte2 = ptmp[1], sbyte3 = ptmp[2];
+		int				ret;
+
+		if (!((sbyte1 >= '1' && sbyte1 <= '9') && (sbyte2 >= '0' && sbyte2 <= '9') && (sbyte3 >= '0' && sbyte3 <= '9') && (ptmp[3] == ' ' || ptmp[3] == '\r'))) {
+			return {};
+		}	
+
+		ret = (sbyte1 - '0') * 100 + (sbyte2 - '0') * 10 + (sbyte3 - '0');
+		
+		return {ret, ptmp + 3};
+	}
+
+	static bool is_resp_body_valid(int status, METHODS_E req_method) noexcept
+	{
+		if (req_method == METHOD_HEAD) return false;
+
+		if (status >= 100 && status < 200) return false;
+
+		if (status == 204 /* No Content */ || status == 304 /* Not Modified */) return false;
+
+		if (req_method == METHOD_CONNECT && status >= 200 && status < 300) return false;
+	}	
+
+	// Returns { true if end detected, pend the first byte after the end} or {false, nullptr} if no end detected
+	static std::pair<bool, const uint8_t *> is_req_resp_end_heuristic(const uint8_t *pdata, int pktlen, DirPacket dir) noexcept
+	{
+		const uint8_t			*pend = pdata + pktlen, *ptmp;
+		auto				isvalid = is_valid_req_resp(pdata, pktlen, pktlen, dir);
+		
+		if (isvalid == false) {
+			/*
+			 * Missed the start of the msg...
+			 */
+			if (pktlen < 8 || pktlen >= 1500) {
+				return {};
+			}
+
+			ptmp = pend - chunked_end_bytes.size();
+			
+			// Chunked 
+			if (0 == memcmp(ptmp, chunked_end_bytes.data(), chunked_end_bytes.size())) {
+				return {true, ptmp + chunked_end_bytes.size()};
+			}	
+			
+			return {};
+		}	
+		else if (isvalid == true) {
+			if (ptmp = (const uint8_t *)memmem(pdata, std::min<size_t>(pktlen, 512), "\nTransfer-Encoding: ", sizeof("\nTransfer-Encoding: ") - 1); ptmp) {
+				if (pend - ptmp > 20 && memmem(ptmp, std::min<size_t>(pend - ptmp, 20), "chunked", sizeof("chunked") - 1)) {
+					ptmp = pend - chunked_end_bytes.size();
+					
+					// Chunked 
+					if (0 == memcmp(ptmp, chunked_end_bytes.data(), chunked_end_bytes.size())) {
+						return {true, ptmp + chunked_end_bytes.size()};
+					}
+				}	
+
+				return {};
+			}
+			if (ptmp = (const uint8_t *)memmem(pdata, std::min<size_t>(pktlen, 512), "Content-Length: ", sizeof("Content-Length: ") - 1); ptmp) {
+				ptmp += sizeof("Content-Length: ") - 1;
+
+				if (ptmp + 3 < pend) {
+					char				tbuf[32] = {};
+					ssize_t				colen = 0;
+					bool				bret;
+
+					std::memcpy(tbuf, ptmp, std::min<size_t>(pend - ptmp, 20));
+
+					bret = string_to_number(tbuf, colen, nullptr, 10);
+
+					if (!bret || colen > pend - ptmp || colen < 0) {
+						return {};
+					}	
+					
+					if (0 == memcmp(pend - colen - 4, "\r\n\r\n", 4)) {
+						return {true, pend};
+					}	
+				}	
+
+				return {};
+			}
+			
+			if (0 == memcmp(pend - 4, "\r\n\r\n", 4) && gy_isprint_ascii(pend[-5])) {
+				return {true, pend};
+			}	
+		}
+
+		return {};
+	}	
+
+	
 
 
 	API_PARSE_HDLR				& apihdlr_;

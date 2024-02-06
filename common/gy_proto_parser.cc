@@ -2247,6 +2247,17 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 
 					if (hdr.dir_ == DirPacket::DirInbound) {
 						apihdlr_.phttp1_->handle_request_pkt(**phttp1, sess, hdr, pdata);
+
+						// HTTP1 & HTTP2 on same port
+						if (gy_unlikely(sess.proto_ == PROTO_HTTP2) && !is_finrst) {
+
+							apihdlr_.phttp1_->destroy(*phttp1, sess.pdataproto_);
+							
+							auto [psess, pdata]		= apihdlr_.phttp2_->alloc_sess(sess, hdr);
+					
+							sess.pvarproto_ 		= psess;
+							sess.pdataproto_		= pdata;
+						}	
 					}	
 					else {
 						apihdlr_.phttp1_->handle_response_pkt(**phttp1, sess, hdr, pdata);
@@ -2259,6 +2270,17 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 
 					if (hdr.dir_ == DirPacket::DirInbound) {
 						apihdlr_.phttp2_->handle_request_pkt(**phttp2, sess, hdr, pdata);
+
+						// HTTP1 & HTTP2 on same port
+						if (gy_unlikely(sess.proto_ == PROTO_HTTP1) && !is_finrst) {
+
+							apihdlr_.phttp2_->destroy(*phttp2, sess.pdataproto_);
+							
+							auto [psess, pdata]		= apihdlr_.phttp1_->alloc_sess(sess, hdr);
+					
+							sess.pvarproto_ 		= psess;
+							sess.pdataproto_		= pdata;
+						}	
 					}	
 					else {
 						apihdlr_.phttp2_->handle_response_pkt(**phttp2, sess, hdr, pdata);

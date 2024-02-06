@@ -430,7 +430,7 @@ static inline bool gy_isupper_ascii(int c) noexcept
 
 static inline bool gy_isprint_ascii(int c) noexcept
 {
-	return ((unsigned char)(c) - 32 < '_');
+	return (unsigned char)((unsigned char)(c) - 32) < '_';
 }	
 
 // tolower only for ASCII else return same char
@@ -4420,8 +4420,7 @@ static size_t get_rtrim_len(const char *str, size_t origlen) noexcept
 }	
 
 // Get string and length of string after ltrim (only space/tab chars)
-static 
-std::pair<const char *, size_t> get_ltrim(const char *str, size_t origlen) noexcept
+static std::pair<const char *, size_t> get_ltrim(const char *str, size_t origlen) noexcept
 {
 	const char		*pend = str + origlen - 1;
 	const char		*ptmp = str;
@@ -4437,8 +4436,7 @@ std::pair<const char *, size_t> get_ltrim(const char *str, size_t origlen) noexc
  * Get string and length of string after left and right trim. (only space/tab chars)
  * Original string is not modified for right trim...
  */
-static 
-std::pair<const char *, size_t> get_trim_str(const char *str, size_t origlen) noexcept
+static std::pair<const char *, size_t> get_trim_str(const char *str, size_t origlen) noexcept
 {
 	const char		*pend = str + origlen - 1;
 	const char		*ptmp = str;
@@ -7328,6 +7326,33 @@ static char * string_ends_with(const char *pinput, const char *substr, bool igno
 	return (char *)pinput + leninput - lensub;
 }
 
+// Returns pointer to the first delimitter from delim[] or nullptr if not present
+static const char * get_delim_string(const char *pdata, size_t len, std::string_view delim) noexcept
+{
+	const char		*ptmp = pdata, *pend = pdata + len;
+	size_t			dlen = delim.size();
+	char			c;
+
+	if (dlen == 1) {
+		return (const char *)memchr(pdata, delim[0], len);
+	}	
+
+	while (ptmp < pend) {
+		c = *ptmp;
+		
+		for (int i = 0; i < (int)dlen; ++i) {
+			if (c == delim[i]) {
+				return ptmp;
+			}	
+		}	
+		
+		ptmp++;
+	}	
+
+	return nullptr;
+}	
+
+
 // Returns true on match. ignore_case will only work on ASCII strings
 static bool string_starts_with(const char *pinput, const char *substr, bool ignore_case = false, size_t lensub = 0) noexcept 
 {
@@ -7722,6 +7747,20 @@ public :
 		return ptmp;
 	}	
 
+	// See comment above
+	std::string_view get_next_line(bool ignore_delim_in_nbytes = true, char delim = '\n', bool ignore_empty_lines = false) noexcept
+	{
+		size_t			nbytes;
+		const char		*pstr;
+
+		pstr = get_next_line(nbytes, ignore_empty_lines, delim, ignore_empty_lines);
+		if (pstr) {
+			return {pstr, nbytes};
+		}	
+
+		return {};
+	}	
+
 	/*
 	 * Get previous line without updating current position. Does not include previous delim in nbytes
  	 * delim needs to be an ASCII char
@@ -7834,6 +7873,21 @@ public :
 		nbytes = nrd;
 		return ptmp;
 	}	
+
+	// See comment above
+	std::string_view get_next_word(bool ignore_separator_in_nbytes = true, const char *separators = " \t\n\r", bool skip_leading_space = true, \
+					bool ignore_escape = true, bool skip_multi_separators = false) noexcept
+	{
+		size_t			nbytes;
+		const char		*pstr;
+
+		pstr = get_next_word(nbytes, ignore_separator_in_nbytes, separators, skip_leading_space, ignore_escape, skip_multi_separators);
+		if (pstr) {
+			return {pstr, nbytes};
+		}	
+
+		return {};
+	}
 
 	// Skip to delim + 1 char 
 	const char * skip_till_next_delim(char delim, bool ignore_escape = true) noexcept

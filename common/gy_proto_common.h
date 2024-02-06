@@ -59,7 +59,8 @@ enum PARSE_FIELD_E : uint16_t
 	FIELD_NROWS				= 10,		/* Number of rows returned : Data Type uint32_t */
 	FIELD_CURSORNAME			= 11,		/* DB Cursor Name : Data Type char* */
 	
-	FIELD_CONTENTTYPE,					/* HTTP Content Type : Data Type char* */
+	FIELD_STATUSCODE,					/* Status Code (e.g. HTTP) : Data Type int */
+	FIELD_REQ_METHOD,					/* HTTP Method : Data Type char* */			
 
 	FIELD_MAX,
 };	
@@ -67,7 +68,7 @@ enum PARSE_FIELD_E : uint16_t
 static constexpr const char			*parse_field_str[FIELD_MAX] =
 {
 	"", "appname", "username", "dbname", "errtxt", "errclass", "sessid", "prep_reqnum", "prep_reqtime", "hostpid",
-	"nrows", "cursorname", "contenttype",
+	"nrows", "cursorname", "statuscode", "reqmethod",
 };	
 
 
@@ -345,16 +346,17 @@ struct PARSE_ALL_FIELDS
 	uint32_t			hostpid_		{0};
 	uint32_t			nrows_			{0};
 	std::string_view		cursorname_;
-	std::string_view		contenttype_;
+	int				statuscode_		{0};
+	std::string_view		reqmethod_;
 
 	PARSE_ALL_FIELDS() noexcept	= default;
 
 	PARSE_ALL_FIELDS(const uint8_t *pext, uint32_t lenext) noexcept
 	{
-		set_fields(pext, lenext);
+		get_fields(pext, lenext);
 	}	
 
-	int set_fields(const uint8_t *pext, uint32_t lenext) noexcept
+	int get_fields(const uint8_t *pext, uint32_t lenext) noexcept
 	{
 		if (lenext <= 1) return 0;
 
@@ -449,9 +451,13 @@ struct PARSE_ALL_FIELDS
 				}	
 				break;
 
-			case FIELD_CONTENTTYPE :
+			case FIELD_STATUSCODE :
+				ustr >> statuscode_;
+				break;
+
+			case FIELD_REQ_METHOD :
 				if (ustr.bytes_left() >= fl.len_) {
-					contenttype_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
+					reqmethod_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
 					ustr += fl.len_;
 				}
 				else {
@@ -476,7 +482,7 @@ static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_ALL_FIELDS & f
 		return {};
 	}
 
-	fields.set_fields((uint8_t *)ptran + sizeof(*ptran) + ptran->request_len_, ptran->lenext_);
+	fields.get_fields((uint8_t *)ptran + sizeof(*ptran) + ptran->request_len_, ptran->lenext_);
 
 	return {preq, (size_t)ptran->request_len_ - 1};
 }	

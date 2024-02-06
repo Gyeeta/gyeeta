@@ -39,7 +39,7 @@ ifeq ($(perf_check),yes)
 DEBFLAGS += -g -fno-omit-frame-pointer -ggdb -fno-inline-functions -fno-inline-functions-called-once -fno-optimize-sibling-calls
 endif	
 
-COMMFLAGS = $(DEBFLAGS) -pthread -fno-strict-aliasing -m64 -march=sandybridge -D_GNU_SOURCE -Wall -Wno-unused -Werror -Wno-format-truncation -Wno-stringop-truncation $(OPTFLAGS)
+COMMFLAGS = $(DEBFLAGS) -pthread -fno-strict-aliasing -fno-strict-overflow -m64 -march=sandybridge -D_GNU_SOURCE -Wall -Wno-unused -Werror -Wno-format-truncation -Wno-stringop-truncation $(OPTFLAGS)
 
 CXXOPT =  -std=c++17 $(COMMFLAGS) 
 

@@ -957,7 +957,7 @@ int POSTGRES_SESSINFO::handle_req_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen,
 				return -1;
 			}	
 
-			tdstrbuf_ << " $*P*$ "sv;
+			tdstrbuf_ << " $*PARAM*$ "sv;
 
 			for (int i = 0; i < nparam && i < (int)PG_ROW_MAX_COLUMNS; ++i) {
 				if (maxlen < 4) {
@@ -1416,7 +1416,7 @@ int POSTGRES_SESSINFO::handle_req_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen,
 				return -1;
 			}	
 
-			tdstrbuf_ << " $*P*$ "sv;
+			tdstrbuf_ << " $*PARAM*$ "sv;
 
 			for (int i = 0; i < nparam && i < (int)PG_ROW_MAX_COLUMNS; ++i) {
 				if (maxlen < 4) {
@@ -1515,7 +1515,7 @@ int POSTGRES_SESSINFO::handle_req_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen,
 
 				pid = unaligned_read_be32(ptmp);
 
-				tdstrbuf_ << "Cancel Request $*P*$ PID "sv << pid;
+				tdstrbuf_ << "Cancel Request $*PARAM*$ PID "sv << pid;
 
 				tran_.tran_type_ = TYPE_PG_CANCEL_QUERY;
 				

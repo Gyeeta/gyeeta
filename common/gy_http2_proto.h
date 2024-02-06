@@ -205,13 +205,22 @@ public :
 
 	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir, bool is_init = false) noexcept
 	{
+		if (is_init) {
+			if (dir == DirPacket::DirInbound) {
+				return is_init_magic(pdata, caplen);
+			}	
+			else {
+				return is_settings_response(pdata, caplen, wirelen);
+			}	
+		}
+
 		auto [is_valid, is_pend]	= is_valid_frame(pdata, caplen, wirelen);
 
 		return is_valid;
 	}	
 	
 	// Returns false if no valid status
-	static bool get_status_response(const uint8_t *pdata, uint32_t caplen, bool & is_cli_err, bool & is_ser_err) noexcept
+	static bool is_status_response(const uint8_t *pdata, uint32_t caplen, bool & is_cli_err, bool & is_ser_err) noexcept
 	{
 		const uint8_t			*pend = pdata + caplen, *porig = pdata - 1, *pnext;
 		FrameInfo			finfo;
