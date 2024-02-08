@@ -20,16 +20,16 @@ enum HCONN_STATE_E : uint8_t
 
 struct HCONN_STAT
 {
-	size_t				data_chunk_len_		{0};
-	size_t				data_chunk_left_	{0};
-	uint16_t			fraglen_		{0};
-	uint16_t			resp_status_		{0};
-	HCONN_STATE_E			state_			{HCONN_IDLE};
-	HTTP1_PROTO::METHODS_E		req_method_		{HTTP1_PROTO::METHOD_UNKNOWN};
-	int8_t				save_req_payload_	{0};
-	bool				skip_till_eol_		{false};
-	bool				is_content_len_		{false};
-	bool				is_chunk_data_		{false};
+	size_t				data_chunk_len_			{0};
+	size_t				data_chunk_left_		{0};
+	uint16_t			fraglen_			{0};
+	HCONN_STATE_E			state_				{HCONN_IDLE};
+	HTTP1_PROTO::METHODS_E		req_method_			{HTTP1_PROTO::METHOD_UNKNOWN};
+	int8_t				save_req_payload_		{0};
+	bool				skip_till_eol_			{false};
+	bool				skip_till_resp_chunk_end_	{false};
+	bool				is_content_len_			{false};
+	bool				is_chunk_data_			{false};
 
 	void reset() noexcept
 	{
@@ -49,9 +49,9 @@ struct HCONN_STAT
 class HTTP1_SESSINFO : public HTTP1_PROTO
 {
 public :
-	static constexpr size_t		MAX_PIPELINE_ELEMS	{128};
-	static constexpr size_t		MAX_FRAG_LEN		{128};
-	static constexpr size_t		MAX_PAYLOAD_SAVE_LEN	{512};
+	static constexpr size_t		MAX_PIPELINE_ELEMS		{128};
+	static constexpr size_t		MAX_FRAG_LEN			{128};
+	static constexpr size_t		MAX_PAYLOAD_SAVE_LEN		{512};
 
 	enum REQ_HDR_HTTP : uint8_t
 	{
@@ -94,6 +94,7 @@ public :
 		STATH1_SESS_COMPLETE,
 		STATH1_MIDWAY_SESS,
 		STATH1_SKIP_SESS,
+		STATH1_HTTPS_SESS,
 		STATH1_HTTP2_CONN,
 
 		STATH1_REQ_RESET_ERR,
@@ -103,6 +104,7 @@ public :
 		STATH1_RESP_PKT_SKIP,
 		STATH1_REQ_PIPELINED,
 		STATH1_REQ_PIPELINE_OVF,
+		STATH1_REQ_PIPELINE_TIMEOUT,
 		STATH1_REQ_SYNC_MISS,
 		STATH1_CHUNK_FRAG_OVF,
 		STATH1_INVALID_STATE,
@@ -114,10 +116,10 @@ public :
 
 	static inline constexpr const char *	gstatstr[STATH1_MAX] =
 	{
-		"New Session", "Session Completed", "Midway Session", "Session Skipped", "HTTP2 Connection",
+		"New Session", "Session Completed", "Midway Session", "Session Skipped", "HTTPS Connection", "HTTP2 Connection",
 		"Req Reset on Error", "Resp Reset on Error", 
 		"Session Skipped Pkt", "Request Packets Skipped", "Response Packets Skipped",
-		"Request Pipelined", "Req Pipeline Overflow", "Req Sync Miss", "Chunk Overflow",
+		"Request Pipelined", "Req Pipeline Overflow", "Req Pipeline Timeout", "Req Sync Miss", "Chunk Overflow",
 		"Connection State Invalid", "Connect VPN Session",
 	};	
 
@@ -137,8 +139,10 @@ public :
 	METHODS_E				resp_pipline_[MAX_PIPELINE_ELEMS]	{};
 	uint8_t					nresp_pending_				{0};
 	uint8_t					nresp_completed_			{0};
+	uint16_t				last_resp_status_			{0};
+	bool					resp_error_added_			{false};	
 
-	uint8_t					reqfragbuf_[MAX_FRAG_LEN];
+	alignas(8) uint8_t			reqfragbuf_[MAX_FRAG_LEN];
 	uint8_t					respfragbuf_[MAX_FRAG_LEN];
 
 	HCONN_STAT				reqstate_;
@@ -150,9 +154,10 @@ public :
 	bool					is_keep_alive_			{false};
 	bool					is_http10_			{false};
 	uint8_t					skip_session_			{111};
-	uint8_t					drop_seen_			{0};
 	uint8_t					part_query_started_		{0};
 	uint8_t					is_midway_session_		{0};
+
+	uint8_t					drop_seen_			{0};
 	bool					skip_till_req_			{false};
 	bool					skip_till_resp_			{false};
 	uint8_t					skip_to_req_after_resp_		{0};
@@ -169,6 +174,10 @@ public :
 
 	void handle_ssl_change(PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
+	int handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, const uint32_t pktlen);
+	
+	int handle_drop_on_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata, const uint32_t pktlen);
+
 	void set_new_req() noexcept;
 
 	int parse_req_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata, const uint32_t pktlen);
@@ -177,11 +186,22 @@ public :
 
 	void request_done(bool flushreq = true, bool clear_req = false);
 	
-	void reset_on_new_req() noexcept;
+	void reset_all_state() noexcept
+	{
+		reset_for_new_req();
+		reqstate_.reset();
+		respstate_.reset();
 
-	void reset_req_frag_stat() noexcept;
+		nresp_pending_ = 0;
+		nresp_completed_ = 0;
 
-	void reset_resp_frag_stat() noexcept;
+		drop_seen_ = 0;
+		skip_till_req_ = false;
+		skip_till_resp_ = false;
+		skip_to_req_after_resp_ = false;
+	}
+
+	void reset_for_new_req() noexcept;
 
 	void reset_stats_on_resp(bool clear_req = false) noexcept;
 

@@ -193,6 +193,7 @@ public :
 		STATPG_REQ_RESET_ERR,
 		STATPG_RESP_RESET_ERR,
 		STATPG_REQ_SYNC_OVF,
+		STATPG_REQ_SYNC_TIMEOUT,
 		STATPG_PREPARE_DEL,
 		STATPG_PREPARE_ADD_SKIP,
 		STATPG_PREPARE_ADD,
@@ -211,7 +212,7 @@ public :
 	static inline constexpr const char *	gstatstr[STATPG_MAX] =
 	{
 		"New Session", "Session Completed", "Midway Session", "SSL Session", "Session Skipped", 
-		"Req Reset on Error", "Resp Reset on Error", "Req Sync Overflow", "DSQL Prepare Deleted",
+		"Req Reset on Error", "Resp Reset on Error", "Req Sync Overflow", "Req Sync Timeout", "DSQL Prepare Deleted",
 		"DSQL Prepare Add Skipped", "DSQL Prepare Added", "DSQL Prep Find Success", "DSQL Prep Find Failed",
 		"DSQL Portal Deleted", "DSQL Portal Clear All", "DSQL Portal Added", "Session Skipped Pkt", 
 		"Request Packets Skipped", "Response Packets Skipped",

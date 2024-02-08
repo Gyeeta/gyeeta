@@ -250,6 +250,13 @@ public :
 		if (status == 204 /* No Content */ || status == 304 /* Not Modified */) return false;
 
 		if (req_method == METHOD_CONNECT && status >= 200 && status < 300) return false;
+
+		return true;
+	}	
+
+	static bool is_error_response(int status) noexcept
+	{
+		return status >= 400;
 	}	
 
 	// Returns { true if end detected, pend the first byte after the end} or {false, nullptr} if no end detected
@@ -262,7 +269,7 @@ public :
 			/*
 			 * Missed the start of the msg...
 			 */
-			if (pktlen < 8 || pktlen >= 1500) {
+			if (pktlen < 8 || pktlen > 1400) {
 				return {};
 			}
 
@@ -276,8 +283,8 @@ public :
 			return {};
 		}	
 		else if (isvalid == true) {
-			if (ptmp = (const uint8_t *)memmem(pdata, std::min<size_t>(pktlen, 512), "\nTransfer-Encoding: ", sizeof("\nTransfer-Encoding: ") - 1); ptmp) {
-				if (pend - ptmp > 20 && memmem(ptmp, std::min<size_t>(pend - ptmp, 20), "chunked", sizeof("chunked") - 1)) {
+			if (ptmp = (const uint8_t *)memmem(pdata, std::min<size_t>(pktlen, 1024), "Transfer-Encoding:", sizeof("Transfer-Encoding:") - 1); ptmp) {
+				if (pend - ptmp > 20 && memmem(ptmp, std::min<size_t>(pend - ptmp, 100), "chunked", sizeof("chunked") - 1)) {
 					ptmp = pend - chunked_end_bytes.size();
 					
 					// Chunked 
@@ -288,8 +295,8 @@ public :
 
 				return {};
 			}
-			if (ptmp = (const uint8_t *)memmem(pdata, std::min<size_t>(pktlen, 512), "Content-Length: ", sizeof("Content-Length: ") - 1); ptmp) {
-				ptmp += sizeof("Content-Length: ") - 1;
+			if (ptmp = (const uint8_t *)memmem(pdata, std::min<size_t>(pktlen, 1024), "Content-Length:", sizeof("Content-Length:") - 1); ptmp) {
+				ptmp += sizeof("Content-Length:") - 1;
 
 				if (ptmp + 3 < pend) {
 					char				tbuf[32] = {};
@@ -343,6 +350,16 @@ public :
 	void destroy(HTTP1_SESSINFO *pobj, void *pdata) noexcept;
 
 	static void print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept;
+
+	API_PARSE_HDLR & get_api_hdlr() noexcept
+	{
+		return apihdlr_;
+	}
+
+	uint32_t get_api_max_len() const noexcept
+	{
+		return api_max_len_;
+	}	
 
 };
 

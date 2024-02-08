@@ -430,6 +430,16 @@ struct SVC_SESSION
 		return common_.serdroptype_ == DT_DROP_SEEN;
 	}
 
+	size_t get_req_drop_bytes() const noexcept
+	{
+		return common_.curr_req_drop_bytes_;
+	}	
+
+	size_t get_resp_drop_bytes() const noexcept
+	{
+		return common_.curr_resp_drop_bytes_;
+	}	
+
 	bool is_pkt_drop() const noexcept
 	{
 		return (is_req_pkt_drop() || is_resp_pkt_drop());

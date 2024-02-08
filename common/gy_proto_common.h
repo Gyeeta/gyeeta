@@ -28,7 +28,7 @@ enum PROTO_TYPES : uint16_t
 
 static constexpr const char * proto_to_string(PROTO_TYPES proto) noexcept
 {
-	constexpr const char		*protostr[PROTO_UNKNOWN + 1] = {
+	constexpr const char 		*protostr[PROTO_UNKNOWN + 1] = {
 		[PROTO_UNINIT] = "Uninitialized", [PROTO_HTTP1] = "HTTP1", [PROTO_HTTP2] = "HTTP2", 
 		[PROTO_POSTGRES] = "Postgres", [PROTO_MYSQL] = "MySQL", [PROTO_MONGO] = "Mongo", 
 		[PROTO_REDIS] = "Redis", 

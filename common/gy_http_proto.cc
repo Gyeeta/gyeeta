@@ -53,18 +53,20 @@ void HTTP1_PROTO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) no
 HTTP1_SESSINFO::HTTP1_SESSINFO(HTTP1_PROTO & prot, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr)
 	: HTTP1_PROTO(prot), 
 	tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, svcsess.common_.glob_id_, svcsess.proto_), 
-	tdstrbuf_(prot.api_max_len_ - 1), 
-	svcsess_(svcsess), is_https_(hdr.src_ == SRC_UPROBE_SSL)
+	tdstrbuf_(prot.api_max_len_ - 1), svcsess_(svcsess), is_https_(hdr.src_ == SRC_UPROBE_SSL)
 {
 	std::memset(tdstrbuf_.get(), 0, 128);
 	
 	gstats[STATH1_NEW_SESS]++;
+
+	if (is_https_) {
+		gstats[STATH1_HTTPS_SESS]++;
+	}	
 	
 	if (svcsess.common_.syn_seen_ == false) {
 		is_midway_session_ = 1;
+		skip_till_req_ = true;
 		
-		// TODO
-
 		gstats[STATH1_MIDWAY_SESS]++;
 	}
 }
@@ -95,10 +97,10 @@ int HTTP1_SESSINFO::handle_request_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			part_query_started_ = 0;
 		}
 			
-		// TODO
-		drop_seen_ = 0;
-
-		return 0;
+		ret = handle_drop_on_req(hdr, pdata, hdr.datalen_);
+		if (ret != 0) {
+			return 0;
+		}	
 	}
 
 	ret = parse_req_pkt(hdr, pdata, hdr.datalen_);
@@ -132,17 +134,15 @@ int HTTP1_SESSINFO::handle_response_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	if (drop_seen_ || common.clidroptype_ == DT_DROP_SEEN || common.serdroptype_ == DT_DROP_SEEN) {
 
-drop_chk :
 		if (part_query_started_ == 1) {
 			drop_partial_req();
 			part_query_started_ = 0;
 		}
 			
-		drop_seen_ = 0;
-
-		// TODO
-
-		return 0;
+		ret = handle_drop_on_resp(hdr, pdata, hdr.datalen_);
+		if (ret != 0) {
+			return 0;
+		}	
 	}
 
 	tran_.update_resp_stats(common.tlastpkt_usec_, hdr.datalen_);
@@ -190,7 +190,160 @@ void HTTP1_SESSINFO::handle_session_end(PARSE_PKT_HDR & hdr)
 void HTTP1_SESSINFO::handle_ssl_change(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
 	is_https_ = true;
+	gstats[STATH1_HTTPS_SESS]++;
 }	
+
+int HTTP1_SESSINFO::handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, const uint32_t pktlen)
+{
+	size_t				ndropreq = svcsess_.get_req_drop_bytes(), ndropresp = svcsess_.get_resp_drop_bytes();
+
+	drop_seen_ = 0;
+
+	if (skip_till_resp_ || skip_to_req_after_resp_ == 1) {
+		if (skip_till_resp_) {
+			skip_to_req_after_resp_ = 1;
+		}	
+		return 1;
+	}	
+	else if (skip_to_req_after_resp_ == 2) {
+		if (ndropreq) {
+			skip_to_req_after_resp_ = 1;
+			return 1;
+		}
+
+		if (is_valid_req(pdata, pktlen, pktlen) != true) {
+			skip_to_req_after_resp_ = 1;
+			return 1;
+		}	
+
+		reset_all_state();
+		return 0;
+	}	
+	else if (skip_till_req_) {
+		if (ndropreq) {
+			skip_to_req_after_resp_ = 1;
+			return 1;
+		}
+	}	
+
+	switch (reqstate_.state_) {
+	
+	case HCONN_IDLE		:	
+					if (ndropreq || reqstate_.fraglen_) {
+						skip_to_req_after_resp_ = 1;
+						return 1;
+					}	
+					else if (!ndropreq) {
+						reset_all_state();
+						return 0;
+					}	
+
+	case HCONN_HDR		:	
+					skip_to_req_after_resp_ = 1;
+					return 1;
+					
+	case HCONN_CONTENT_DATA	:	
+					if (ndropreq && !ndropresp) {
+						if (reqstate_.is_content_len_ && !reqstate_.skip_till_eol_ && reqstate_.data_chunk_left_ >= ndropreq) {
+							reqstate_.data_chunk_left_ -= ndropreq;
+							return 0;
+						}
+					}	
+
+					skip_to_req_after_resp_ = 1;
+					return 1;
+
+	case HCONN_CHUNK_START	:	
+	case HCONN_CHUNK_DATA	:	
+	case HCONN_CHUNK_END	:	
+					if (ndropreq && !ndropresp) {
+						auto			[isend, pend] = is_req_resp_end_heuristic(pdata, pktlen, DirPacket::DirInbound);
+
+						if (isend) {
+							set_resp_expected();
+
+							skip_till_resp_ = true;
+							return 1;
+						}
+						
+						reset_till_resp(true);
+						return 1;
+					}	
+
+					skip_to_req_after_resp_ = 1;
+					return 1;
+
+	default			:	
+					gstats[STATH1_INVALID_STATE]++;
+					skip_to_req_after_resp_ = 1;
+					return 1;
+	}
+
+	return 0;
+}	
+
+int HTTP1_SESSINFO::handle_drop_on_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata, const uint32_t pktlen)
+{
+	size_t				ndropreq = svcsess_.get_req_drop_bytes(), ndropresp = svcsess_.get_resp_drop_bytes();
+
+	drop_seen_ = 0;
+
+	if (skip_till_req_ || skip_till_resp_ || skip_to_req_after_resp_) {
+		skip_to_req_after_resp_ = 2;
+		return 1;
+	}
+
+	switch (reqstate_.state_) {
+	
+	case HCONN_IDLE		:	
+					skip_to_req_after_resp_ = 2;
+					return 1;
+
+	case HCONN_HDR		:	
+					skip_to_req_after_resp_ = 2;
+					return 1;
+					
+	case HCONN_CONTENT_DATA	:	
+					if (ndropresp && !ndropreq) {
+						if (respstate_.is_content_len_ && !respstate_.skip_till_eol_ && respstate_.data_chunk_left_ >= ndropresp) {
+							respstate_.data_chunk_left_ -= ndropresp;
+							return 0;
+						}
+					}	
+
+					skip_to_req_after_resp_ = 2;
+					return 1;
+
+	case HCONN_CHUNK_START	:	
+	case HCONN_CHUNK_DATA	:	
+	case HCONN_CHUNK_END	:	
+					if (ndropresp && !ndropreq) {
+						auto			[isend, pend] = is_req_resp_end_heuristic(pdata, pktlen, DirPacket::DirOutbound);
+
+						if (nresp_pending_ > nresp_completed_ + 1) {
+							nresp_completed_ = nresp_pending_ - 1;
+						}
+
+						if (isend) {
+							request_done();
+							return 1;
+						}
+						
+						respstate_.skip_till_resp_chunk_end_ = true;
+						return 1;
+					}	
+
+					skip_to_req_after_resp_ = 2;
+					return 1;
+
+	default			:	
+					gstats[STATH1_INVALID_STATE]++;
+					skip_to_req_after_resp_ = 2;
+					return 1;
+	}
+
+	return 0;
+}
 
 void HTTP1_SESSINFO::set_new_req() noexcept
 {
@@ -202,62 +355,53 @@ void HTTP1_SESSINFO::set_new_req() noexcept
 	tran_.tupd_usec_			= common.tlastpkt_usec_;
 	tran_.tin_usec_				= common.tlastpkt_usec_;
 	
-	reset_on_new_req();
+	reset_for_new_req();
 }
 
-void HTTP1_SESSINFO::reset_on_new_req() noexcept
+void HTTP1_SESSINFO::reset_for_new_req() noexcept
 {
 	tdstrbuf_.reset();
 	parambuf_.reset();
 	errorbuf_.reset();
+	last_resp_status_ = 0;
+	resp_error_added_ = false;
 }
-
-void HTTP1_SESSINFO::reset_req_frag_stat() noexcept
-{
-}	
-
-void HTTP1_SESSINFO::reset_resp_frag_stat() noexcept
-{
-	resp_tkn_frag_ = 0;
-	memset(resphdr_, 0, sizeof(resphdr_));
-	resp_hdr_fraglen_ = 0;
-	nbytes_resp_frag_ = 0;
-	skip_resp_bytes_ = 0;
-}	
 
 void HTTP1_SESSINFO::reset_stats_on_resp(bool clear_req) noexcept
 {
 	if (clear_req) {	
-		reset_req_frag_stat();	
+		reqstate_.reset();
 	}
 
-	reset_resp_frag_stat();
-	
-	// TODO
+	respstate_.reset();
 }	
 
 bool HTTP1_SESSINFO::set_resp_expected() noexcept
 {
-	if ((uint8_t)connstate.req_method_ >= (uint8_t)METHOD_UNKNOWN) {
-		connstate.reset();
+	if ((uint8_t)reqstate_.req_method_ >= (uint8_t)METHOD_UNKNOWN) {
+		reqstate_.reset();
 		
 		return false;
 	}	
 
-	if (nresp_pending_ + 1 < MAX_PIPELINE_ELEMS) {
-		resp_pipline_[nresp_pending_++] = connstate.req_method_;
-		connstate.reset();
+	if ((unsigned)nresp_pending_ + 1 < MAX_PIPELINE_ELEMS) {
+		if (nresp_pending_ > 0) {
+			gstats[STATH1_REQ_PIPELINED]++;
+		}
+
+		resp_pipline_[nresp_pending_++] = reqstate_.req_method_;
+		reqstate_.reset();
 		
 		return true;
 	}	
 
 	gstats[STATH1_REQ_PIPELINE_OVF]++;
 
-	resp_pipline_[0] = connstate.req_method_;
+	resp_pipline_[0] = reqstate_.req_method_;
 	nresp_pending_ = 1;
 	nresp_completed_ = 0;
 
-	connstate.reset();
+	reqstate_.reset();
 
 	return false;
 }
@@ -266,21 +410,23 @@ int HTTP1_SESSINFO::parse_req_pkt(PARSE_PKT_HDR & hdr, uint8_t *porigstart, cons
 {
 	uint8_t				*pdata = porigstart, * const pend = pdata + len, *ptmp, *ptmp2, *ptend, *pstart;
 	int				pktlen = len, startlen, tlen;
-	auto				& connstate = connstate;
+	auto				& connstate = reqstate_;
 	char				tbuf[64], c;
 	bool				bret;
 
-	
 	if (skip_till_resp_ || skip_to_req_after_resp_ == 1) {
 		return 0;
 	}	
-	else if (skip_to_req_after_resp_ == 2) {
-		if (HTTP1_PROTO::get_req_method(pdata, pktlen) == METHOD_UNKNOWN) {
+	else if (skip_to_req_after_resp_ == 2 || respstate_.skip_till_resp_chunk_end_) {
+
+		if (true != is_valid_req(pdata, pktlen, pktlen)) {
 			skip_to_req_after_resp_ = 1;
+			respstate_.skip_till_resp_chunk_end_ = false;
+
 			return 0;
 		}	
 
-		skip_to_req_after_resp_ = 0;
+		reset_all_state();
 	}	
 	
 	do {
@@ -298,7 +444,7 @@ int HTTP1_SESSINFO::parse_req_pkt(PARSE_PKT_HDR & hdr, uint8_t *porigstart, cons
 
 		default			:	
 						gstats[STATH1_INVALID_STATE]++;
-						reset_till_resp();
+						reset_till_resp(false);
 
 						return 0;
 		}
@@ -308,7 +454,7 @@ lbl_chunk_end :
 			if (pktlen <= 0) return 0;
 			
 			if (connstate.skip_till_eol_) {
-				ptmp = get_delim_string(pdata, pktlen, "\r\n"sv);
+				ptmp = (uint8_t *)get_delim_string((const char *)pdata, pktlen, "\r\n"sv);
 				if (!ptmp) {
 					return 0;
 				}	
@@ -340,7 +486,7 @@ lbl_chunk_end :
 
 			if (connstate.fraglen_ > 0) {
 				if (connstate.fraglen_ > 3) {
-					connstate.reset_till_resp(true);
+					reset_till_resp(true);
 					return 0;
 				}	
 
@@ -405,7 +551,7 @@ lbl_chunk_data :
 
 			if (connstate.skip_till_eol_) {
 
-				ptmp = get_delim_string(pdata, pktlen, "\r\n"sv);
+				ptmp = (uint8_t *)get_delim_string((const char *)pdata, pktlen, "\r\n"sv);
 				if (!ptmp) {
 					return 0;
 				}	
@@ -441,16 +587,16 @@ lbl_chunk_data :
 					if (0 == parambuf_.size()) {
 						parambuf_ << " $*PARAM*$ "sv;
 					}
-					parambuf_.append(pdata, slen);
+					parambuf_.append((const char *)pdata, slen);
 				}	
 			}
 
-			if (pktlen < connstate.data_chunk_left_) {
+			if ((uint32_t)pktlen < connstate.data_chunk_left_) {
 				connstate.data_chunk_left_ -= pktlen;
 
 				return 0;
 			}	
-			else if (pktlen == connstate.data_chunk_left_) {
+			else if ((uint32_t)pktlen == connstate.data_chunk_left_) {
 
 				connstate.reset_skip_method();
 				connstate.state_ = HCONN_CHUNK_START;
@@ -494,9 +640,9 @@ lbl_chunk_hdr :
 					return 0;
 				}
 
-				ptmp = tbuf;
+				ptmp = (uint8_t *)tbuf;
 
-				while (pktlen > 0 && ptmp < tbuf + sizeof(tbuf) - 1) {
+				while (pktlen > 0 && ptmp < (uint8_t *)tbuf + sizeof(tbuf) - 1) {
 					c = (char)*pdata;
 
 					if (gy_isxdigit_ascii(c)) {
@@ -506,23 +652,23 @@ lbl_chunk_hdr :
 						pktlen--;
 					}	
 					else {
-						if (ptmp == tbuf) {
-							connstate.reset_till_resp(true);
+						if (ptmp == (uint8_t *)tbuf) {
+							reset_till_resp(true);
 							return 0;
 						}	
 						break;
 					}	
 				}	
 				
-				if (ptmp == tbuf || ptmp == tbuf + sizeof(tbuf) - 1) {
-					connstate.reset_till_resp(true);
+				if (ptmp == (uint8_t *)tbuf || ptmp == (uint8_t *)tbuf + sizeof(tbuf) - 1) {
+					reset_till_resp(true);
 					return 0;
 				}	
 
 				if (pktlen == 0) {
 					static_assert(sizeof(tbuf) < MAX_FRAG_LEN);
 
-					connstate.fraglen_ = ptmp - tbuf;
+					connstate.fraglen_ = ptmp - (uint8_t *)tbuf;
 					std::memcpy(reqfragbuf_, tbuf, connstate.fraglen_);
 					
 					return 0;
@@ -534,16 +680,16 @@ lbl_chunk_hdr :
 				if (connstate.fraglen_ >= MAX_FRAG_LEN) {
 					gstats[STATH1_CHUNK_FRAG_OVF]++;
 
-					connstate.reset_till_resp(true);
+					reset_till_resp(true);
 					return 0;
 				}	
 
 				std::memcpy(tbuf, reqfragbuf_, connstate.fraglen_);
-				ptmp = tbuf + connstate.fraglen_;
+				ptmp = (uint8_t *)tbuf + connstate.fraglen_;
 
 				connstate.fraglen_ = 0;
 
-				while (pktlen > 0 && ptmp < tbuf + sizeof(tbuf) - 1) {
+				while (pktlen > 0 && ptmp < (uint8_t *)tbuf + sizeof(tbuf) - 1) {
 					c = (char)*pdata;
 
 					if (gy_isxdigit_ascii(c)) {
@@ -557,8 +703,8 @@ lbl_chunk_hdr :
 					}	
 				}	
 				
-				if (ptmp == tbuf + sizeof(tbuf) - 1) {
-					connstate.reset_till_resp(true);
+				if (ptmp == (uint8_t *)tbuf + sizeof(tbuf) - 1) {
+					reset_till_resp(true);
 					return 0;
 				}	
 
@@ -567,7 +713,7 @@ lbl_chunk_hdr :
 			
 			bret = string_to_number(tbuf, connstate.data_chunk_len_, nullptr, 16);
 			if (!bret) {
-				connstate.reset_till_resp(true);
+				reset_till_resp(true);
 				return 0;
 			}	
 
@@ -603,11 +749,11 @@ lbl_cont_data :
 					if (connstate.data_chunk_left_ == connstate.data_chunk_len_) {
 						parambuf_ << " $*PARAM*$ "sv;
 					}
-					parambuf_.append(pdata, slen);
+					parambuf_.append((const char *)pdata, slen);
 				}	
 			}
 
-			if (pktlen < connstate.data_chunk_left_) {
+			if ((uint32_t)pktlen < connstate.data_chunk_left_) {
 				connstate.data_chunk_left_ -= pktlen;
 
 				return 0;
@@ -634,7 +780,7 @@ lbl_idle :
 			
 			if (connstate.fraglen_ > 0) {
 				if (connstate.fraglen_ > MAX_METHOD_LEN) {
-					connstate.reset_till_resp(true);
+					reset_till_resp(true);
 					return 0;
 				}	
 
@@ -647,10 +793,10 @@ lbl_idle :
 
 				connstate.fraglen_ = 0;
 
-				connstate.req_method_ = HTTP1_PROTO::get_req_method(tbuf, 10);
+				connstate.req_method_ = HTTP1_PROTO::get_req_method((const uint8_t *)tbuf, 10);
 				
 				if (connstate.req_method_ == METHOD_UNKNOWN) {
-					connstate.reset_till_resp(true);
+					reset_till_resp(true);
 					return 0;
 				}	
 
@@ -675,7 +821,7 @@ lbl_idle :
 
 				if (connstate.req_method_ == METHOD_UNKNOWN) {
 
-					if (pktlen < MAX_METHOD_LEN) {
+					if ((uint32_t)pktlen < MAX_METHOD_LEN) {
 						std::memcpy(reqfragbuf_, pdata, pktlen);
 						connstate.fraglen_ = pktlen;
 
@@ -683,7 +829,7 @@ lbl_idle :
 					}	
 					
 					if (pdata == porigstart && reqnum_ == 0 && true == HTTP2_PROTO::is_valid_req_resp(pdata, pktlen, pktlen, 
-						DirPacket::DirInbound, svcsess_. !is_midway_session_ /* is_init */)) {
+						DirPacket::DirInbound, !is_midway_session_ /* is_init */)) {
 						
 						gstats[STATH1_HTTP2_CONN]++;
 
@@ -731,7 +877,7 @@ lbl_idle :
 			}	
 
 			if (!ptmp) {
-				tdstrbuf_.append(pdata, pktlen);
+				tdstrbuf_.append((const char *)pdata, pktlen);
 				
 				connstate.reset_skip_method();
 				connstate.state_ = HCONN_HDR;
@@ -740,7 +886,7 @@ lbl_idle :
 				return 0;
 			}	
 
-			tdstrbuf_.append(pdata, ptmp - pdata);
+			tdstrbuf_.append((const char *)pdata, ptmp - pdata);
 
 			pdata = ptmp + 1;
 			pktlen = pend - pdata;
@@ -751,7 +897,7 @@ lbl_idle :
 				ptmp = (uint8_t *)memchr(pdata, ' ', pktlen);
 
 				if (!ptmp) {
-					parambuf_.append(pdata, pktlen);
+					parambuf_.append((const char *)pdata, pktlen);
 					
 					connstate.state_ = HCONN_HDR;
 					connstate.skip_till_eol_ = true;
@@ -759,7 +905,7 @@ lbl_idle :
 					return 0;
 				}	
 				
-				parambuf_.append(pdata, ptmp - pdata);
+				parambuf_.append((const char *)pdata, ptmp - pdata);
 
 				pdata = ptmp + 1;
 				pktlen = pend - pdata;
@@ -773,7 +919,7 @@ lbl_idle :
 				pdata++;
 			}	
 
-			if (pktlen > sizeof("HTTP/1.1")) {
+			if (pktlen > (int)sizeof("HTTP/1.1")) {
 				if (0 == memcmp(pdata, "HTTP/1.", GY_CONST_STRLEN("HTTP/1."))) {
 					if ('0' == pdata[GY_CONST_STRLEN("HTTP/1.")]) {
 						is_http10_ = true;
@@ -846,7 +992,7 @@ lbl_hdr :
 
 			ptmp = (uint8_t *)memchr(pdata, '\r', pktlen);
 
-			if (connstate.fraglen_ > 0 && connstate.fraglen_ + 1 < MAX_FRAG_LEN) {
+			if (connstate.fraglen_ > 0 && (uint32_t)connstate.fraglen_ + 1 < MAX_FRAG_LEN) {
 				
 				if (!ptmp) {
 					connstate.fraglen_ = 0;
@@ -855,7 +1001,7 @@ lbl_hdr :
 					return 0;
 				}	
 
-				if (ptmp - pdata + 1 + connstate.fraglen_ < MAX_FRAG_LEN) {
+				if (ptmp - pdata + 1 + connstate.fraglen_ < (int)MAX_FRAG_LEN) {
 					std::memcpy(reqfragbuf_ + connstate.fraglen_, pdata, ptmp - pdata + 1);
 				}	
 				else {
@@ -868,13 +1014,13 @@ lbl_hdr :
 					continue;
 				}	
 
-				sv1 = {(const char *)reqfragbuf_, connstate.fraglen_ + ptmp - pdata};
+				sv1 = {(const char *)reqfragbuf_, size_t(connstate.fraglen_ + ptmp - pdata)};
 
 				connstate.fraglen_ = 0;
 			}	
 			else {
 				if (!ptmp) {
-					if (pktlen + 4 < MAX_FRAG_LEN) {
+					if ((uint32_t)pktlen + 4 < MAX_FRAG_LEN) {
 						std::memcpy(reqfragbuf_, pdata, pktlen);
 						connstate.fraglen_ = pktlen;
 
@@ -888,13 +1034,13 @@ lbl_hdr :
 					}	
 				}
 
-				sv1 = {(const char *)pdata, ptmp - pdata};
+				sv1 = {(const char *)pdata, size_t(ptmp - pdata)};
 			}
 
 			pdata = ptmp + 2;
 			pktlen = pend - pdata;
 
-			for (int i = 0; i < GY_ARRAY_SIZE(req_hdr_http); ++i) {
+			for (int i = 0; i < (int)GY_ARRAY_SIZE(req_hdr_http); ++i) {
 				const auto		& rv = req_hdr_http[i];
 
 				if (sv1.size() > rv.size() && (0 == memcmp(sv1.data(), rv.data(), rv.size()))) {
@@ -903,7 +1049,7 @@ lbl_hdr :
 							continue;
 						}
 
-						for (int j = 0; j < GY_ARRAY_SIZE(req_content_types); ++j) {
+						for (int j = 0; j < (int)GY_ARRAY_SIZE(req_content_types); ++j) {
 							const auto			& t = req_content_types[i];
 
 							if (memmem(sv1.data() + rv.size(), sv1.size() - rv.size(), t.data(), t.size())) {
@@ -915,9 +1061,9 @@ lbl_hdr :
 					else if (i == (int)REQ_HDR_CONTENT_LEN) {
 						size_t				colen = 0;
 
-						ptmp = sv1.data() + rv.size();
+						ptmp = (uint8_t *)sv1.data() + rv.size();
 						
-						bret = string_to_number(ptmp, colen, nullptr, 10);
+						bret = string_to_number((const char *)ptmp, colen, nullptr, 10);
 
 						if (!bret || colen > GY_UP_GB(50)) {
 							reset_till_resp(true);
@@ -934,17 +1080,22 @@ lbl_hdr :
 						STR_RD_BUF		strbuf(sv1.data() + rv.size(), sv1.size() - rv.size());
 						int8_t			is_chunk = 0;
 
-						while (auto wv = strbuf.get_next_word(true /* ignore_separator_in_nbytes */, " ;,", true /* skip_leading_space */,
+						while (true) {
+							if (auto wv = strbuf.get_next_word(true /* ignore_separator_in_nbytes */, " ;,", true /* skip_leading_space */,
 								true /* ignore_escape */, true /* skip_multi_separators */); wv.size() > 0) {
 							
-							for (int j = 0; j < GY_ARRAY_SIZE(comp_content_types); ++j) {
-								const auto			& t = comp_content_types[i];
+								for (int j = 0; j < (int)GY_ARRAY_SIZE(comp_content_types); ++j) {
+									const auto			& t = comp_content_types[i];
 
-								if (t.size() == wv.size() && (0 == memcmp(wv.data(), t.data(), wv.size()))) {
-									connstate.save_req_payload_ = (int8_t)-1;
+									if (t.size() == wv.size() && (0 == memcmp(wv.data(), t.data(), wv.size()))) {
+										connstate.save_req_payload_ = (int8_t)-1;
 
-									break;
+										break;
+									}	
 								}	
+							}
+							else {
+								break;
 							}	
 						}	
 					}
@@ -952,23 +1103,28 @@ lbl_hdr :
 						STR_RD_BUF		strbuf(sv1.data() + rv.size(), sv1.size() - rv.size());
 						bool			is_chunk = false;
 
-						while (auto wv = strbuf.get_next_word(true /* ignore_separator_in_nbytes */, " ;,", true /* skip_leading_space */,
+						while (true) {
+							if (auto wv = strbuf.get_next_word(true /* ignore_separator_in_nbytes */, " ;,", true /* skip_leading_space */,
 								true /* ignore_escape */, true /* skip_multi_separators */); wv.size() > 0) {
 							
-							if (0 == memcmp(wv.data(), "chunked", sizeof("chunked") - 1)) {
-								is_chunk = true;
-							}	
-							else {
-								for (int j = 0; j < GY_ARRAY_SIZE(comp_content_types); ++j) {
-									const auto			& t = comp_content_types[i];
+								if (0 == memcmp(wv.data(), "chunked", sizeof("chunked") - 1)) {
+									is_chunk = true;
+								}	
+								else {
+									for (int j = 0; j < (int)GY_ARRAY_SIZE(comp_content_types); ++j) {
+										const auto			& t = comp_content_types[i];
 
-									if (t.size() == wv.size() && (0 == memcmp(wv.data(), t.data(), wv.size()))) {
-										connstate.save_req_payload_ = (int8_t)-1;
+										if (t.size() == wv.size() && (0 == memcmp(wv.data(), t.data(), wv.size()))) {
+											connstate.save_req_payload_ = (int8_t)-1;
 
-										is_chunk = false;
-										break;
+											is_chunk = false;
+											break;
+										}	
 									}	
 								}	
+							}
+							else {
+								break;
 							}	
 						}	
 
@@ -1029,7 +1185,7 @@ int HTTP1_SESSINFO::parse_resp_pkt(PARSE_PKT_HDR & hdr, uint8_t *porigstart, con
 	uint8_t				*pdata = porigstart, * const pend = pdata + len, *ptmp, *ptmp2, *ptend, *pstart;
 	int				pktlen = len, startlen, tlen;
 	auto				& connstate = respstate_;
-	char				tbuf[128], c;
+	char				tbuf[100], c;
 	bool				bret;
 
 	if (skip_till_req_) {
@@ -1044,6 +1200,16 @@ int HTTP1_SESSINFO::parse_resp_pkt(PARSE_PKT_HDR & hdr, uint8_t *porigstart, con
 
 		return 0;
 	}
+	else if (connstate.skip_till_resp_chunk_end_) {
+		auto			[isend, pend] = is_req_resp_end_heuristic(pdata, pktlen, DirPacket::DirOutbound);
+
+		if (isend) {
+			request_done();
+			return 1;
+		}
+		
+		return 0;
+	}	
 
 	do {
 		pstart = pdata;
@@ -1070,7 +1236,7 @@ lbl_chunk_end :
 			if (pktlen <= 0) return 0;
 			
 			if (connstate.skip_till_eol_) {
-				ptmp = get_delim_string(pdata, pktlen, "\r\n"sv);
+				ptmp = (uint8_t *)get_delim_string((const char *)pdata, pktlen, "\r\n"sv);
 				if (!ptmp) {
 					return 0;
 				}	
@@ -1102,7 +1268,7 @@ lbl_chunk_end :
 
 			if (connstate.fraglen_ > 0) {
 				if (connstate.fraglen_ > 3) {
-					connstate.reset_on_resp_error();
+					reset_on_resp_error();
 					return 0;
 				}	
 
@@ -1167,7 +1333,7 @@ lbl_chunk_data :
 
 			if (connstate.skip_till_eol_) {
 
-				ptmp = get_delim_string(pdata, pktlen, "\r\n"sv);
+				ptmp = (uint8_t *)get_delim_string((const char *)pdata, pktlen, "\r\n"sv);
 				if (!ptmp) {
 					return 0;
 				}	
@@ -1195,12 +1361,21 @@ lbl_chunk_data :
 				connstate.skip_till_eol_ = false;
 			}	
 
-			if (pktlen < connstate.data_chunk_left_) {
+			if (is_error_response(last_resp_status_) && errorbuf_.size() && !resp_error_added_) {
+				resp_error_added_ = true;
+
+				if (pktlen > 4 && gy_isprint_ascii(pdata[0]) && gy_isprint_ascii(pdata[1]) && gy_isprint_ascii(pdata[2]) && gy_isprint_ascii(pdata[3])) {
+					errorbuf_ << " $*Response*$ : "sv;
+					errorbuf_.append((const char *)pdata, std::min<size_t>(pend - pdata, 128));
+				}	
+			}	
+
+			if ((uint32_t)pktlen < connstate.data_chunk_left_) {
 				connstate.data_chunk_left_ -= pktlen;
 
 				return 0;
 			}	
-			else if (pktlen == connstate.data_chunk_left_) {
+			else if ((uint32_t)pktlen == connstate.data_chunk_left_) {
 
 				connstate.reset_skip_method();
 				connstate.state_ = HCONN_CHUNK_START;
@@ -1219,7 +1394,6 @@ lbl_chunk_data :
 				connstate.reset_skip_method();
 
 				connstate.state_ = HCONN_CHUNK_START;
-				connstate.save_req_payload_ = savepayload;
 			}	
 		}	
 
@@ -1244,9 +1418,9 @@ lbl_chunk_hdr :
 					return 0;
 				}
 
-				ptmp = tbuf;
+				ptmp = (uint8_t *)tbuf;
 
-				while (pktlen > 0 && ptmp < tbuf + sizeof(tbuf) - 1) {
+				while (pktlen > 0 && ptmp < (uint8_t *)tbuf + sizeof(tbuf) - 1) {
 					c = (char)*pdata;
 
 					if (gy_isxdigit_ascii(c)) {
@@ -1256,23 +1430,23 @@ lbl_chunk_hdr :
 						pktlen--;
 					}	
 					else {
-						if (ptmp == tbuf) {
-							connstate.reset_on_resp_error();
+						if (ptmp == (uint8_t *)tbuf) {
+							connstate.skip_till_resp_chunk_end_ = true;
 							return 0;
 						}	
 						break;
 					}	
 				}	
 				
-				if (ptmp == tbuf || ptmp == tbuf + sizeof(tbuf) - 1) {
-					connstate.reset_on_resp_error();
+				if (ptmp == (uint8_t *)tbuf || ptmp == (uint8_t *)tbuf + sizeof(tbuf) - 1) {
+					connstate.skip_till_resp_chunk_end_ = true;
 					return 0;
 				}	
 
 				if (pktlen == 0) {
 					static_assert(sizeof(tbuf) < MAX_FRAG_LEN);
 
-					connstate.fraglen_ = ptmp - tbuf;
+					connstate.fraglen_ = ptmp - (uint8_t *)tbuf;
 					std::memcpy(respfragbuf_, tbuf, connstate.fraglen_);
 					
 					return 0;
@@ -1284,16 +1458,16 @@ lbl_chunk_hdr :
 				if (connstate.fraglen_ >= MAX_FRAG_LEN) {
 					gstats[STATH1_CHUNK_FRAG_OVF]++;
 
-					connstate.reset_on_resp_error();
+					reset_on_resp_error();
 					return 0;
 				}	
 
 				std::memcpy(tbuf, respfragbuf_, connstate.fraglen_);
-				ptmp = tbuf + connstate.fraglen_;
+				ptmp = (uint8_t *)tbuf + connstate.fraglen_;
 
 				connstate.fraglen_ = 0;
 
-				while (pktlen > 0 && ptmp < tbuf + sizeof(tbuf) - 1) {
+				while (pktlen > 0 && ptmp < (uint8_t *)tbuf + sizeof(tbuf) - 1) {
 					c = (char)*pdata;
 
 					if (gy_isxdigit_ascii(c)) {
@@ -1307,8 +1481,8 @@ lbl_chunk_hdr :
 					}	
 				}	
 				
-				if (ptmp == tbuf + sizeof(tbuf) - 1) {
-					connstate.reset_on_resp_error();
+				if (ptmp == (uint8_t *)tbuf + sizeof(tbuf) - 1) {
+					connstate.skip_till_resp_chunk_end_ = true;
 					return 0;
 				}	
 
@@ -1317,7 +1491,7 @@ lbl_chunk_hdr :
 			
 			bret = string_to_number(tbuf, connstate.data_chunk_len_, nullptr, 16);
 			if (!bret) {
-				connstate.reset_on_resp_error();
+				connstate.skip_till_resp_chunk_end_ = true;
 				return 0;
 			}	
 
@@ -1346,7 +1520,16 @@ lbl_chunk_hdr :
 lbl_cont_data :			
 			if (pktlen <= 0) return 0;
 
-			if (pktlen < connstate.data_chunk_left_) {
+			if (is_error_response(last_resp_status_) && errorbuf_.size() && !resp_error_added_) {
+				resp_error_added_ = true;
+
+				if (pktlen > 4 && gy_isprint_ascii(pdata[0]) && gy_isprint_ascii(pdata[1]) && gy_isprint_ascii(pdata[2]) && gy_isprint_ascii(pdata[3])) {
+					errorbuf_ << " $*Response*$ : "sv;
+					errorbuf_.append((const char *)pdata, std::min<size_t>(pend - pdata, 128));
+				}	
+			}	
+
+			if ((uint32_t)pktlen < connstate.data_chunk_left_) {
 				connstate.data_chunk_left_ -= pktlen;
 
 				return 0;
@@ -1374,13 +1557,13 @@ lbl_idle :
 			connstate.req_method_ = get_curr_req_method();
 			
 			if (connstate.req_method_ == METHOD_UNKNOWN) {
-				connstate.reset_on_resp_error();
+				reset_on_resp_error();
 				return 0;
 			}	
 
 			if (connstate.fraglen_ > 0) {
 				if (connstate.fraglen_ > sizeof(tbuf) - 8) {
-					connstate.reset_on_resp_error();
+					reset_on_resp_error();
 					return 0;
 				}	
 
@@ -1392,16 +1575,16 @@ lbl_idle :
 				tlen += connstate.fraglen_;
 				connstate.fraglen_ = 0;
 
-				auto			[status, pnext] = get_status_response(tbuf, tlen);
+				auto			[status, pnext] = get_status_response((uint8_t *)tbuf, tlen);
 
 				if (!pnext) {
-					connstate.reset_on_resp_error();
+					reset_on_resp_error();
 					return 0;
 				}
 
-				connstate.resp_status_ = (uint16_t)status;
+				last_resp_status_ = (uint16_t)status;
 
-				pdata = pnext;
+				pdata = (uint8_t *)pnext;
 				pktlen = pend - pdata;
 			}	
 			else {
@@ -1416,16 +1599,30 @@ lbl_idle :
 
 				if (pktlen <= 0) return 0;
 				
-				auto			[status, pnext] = get_status_response(tbuf, tlen);
+				auto			[status, pnext] = get_status_response((uint8_t *)tbuf, tlen);
 
 				if (!pnext) {
-					connstate.reset_on_resp_error();
+					reset_on_resp_error();
 					return 0;
 				}
 
-				connstate.resp_status_ = (uint16_t)status;
+				last_resp_status_ = (uint16_t)status;
+				resp_error_added_ = false;
+	
+				if (is_error_response(last_resp_status_)) {
+					tran_.errorcode_ = last_resp_status_;
 
-				pdata = pnext;
+					while (pnext < pend && (' ' == *pnext)) pnext++;
+
+					if (pnext < pend - 1) {
+						ptmp = (uint8_t *)memchr(pnext, '\r', std::min<size_t>(pend - 1 - pnext, 256));
+						if (ptmp && '\n' == ptmp[1]) {
+							errorbuf_.reset().append((const char *)pnext, ptmp - pnext);
+						}
+					}
+				}
+
+				pdata = (uint8_t *)pnext;
 				pktlen = pend - pdata;
 			}
 
@@ -1486,7 +1683,7 @@ lbl_hdr :
 
 			ptmp = (uint8_t *)memchr(pdata, '\r', pktlen);
 
-			if (connstate.fraglen_ > 0 && connstate.fraglen_ + 1 < MAX_FRAG_LEN) {
+			if (connstate.fraglen_ > 0 && (uint32_t)connstate.fraglen_ + 1 < MAX_FRAG_LEN) {
 				
 				if (!ptmp) {
 					connstate.fraglen_ = 0;
@@ -1495,7 +1692,7 @@ lbl_hdr :
 					return 0;
 				}	
 
-				if (ptmp - pdata + 1 + connstate.fraglen_ < MAX_FRAG_LEN) {
+				if (ptmp - pdata + 1 + connstate.fraglen_ < (int)MAX_FRAG_LEN) {
 					std::memcpy(respfragbuf_ + connstate.fraglen_, pdata, ptmp - pdata + 1);
 				}	
 				else {
@@ -1508,13 +1705,13 @@ lbl_hdr :
 					continue;
 				}	
 
-				sv1 = {(const char *)respfragbuf_, connstate.fraglen_ + ptmp - pdata};
+				sv1 = {(const char *)respfragbuf_, size_t(connstate.fraglen_ + ptmp - pdata)};
 
 				connstate.fraglen_ = 0;
 			}	
 			else {
 				if (!ptmp) {
-					if (pktlen + 4 < MAX_FRAG_LEN) {
+					if ((uint32_t)pktlen + 4 < MAX_FRAG_LEN) {
 						std::memcpy(respfragbuf_, pdata, pktlen);
 						connstate.fraglen_ = pktlen;
 
@@ -1528,23 +1725,23 @@ lbl_hdr :
 					}	
 				}
 
-				sv1 = {(const char *)pdata, ptmp - pdata};
+				sv1 = {(const char *)pdata, size_t(ptmp - pdata)};
 			}
 
 			pdata = ptmp + 2;
 			pktlen = pend - pdata;
 
-			if (is_resp_body_valid(connstate.resp_status_, connstate.req_method_)) {
-				for (int i = 0; i < GY_ARRAY_SIZE(resp_hdr_http); ++i) {
+			if (is_resp_body_valid(last_resp_status_, connstate.req_method_)) {
+				for (int i = 0; i < (int)GY_ARRAY_SIZE(resp_hdr_http); ++i) {
 					const auto		& rv = resp_hdr_http[i];
 
 					if (sv1.size() > rv.size() && (0 == memcmp(sv1.data(), rv.data(), rv.size()))) {
 						if (i == (int)RESP_HDR_CONTENT_LEN) {
 							size_t				colen = 0;
 
-							ptmp = sv1.data() + rv.size();
+							ptmp = (uint8_t *)sv1.data() + rv.size();
 							
-							bret = string_to_number(ptmp, colen, nullptr, 10);
+							bret = string_to_number((const char *)ptmp, colen, nullptr, 10);
 
 							if (!bret || colen > GY_UP_GB(50)) {
 								reset_on_resp_error();
@@ -1561,23 +1758,28 @@ lbl_hdr :
 							STR_RD_BUF		strbuf(sv1.data() + rv.size(), sv1.size() - rv.size());
 							bool			is_chunk = false;
 
-							while (auto wv = strbuf.get_next_word(true /* ignore_separator_in_nbytes */, " ;,", true /* skip_leading_space */,
+							while (true) {
+								if (auto wv = strbuf.get_next_word(true /* ignore_separator_in_nbytes */, " ;,", true /* skip_leading_space */,
 									true /* ignore_escape */, true /* skip_multi_separators */); wv.size() > 0) {
 								
-								if (0 == memcmp(wv.data(), "chunked", sizeof("chunked") - 1)) {
-									is_chunk = true;
-								}	
-								else {
-									for (int j = 0; j < GY_ARRAY_SIZE(comp_content_types); ++j) {
-										const auto			& t = comp_content_types[i];
+									if (0 == memcmp(wv.data(), "chunked", sizeof("chunked") - 1)) {
+										is_chunk = true;
+									}	
+									else {
+										for (int j = 0; j < (int)GY_ARRAY_SIZE(comp_content_types); ++j) {
+											const auto			& t = comp_content_types[i];
 
-										if (t.size() == wv.size() && (0 == memcmp(wv.data(), t.data(), wv.size()))) {
-											connstate.save_req_payload_ = (int8_t)-1;
+											if (t.size() == wv.size() && (0 == memcmp(wv.data(), t.data(), wv.size()))) {
+												connstate.save_req_payload_ = (int8_t)-1;
 
-											is_chunk = false;
-											break;
+												is_chunk = false;
+												break;
+											}	
 										}	
 									}	
+								}	
+								else {
+									break;
 								}	
 							}	
 
@@ -1602,12 +1804,12 @@ lbl_hdr :
 				pdata += 2;
 				
 				if (!connstate.is_content_len_ && !connstate.is_chunk_data_) {
-					if (connstate.resp_status_ >= 100 && connstate.resp_status_ < 200) {
+					if (last_resp_status_ >= 100 && last_resp_status_ < 200) {
 						connstate.reset_skip_method();
 						connstate.state_ = HCONN_HDR;
 					}	
 					else if (connstate.req_method_ == METHOD_CONNECT && 
-						(connstate.resp_status_ >= 200 && connstate.resp_status_ < 300)) {
+						(last_resp_status_ >= 200 && last_resp_status_ < 300)) {
 						
 						gstats[STATH1_CONNECT_VPN]++;
 						skip_session_ = 111;
@@ -1647,9 +1849,21 @@ lbl_hdr :
 
 void HTTP1_SESSINFO::request_done(bool flushreq, bool clear_req)
 {
-	if (tdstrbuf_.size() > 0) {
+	if (flushreq && (!((nresp_completed_ + 1 >= nresp_pending_)  && tdstrbuf_.size()))) {
+		if (tdstrbuf_.size() && nresp_completed_ + 1 < nresp_pending_ && (svcsess_.common_.tlastpkt_usec_ > (tran_.treq_usec_ + 10 * GY_USEC_PER_MINUTE))) {
+			gstats[STATH1_REQ_PIPELINE_TIMEOUT]++;
+			
+			nresp_pending_ = 1;
+			nresp_completed_ = 0;
+		}	
+		else {
+			flushreq = false;
+		}	
+	}	
+
+	if (flushreq) {
 		if (parambuf_.size() > 0) {
-			size_t			maxsz - get_api_max_len();
+			size_t				maxsz = get_api_max_len();
 
 			if (tdstrbuf_.size() + parambuf_.size() > maxsz) {
 				parambuf_.set_len_external(maxsz > tdstrbuf_.size() ? maxsz - tdstrbuf_.size() : 0);
@@ -1663,7 +1877,7 @@ void HTTP1_SESSINFO::request_done(bool flushreq, bool clear_req)
 		part_query_started_ = 0;
 	}
 
-	if (tran_.reqlen_ > 0) {
+	if ((tran_.reqlen_ > 0 && flushreq) || clear_req) {
 		if ((tran_.reslen_ != 0) || (svcsess_.common_.tlastpkt_usec_ > (tran_.treq_usec_ + 2 * GY_USEC_PER_SEC))) {
 			if (flushreq) {
 				print_req();
@@ -1671,24 +1885,36 @@ void HTTP1_SESSINFO::request_done(bool flushreq, bool clear_req)
 		}
 
 		tran_.reset();
-		reset_on_new_req();
+		reset_for_new_req();
 	}
+
+	if (clear_req) {
+		nresp_pending_ = 0;
+		nresp_completed_ = 0;
+		
+		skip_till_req_ = 1;
+	}
+	else if (nresp_pending_ > nresp_completed_) {
+		nresp_completed_++;
+
+		if (nresp_completed_ == nresp_pending_ + 1) {
+			nresp_pending_ = 0;
+			nresp_completed_ = 0;
+		}	
+	}	
 
 	reset_stats_on_resp(clear_req);
 }
-
 
 void HTTP1_SESSINFO::reset_on_resp_error()
 {
 	request_done(false /* flushreq */, true /* clear_req */);
 
-	skip_till_req_ = 1;
-
 	gstats[STATH1_RESP_RESET_ERR]++;
 }
 
 // Called from response contexts
-METHODS_E HTTP1_SESSINFO::get_curr_req_method() noexcept
+HTTP1_PROTO::METHODS_E HTTP1_SESSINFO::get_curr_req_method() noexcept
 {
 	if (nresp_completed_ < nresp_pending_) {
 		if (nresp_completed_ < MAX_PIPELINE_ELEMS) {
@@ -1707,16 +1933,123 @@ METHODS_E HTTP1_SESSINFO::get_curr_req_method() noexcept
 	return METHOD_UNKNOWN;
 }
 
-
 bool HTTP1_SESSINFO::print_req() noexcept
 {
-	return true;
-}
+	auto				& apihdlr = get_api_hdlr();
+
+	try {
+		if (tdstrbuf_.size() == 0 || tran_.reslen_ == 0) {
+			return false;
+		}	
+
+		if (tdstrbuf_.size() > get_api_max_len()) {
+			tdstrbuf_.set_len_external(get_api_max_len());
+		}	
+
+		uint8_t				*pone = apihdlr.get_xfer_pool_buf();
+		if (!pone) {
+			return false;
+		}	
+
+		STR_WR_BIN			ustrbuf(pone + sizeof(API_TRAN) + tdstrbuf_.size() + parambuf_.size() + 1, MAX_PARSE_EXT_LEN);
+		API_TRAN			*ptran = (API_TRAN *)pone;
+		uint8_t				next = 0;
+		
+		std::memcpy(ptran, &tran_, sizeof(tran_));
+		std::memcpy(ptran + 1, tdstrbuf_.data(), tdstrbuf_.size());
+		std::memcpy(ptran + 1 + tdstrbuf_.size(), parambuf_.data(), parambuf_.size() + 1);
+
+		ustrbuf << next;
+
+		if (useragentbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + useragentbuf_.size() + 1) {
+			next++;
+			ustrbuf << PARSE_FIELD_LEN(FIELD_APPNAME, useragentbuf_.size() + 1) << std::string_view(useragentbuf_.data(), useragentbuf_.size() + 1);
+		}	
+
+		if (ptran->errorcode_ != 0 && (errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + errorbuf_.size() + 1)) {
+			next++;
+			ustrbuf << PARSE_FIELD_LEN(FIELD_ERRTXT, errorbuf_.size() + 1) << std::string_view(errorbuf_.data(), errorbuf_.size() + 1);
+		}	
+
+		if ((uint8_t)respstate_.req_method_ < (uint8_t)METHOD_UNKNOWN && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + MAX_METHOD_LEN) {
+			const auto			& sv = http_methods[respstate_.req_method_];
+
+			next++;
+			ustrbuf << PARSE_FIELD_LEN(FIELD_SESSID, sv.size());
+			ustrbuf.append(sv.data(), sv.size() - 1);
+			ustrbuf << '\0';
+		}
+
+		*(ustrbuf.data()) = next;
+
+		ptran->reqnum_ = reqnum_++;
+
+		if (ptran->reqnum_ > 0) {
+			ptran->app_sleep_ms_ = (ptran->tupd_usec_ - last_upd_tusec_)/1000;
+		}
+
+		last_upd_tusec_ = ptran->tupd_usec_;
+
+		ptran->request_len_ = tdstrbuf_.size() + parambuf_.size() + 1;
+
+		if (ustrbuf.size() > 1) {
+			ptran->lenext_ = ustrbuf.size();
+		}	
+		else {
+			ptran->lenext_ = 0;
+		}	
+		
+		ptran->set_resp_times();
+		ptran->set_padding_len();
+		
+		gtotal_queries++;
+		gtotal_resp += ptran->response_usec_;
+
+		return apihdlr.set_xfer_buf_sz(ptran->get_elem_size());
+	}
+	catch(...) {
+		apihdlr.stats_.nxfer_pool_fail_++;
+		return false;
+	}	
+}	
 
 void HTTP1_SESSINFO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) noexcept
 {
+	uint64_t			diffstats[STATH1_MAX];
 
-}
+	std::memcpy(diffstats, gstats, sizeof(gstats));
+
+	strbuf << "\nHTTP1 Interval Stats for "sv << tcur - tlast << " sec : "sv;
+	
+	for (int i = 0; i < (int)STATH1_MAX; ++i) {
+		diffstats[i] -= gstats_old[i];
+
+		if (diffstats[i] > 0) {
+			strbuf << ' ' << gstatstr[i] << ' ' << diffstats[i] << ',';
+		}	
+	}	
+	
+	strbuf << " Requests "sv << gtotal_queries - glast_queries << ", Avg Response usec "sv << (gtotal_resp - glast_resp)/(NUM_OR_1(gtotal_queries - glast_queries));
+	
+	std::memcpy(gstats_old, gstats, sizeof(gstats));
+
+	glast_queries = gtotal_queries;
+	glast_resp = gtotal_resp;
+
+	strbuf << '\n';
+
+	strbuf << "HTTP1 Cumulative Stats : "sv;
+	
+	for (int i = 0; i < (int)STATH1_MAX; ++i) {
+		if (gstats[i] > 0) {
+			strbuf << ' ' << gstatstr[i] << ' ' << gstats[i] << ',';
+		}	
+	}	
+
+	strbuf << " Total Requests "sv << gtotal_queries;
+
+	strbuf << "\n\n"sv;
+}	
 
 } // namespace gyeeta
 

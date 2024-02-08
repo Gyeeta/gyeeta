@@ -15,12 +15,13 @@ HTTP2_PROTO::~HTTP2_PROTO() noexcept		= default;
 
 std::pair<HTTP2_SESSINFO *, void *> HTTP2_PROTO::alloc_sess(SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr)
 {
-	return { new HTTP2_SESSINFO(), nullptr };
+	return {};
+ 	// TODO return { new HTTP2_SESSINFO(), nullptr };
 }	
 
 void HTTP2_PROTO::destroy(HTTP2_SESSINFO *pobj, void *pdata) noexcept
 {
-	delete pobj;
+	// TODO delete pobj;
 }	
 
 

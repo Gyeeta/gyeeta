@@ -330,6 +330,7 @@ int POSTGRES_SESSINFO::parse_req_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					case MSG_F_SYNC :
 					case MSG_F_FUNCTION_CALL :
 
+						tdstrbuf_.reset();
 						statpg_.skip_to_req_after_resp_ = 0;
 						goto start1;
 
@@ -1666,6 +1667,12 @@ int POSTGRES_SESSINFO::handle_resp_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen
 		
 		if (statpg_.nready_resp_pending_ > 0) {
 			statpg_.nready_resp_pending_--;
+
+			if (tdstrbuf_.size() && statpg_.nready_resp_pending_ > 0 && (svcsess_.common_.tlastpkt_usec_ > (tran_.treq_usec_ + 10 * GY_USEC_PER_MINUTE))) {
+
+				gstats[STATPG_REQ_SYNC_TIMEOUT]++;
+				statpg_.nready_resp_pending_ = 0;
+			}	
 
 			if (statpg_.nready_resp_pending_ == 0) {
 				request_done();

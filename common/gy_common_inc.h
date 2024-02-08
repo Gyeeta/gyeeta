@@ -452,6 +452,12 @@ static inline bool gy_isblank_ascii(int c) noexcept
 	return (c == ' ' || c == '\t');
 }	
 
+static inline bool gy_isspace_ascii(int c) noexcept
+{
+	// ' ',  '\t', '\n', '\v', '\f', '\r'
+	return c == ' ' || (c >= '\t' && c <= '\r'); 
+}	
+
 static inline bool is_space_tab(int c) noexcept
 {
 	return (c == ' ' || c == '\t');
