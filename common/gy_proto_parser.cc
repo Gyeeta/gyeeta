@@ -1309,7 +1309,6 @@ try1 :
 					if (gapi_print_fd > 0 && gnrecs < 1'000'000) {
 
 						char				trec[32767];
-						PARSE_ALL_FIELDS		fields;
 						uint32_t			nelems = pnot->nevents_;
 						API_TRAN			*pone = (API_TRAN *)(pnot + 1);
 
@@ -1322,25 +1321,25 @@ try1 :
 								break;
 							}
 
-							auto			sv = get_api_tran(pone, fields);
+							char				stimebuf[128];
+							PARSE_ALL_FIELDS		fields;
+							auto				sv = get_api_tran(pone, fields);
 
 							if (sv.size()) {
-								char				stimebuf[128];
-
 								gy_time_print(stimebuf, sizeof(stimebuf), GY_USEC_TO_TIMEVAL(pone->treq_usec_));
 
 								gy_fdprintf(gapi_print_fd, trec, sizeof(trec) - 1, false, 
-									"[#%lu : Time %s, Req %s, Response %lu usec, Username %s, Appname %s, DBName %s, "
-									"Error Code %d, Error Text %s, Bytes In %lu, Bytes Out %lu]\n",
+									"[#%lu : Time %s, Req [%s], Response %lu usec, Username %s, Appname [%s], DBName %s, "
+									"Error Code %d, Error Text [%s], Status Code %d, Bytes In %lu, Bytes Out %lu]\n",
 									++gnrecs, stimebuf, sv.data(), pone->response_usec_, fields.username_.data(), fields.appname_.data(),
-									fields.dbname_.data(), pone->errorcode_, fields.errtxt_.data(), pone->reqlen_, pone->reslen_);
+									fields.dbname_.data(), pone->errorcode_, fields.errtxt_.data(), fields.statuscode_, 
+									pone->reqlen_, pone->reslen_);
 							}
 
 							totallen -= elem_sz;
 
 							pone = (API_TRAN *)((uint8_t *)pone + elem_sz);
 						}
-
 					}
 				);
 

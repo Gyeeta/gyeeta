@@ -101,18 +101,20 @@ int HTTP1_SESSINFO::handle_request_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (ret != 0) {
 			return 0;
 		}	
+
+		gstats[STATH1_DROP_RECOVER]++;
 	}
 
 	ret = parse_req_pkt(hdr, pdata, hdr.datalen_);
 	if (ret < 0) {
-		gstats[STATH1_REQ_PKT_SKIP]++;
 		return 0;
 	}	
 
 	tran_.update_req_stats(common.tlastpkt_usec_, hdr.datalen_);
 
 	if (tdstrbuf_.size() && part_query_started_ == 0) {
-		tran_.request_len_ = tdstrbuf_.size() + 1;
+		tran_.request_len_ = tdstrbuf_.size() + parambuf_.size() + 1;
+
 		part_query_started_ = 1;
 		set_partial_req();
 	}
@@ -143,13 +145,15 @@ int HTTP1_SESSINFO::handle_response_pkt(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (ret != 0) {
 			return 0;
 		}	
+
+		gstats[STATH1_DROP_RECOVER]++;
 	}
 
 	tran_.update_resp_stats(common.tlastpkt_usec_, hdr.datalen_);
 
 	ret = parse_resp_pkt(hdr, pdata, hdr.datalen_);
 	if (ret < 0) {
-		gstats[STATH1_RESP_PKT_SKIP]++;
+		// gstats[STATH1_RESP_PKT_SKIP]++;
 	}	
 
 	return 0;
@@ -263,6 +267,8 @@ int HTTP1_SESSINFO::handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, cons
 							set_resp_expected();
 
 							skip_till_resp_ = true;
+
+							gstats[STATH1_DROP_RECOVER]++;
 							return 1;
 						}
 						
@@ -326,6 +332,8 @@ int HTTP1_SESSINFO::handle_drop_on_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata, con
 
 						if (isend) {
 							request_done();
+
+							gstats[STATH1_DROP_RECOVER]++;
 							return 1;
 						}
 						
@@ -385,7 +393,7 @@ bool HTTP1_SESSINFO::set_resp_expected() noexcept
 	}	
 
 	if ((unsigned)nresp_pending_ + 1 < MAX_PIPELINE_ELEMS) {
-		if (nresp_pending_ > 0) {
+		if (nresp_pending_ == 1) {
 			gstats[STATH1_REQ_PIPELINED]++;
 		}
 
@@ -720,8 +728,10 @@ lbl_chunk_hdr :
 			connstate.data_chunk_left_ = connstate.data_chunk_len_;
 
 			if (pktlen >= 2 && pdata[0] == '\r' && pdata[1] == '\n') {
-				pktlen -= 2;
-				pdata += 2;
+				if (connstate.data_chunk_len_ > 0) {
+					pktlen -= 2;
+					pdata += 2;
+				}	
 			}	
 			else {
 				connstate.skip_till_eol_ = true;
@@ -1498,8 +1508,10 @@ lbl_chunk_hdr :
 			connstate.data_chunk_left_ = connstate.data_chunk_len_;
 
 			if (pktlen >= 2 && pdata[0] == '\r' && pdata[1] == '\n') {
-				pktlen -= 2;
-				pdata += 2;
+				if (connstate.data_chunk_len_ > 0) {
+					pktlen -= 2;
+					pdata += 2;
+				}	
 			}	
 			else {
 				connstate.skip_till_eol_ = true;
@@ -1599,7 +1611,7 @@ lbl_idle :
 
 				if (pktlen <= 0) return 0;
 				
-				auto			[status, pnext] = get_status_response((uint8_t *)tbuf, tlen);
+				auto			[status, pnext] = get_status_response(pdata, pktlen);
 
 				if (!pnext) {
 					reset_on_resp_error();
@@ -1853,8 +1865,7 @@ void HTTP1_SESSINFO::request_done(bool flushreq, bool clear_req)
 		if (tdstrbuf_.size() && nresp_completed_ + 1 < nresp_pending_ && (svcsess_.common_.tlastpkt_usec_ > (tran_.treq_usec_ + 10 * GY_USEC_PER_MINUTE))) {
 			gstats[STATH1_REQ_PIPELINE_TIMEOUT]++;
 			
-			nresp_pending_ = 1;
-			nresp_completed_ = 0;
+			nresp_completed_ = nresp_pending_ - 1;
 		}	
 		else {
 			flushreq = false;
@@ -1942,8 +1953,8 @@ bool HTTP1_SESSINFO::print_req() noexcept
 			return false;
 		}	
 
-		if (tdstrbuf_.size() > get_api_max_len()) {
-			tdstrbuf_.set_len_external(get_api_max_len());
+		if (tdstrbuf_.size() + parambuf_.size() > get_api_max_len()) {
+			return false;
 		}	
 
 		uint8_t				*pone = apihdlr.get_xfer_pool_buf();
@@ -1956,8 +1967,8 @@ bool HTTP1_SESSINFO::print_req() noexcept
 		uint8_t				next = 0;
 		
 		std::memcpy(ptran, &tran_, sizeof(tran_));
-		std::memcpy(ptran + 1, tdstrbuf_.data(), tdstrbuf_.size());
-		std::memcpy(ptran + 1 + tdstrbuf_.size(), parambuf_.data(), parambuf_.size() + 1);
+		std::memcpy((uint8_t *)ptran + sizeof(*ptran), tdstrbuf_.data(), tdstrbuf_.size());
+		std::memcpy((uint8_t *)ptran + sizeof(*ptran) + tdstrbuf_.size(), parambuf_.data(), parambuf_.size() + 1);
 
 		ustrbuf << next;
 
@@ -1970,6 +1981,11 @@ bool HTTP1_SESSINFO::print_req() noexcept
 			next++;
 			ustrbuf << PARSE_FIELD_LEN(FIELD_ERRTXT, errorbuf_.size() + 1) << std::string_view(errorbuf_.data(), errorbuf_.size() + 1);
 		}	
+
+		if (last_resp_status_ && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + sizeof(int)) {
+			next++;
+			ustrbuf << PARSE_FIELD_LEN(FIELD_STATUSCODE, sizeof(int)) << (int)last_resp_status_;
+		}
 
 		if ((uint8_t)respstate_.req_method_ < (uint8_t)METHOD_UNKNOWN && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + MAX_METHOD_LEN) {
 			const auto			& sv = http_methods[respstate_.req_method_];

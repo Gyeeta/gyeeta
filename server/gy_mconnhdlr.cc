@@ -9202,7 +9202,7 @@ bool MCONN_HANDLER::partha_listener_state(const std::shared_ptr<PARTHA_INFO> & p
 	time_t				tvsec = curr_tusec/GY_USEC_PER_SEC, tdaystart = 0;
 	auto				timebuf = gy_localtime_iso8601_sec(tvsec);
 
-	const bool			is_continue_batch = (labs(curr_tusec - prawpartha->last_listen_state_tusec_) < 2 * GY_USEC_PER_SEC); // Partha sends every 5 sec
+	const bool			is_continue_batch = ((uint64_t)labs(curr_tusec - prawpartha->last_listen_state_tusec_) < 2 * GY_USEC_PER_SEC); // Partha sends every 5 sec
 	
 	if (is_continue_batch) {
 		// Set all listen time consistent for pointintime queries

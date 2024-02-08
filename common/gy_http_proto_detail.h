@@ -108,6 +108,7 @@ public :
 		STATH1_REQ_SYNC_MISS,
 		STATH1_CHUNK_FRAG_OVF,
 		STATH1_INVALID_STATE,
+		STATH1_DROP_RECOVER,
 
 		STATH1_CONNECT_VPN,
 
@@ -120,7 +121,7 @@ public :
 		"Req Reset on Error", "Resp Reset on Error", 
 		"Session Skipped Pkt", "Request Packets Skipped", "Response Packets Skipped",
 		"Request Pipelined", "Req Pipeline Overflow", "Req Pipeline Timeout", "Req Sync Miss", "Chunk Overflow",
-		"Connection State Invalid", "Connect VPN Session",
+		"Connection State Invalid", "Drop Quick Recovery", "Connect VPN Session",
 	};	
 
 	static inline uint64_t			gstats[STATH1_MAX]		{};
@@ -153,7 +154,7 @@ public :
 	bool					is_https_			{false};
 	bool					is_keep_alive_			{false};
 	bool					is_http10_			{false};
-	uint8_t					skip_session_			{111};
+	uint8_t					skip_session_			{0};
 	uint8_t					part_query_started_		{0};
 	uint8_t					is_midway_session_		{0};
 
