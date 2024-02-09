@@ -26,12 +26,13 @@ public :
 		METHOD_DELETE,
 		METHOD_CONNECT,
 		METHOD_TRACE,
+		METHOD_PATCH,
 
 		METHOD_UNKNOWN,
 	};
 
 	static constexpr std::string_view http_methods[METHOD_UNKNOWN] = {
-		"GET ", "POST ", "PUT ", "OPTIONS ", "HEAD ", "DELETE ", "CONNECT ", "TRACE ",
+		"GET ", "POST ", "PUT ", "OPTIONS ", "HEAD ", "DELETE ", "CONNECT ", "TRACE ", "PATCH ",
 	};	
 
 	static_assert(GY_ARRAY_SIZE(http_methods) == METHOD_UNKNOWN);
@@ -60,6 +61,9 @@ public :
 			}	
 			else if (0 == memcmp(pdata, "PUT ", 4)) {
 				return METHOD_PUT;
+			}	
+			else if (0 == memcmp(pdata, "PATCH ", 6)) {
+				return METHOD_PATCH;
 			}	
 			return METHOD_UNKNOWN;
 
