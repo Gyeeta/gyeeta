@@ -237,10 +237,10 @@ int HTTP1_SESSINFO::handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, cons
 						skip_to_req_after_resp_ = 1;
 						return 1;
 					}	
-					else if (!ndropreq) {
+					else {
 						reset_all_state();
 						return 0;
-					}	
+					}
 
 	case HCONN_HDR		:	
 					skip_to_req_after_resp_ = 1;
@@ -299,7 +299,7 @@ int HTTP1_SESSINFO::handle_drop_on_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata, con
 		return 1;
 	}
 
-	switch (reqstate_.state_) {
+	switch (respstate_.state_) {
 	
 	case HCONN_IDLE		:	
 					skip_to_req_after_resp_ = 2;
