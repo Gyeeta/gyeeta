@@ -20,7 +20,7 @@ std::optional<API_PARSE_HDLR::TranMsgPool>	API_PARSE_HDLR::gtranpool_;
 std::optional<GY_THREAD>			API_PARSE_HDLR::gtran_thr_;
 
 // Uncomment this to enable API Records print to file
-#define				GY_API_PRINT	"/tmp/gy_api_records___.txt"
+/*#define				GY_API_PRINT	"/tmp/gy_api_records___.txt"*/
 
 // Uncomment this to test the reorder handling
 /*#define				GY_TEST_REORDER_PKTS	10*/
