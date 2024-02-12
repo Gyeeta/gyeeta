@@ -7332,32 +7332,6 @@ static char * string_ends_with(const char *pinput, const char *substr, bool igno
 	return (char *)pinput + leninput - lensub;
 }
 
-// Returns pointer to the first delimitter from delim[] or nullptr if not present
-static const char * get_delim_string(const char *pdata, size_t len, std::string_view delim) noexcept
-{
-	const char		*ptmp = pdata, *pend = pdata + len;
-	size_t			dlen = delim.size();
-	char			c;
-
-	if (dlen == 1) {
-		return (const char *)memchr(pdata, delim[0], len);
-	}	
-
-	while (ptmp < pend) {
-		c = *ptmp;
-		
-		for (int i = 0; i < (int)dlen; ++i) {
-			if (c == delim[i]) {
-				return ptmp;
-			}	
-		}	
-		
-		ptmp++;
-	}	
-
-	return nullptr;
-}	
-
 
 // Returns true on match. ignore_case will only work on ASCII strings
 static bool string_starts_with(const char *pinput, const char *substr, bool ignore_case = false, size_t lensub = 0) noexcept 
@@ -7386,6 +7360,32 @@ static bool string_starts_with(const char *pinput, const char *substr, bool igno
 
 	return true;
 }
+
+// Returns pointer to the first delimitter from delim[] or nullptr if not present
+static const char * get_delim_string(const char *pdata, size_t len, std::string_view delim) noexcept
+{
+	const char		*ptmp = pdata, *pend = pdata + len;
+	size_t			dlen = delim.size();
+	char			c;
+
+	if (dlen == 1) {
+		return (const char *)memchr(pdata, delim[0], len);
+	}	
+
+	while (ptmp < pend) {
+		c = *ptmp;
+		
+		for (int i = 0; i < (int)dlen; ++i) {
+			if (c == delim[i]) {
+				return ptmp;
+			}	
+		}	
+		
+		ptmp++;
+	}	
+
+	return nullptr;
+}	
 
 
 /*
