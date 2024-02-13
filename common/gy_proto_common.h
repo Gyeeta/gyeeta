@@ -107,6 +107,7 @@ struct alignas(8) API_TRAN
 	GY_IP_ADDR				cliip_;
 	GY_IP_ADDR				serip_;
 	uint64_t				glob_id_	{0};
+	uint64_t				conn_id_	{0};
 	
 	int					errorcode_	{0};
 	uint32_t				app_sleep_ms_	{0};
@@ -135,7 +136,14 @@ struct alignas(8) API_TRAN
 	API_TRAN(uint64_t tlastpkt_usec, uint64_t tconnect_usec, const IP_PORT & cli_ipport, const IP_PORT & ser_ipport, uint64_t glob_id, PROTO_TYPES proto) noexcept
 		: treq_usec_(tlastpkt_usec), tupd_usec_(treq_usec_), tin_usec_(treq_usec_), tconnect_usec_(tconnect_usec),
 		cliip_(cli_ipport.ipaddr_), serip_(ser_ipport.ipaddr_), glob_id_(glob_id), proto_(proto), cliport_(cli_ipport.port_), serport_(ser_ipport.port_)
-	{}
+	{
+		BIN_BUFFER<2 * sizeof(GY_IP_ADDR) + 2 * sizeof(uint16_t) + sizeof(uint64_t)>	hbuf;
+
+		// Down-align the connect time to 60 sec
+		hbuf << cli_ipport.ipaddr_ << ser_ipport.ipaddr_ << cli_ipport.port_ << ser_ipport.port_ << (uint64_t)gy_align_down(tconnect_usec/GY_USEC_PER_SEC, 60);
+
+		conn_id_ = gy_cityhash64((const char *)hbuf.buffer(), hbuf.size());
+	}
 
 	~API_TRAN() noexcept			= default;
 
