@@ -361,7 +361,6 @@ void HTTP1_SESSINFO::set_new_req() noexcept
 
 	tran_.treq_usec_			= common.tlastpkt_usec_;
 	tran_.tupd_usec_			= common.tlastpkt_usec_;
-	tran_.tin_usec_				= common.tlastpkt_usec_;
 	
 	reset_for_new_req();
 }
@@ -397,7 +396,9 @@ bool HTTP1_SESSINFO::set_resp_expected() noexcept
 			gstats[STATH1_REQ_PIPELINED]++;
 		}
 
-		resp_pipline_[nresp_pending_++] = reqstate_.req_method_;
+		resp_pipline_[nresp_pending_++] 	= reqstate_.req_method_;
+		tran_.tran_type_ 			|= 1 << reqstate_.req_method_;
+
 		reqstate_.reset();
 		
 		return true;
@@ -405,9 +406,11 @@ bool HTTP1_SESSINFO::set_resp_expected() noexcept
 
 	gstats[STATH1_REQ_PIPELINE_OVF]++;
 
-	resp_pipline_[0] = reqstate_.req_method_;
-	nresp_pending_ = 1;
-	nresp_completed_ = 0;
+	resp_pipline_[0] 			= reqstate_.req_method_;
+	tran_.tran_type_ 			= 1 << reqstate_.req_method_;
+
+	nresp_pending_ 				= 1;
+	nresp_completed_ 			= 0;
 
 	reqstate_.reset();
 
@@ -1987,15 +1990,6 @@ bool HTTP1_SESSINFO::print_req() noexcept
 			ustrbuf << PARSE_FIELD_LEN(FIELD_STATUSCODE, sizeof(int)) << (int)last_resp_status_;
 		}
 
-		if ((uint8_t)respstate_.req_method_ < (uint8_t)METHOD_UNKNOWN && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + MAX_METHOD_LEN) {
-			const auto			& sv = http_methods[respstate_.req_method_];
-
-			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_SESSID, sv.size());
-			ustrbuf.append(sv.data(), sv.size() - 1);
-			ustrbuf << '\0';
-		}
-
 		*(ustrbuf.data()) = next;
 
 		ptran->reqnum_ = reqnum_++;
@@ -2062,7 +2056,7 @@ void HTTP1_SESSINFO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast)
 		}	
 	}	
 
-	strbuf << " Total Requests "sv << gtotal_queries;
+	strbuf << " Total Requests "sv << gtotal_queries << ", Overall Avg Response usec "sv << gtotal_resp/NUM_OR_1(gtotal_queries);
 
 	strbuf << "\n\n"sv;
 }	

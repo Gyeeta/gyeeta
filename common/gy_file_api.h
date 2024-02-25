@@ -87,7 +87,7 @@ bool 		is_socket_still_connected(int sock, bool is_peer_writeable = true) noexce
  * poll_events should be specified with the required poll events such as POLLIN for recv and POLLOUT if send blocked
  * If close_on_errors is true, then socket will be closed on timeout or if POLLHUP or if poll failed
  */
-int 		poll_socket(int sock, int timeout_msec, int & revents, int poll_events, bool close_on_errors = true) noexcept;
+int 		poll_socket(int sock, int timeout_msec, int & revents, int poll_events, bool close_on_errors) noexcept;
 
 /*
  * Returns peek return len on success, 0 if no data (for non-block) and -1 on errors

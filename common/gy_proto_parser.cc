@@ -244,7 +244,7 @@ API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint
 
 	if (parseridx == 0) {
 		gtranpool_.emplace(MAX_TRAN_STR_ELEM);
-		gtran_thr_.emplace("API Tranfer Thread", API_PARSE_HDLR::GET_PTHREAD_WRAPPER(api_xfer_thread), nullptr, nullptr, nullptr, true /* start_immed */, GY_UP_MB(2));
+		gtran_thr_.emplace("API Tranfer Thread", API_PARSE_HDLR::GET_PTHREAD_WRAPPER(api_xfer_thread), nullptr, nullptr, nullptr, true /* start_immed */, GY_UP_MB(1));
 	}
 }	
 
@@ -1271,6 +1271,8 @@ int API_PARSE_HDLR::api_xfer_thread(void * _) noexcept
 {
 	using namespace			comm;
 
+	gy_msecsleep(100);
+
 	if (!API_PARSE_HDLR::gtranpool_) {
 		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "API Transfer Pool not yet initialized. Returning from Transfer Thread...\n");
 		return -1;
@@ -1278,8 +1280,18 @@ int API_PARSE_HDLR::api_xfer_thread(void * _) noexcept
 
 try1 :
 	try {
+		/*
+		 * 1 MB stack...
+		 */
+
+		API_PARSER_STATS		stats, *pstats = nullptr;
+
 		auto				& tranpool = *API_PARSE_HDLR::gtranpool_;
-		const auto			conn_magic = (SERVER_COMM::get_singleton() ? SERVER_COMM::get_singleton()->get_conn_magic() : COMM_HEADER::PM_HDR_MAGIC);
+
+		auto				pser = SERVER_COMM::get_singleton();
+		assert(pser);
+
+		const auto			conn_magic = pser->get_conn_magic();
 
 		do {
 			DATA_BUFFER_ELEM 		elem;
@@ -1298,7 +1310,7 @@ try1 :
 
 				new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, elem.sz_, conn_magic);
 
-				new (pnot) EVENT_NOTIFY(NOTIFY_API_TRAN, elem.nelems_);
+				new (pnot) EVENT_NOTIFY(NOTIFY_REQ_TRACE_TRAN, elem.nelems_);
 
 				ssize_t				totallen = phdr->get_act_len();
 
@@ -1309,15 +1321,16 @@ try1 :
 					if (gapi_print_fd > 0 && gnrecs < 1'000'000) {
 
 						char				trec[32767];
+						ssize_t				ttotlen = totallen;
 						uint32_t			nelems = pnot->nevents_;
 						API_TRAN			*pone = (API_TRAN *)(pnot + 1);
 
-						totallen -= fixed_sz;
+						ttotlen -= fixed_sz;
 
-						for (int i = 0; (unsigned)i < nelems && totallen >= (ssize_t)sizeof(API_TRAN); ++i) {
+						for (int i = 0; (unsigned)i < nelems && ttotlen >= (ssize_t)sizeof(API_TRAN); ++i) {
 							ssize_t elem_sz = pone->get_elem_size();
 
-							if (totallen < elem_sz) {
+							if (ttotlen < elem_sz) {
 								break;
 							}
 
@@ -1336,7 +1349,7 @@ try1 :
 									pone->reqlen_, pone->reslen_);
 							}
 
-							totallen -= elem_sz;
+							ttotlen -= elem_sz;
 
 							pone = (API_TRAN *)((uint8_t *)pone + elem_sz);
 						}
@@ -1344,8 +1357,30 @@ try1 :
 				);
 
 #endif
-				// Send data TODO
+
+				if (!pstats) {
 				
+					auto				*papihdlr0 = SVC_NET_CAPTURE::get_singleton() ? SVC_NET_CAPTURE::get_singleton()->get_api_handler(0) : nullptr;
+					if (papihdlr0) {
+						pstats = &papihdlr0->stats_;
+					}	
+					else {
+						pstats = &stats;
+					}	
+
+					(void)pser->get_trace_sock(true /* connect_if_none */);					
+				}
+
+				// Send data blocking
+				bret = pser->send_trace_data_blocking(elem);
+	
+
+				if (bret) {
+					pstats->nsend_bytes_ += elem.size();
+				}	
+				else {
+					pstats->nsend_req_fail_ += elem.nelems();
+				}	
 			}	
 			else {
 				
@@ -2813,6 +2848,8 @@ void API_PARSER_STATS::operator -= (const API_PARSER_STATS & other) noexcept
 	ninvalid_msg_		-=	other.ninvalid_msg_;
 	nrdr_alloc_fails_	-=	other.nrdr_alloc_fails_;
 	nxfer_pool_fail_	-=	other.nxfer_pool_fail_;
+	nsend_req_fail_		-=	other.nsend_req_fail_;
+	nsend_bytes_		-=	other.nsend_bytes_;
 
 	nskip_pool_.fetch_sub_relaxed_0(other.nskip_pool_.load(mo_relaxed));
 }
@@ -2824,7 +2861,11 @@ void API_PARSER_STATS::print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint
 	<< ", Invalid Capture Packets "sv << ninvalid_pkt_ << ", Invalid Messages "sv << ninvalid_msg_ << ", Reorder Alloc Fails "sv 
 	<< nrdr_alloc_fails_ 
 	<< ", Requests Skipped by Transfer Pool Fails "sv << nxfer_pool_fail_
-	<< ", Pkts skipped by Pool Blocks "sv << nskip_pool_.load(mo_relaxed) << "\n"sv;
+	<< ", Requests Skipped by Server send Fails "sv << nsend_req_fail_
+	<< ", Requests Bytes sent to server "sv << nsend_bytes_ << " ("sv << GY_DOWN_MB(nsend_bytes_) << " MB)"sv
+
+	<< ", Pkts skipped by Pool Blocks "sv << nskip_pool_.load(mo_relaxed) 
+	<< "\n"sv;
 }	
 
 

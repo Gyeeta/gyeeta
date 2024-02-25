@@ -758,8 +758,8 @@ bool SHCONN_HANDLER::db_cleanup_old_partitions(PGConnPool & dbpool, bool is_non_
 		cleanup_query.appendconst("with nsname(ns, name) as "
 			"(select nstbl.ns, tbl.name from (select 'public') as nstbl(ns) cross join (values");
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls_); ++i) {
-			cleanup_query.appendfmt("(\'%s\'),", db_glob_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls); ++i) {
+			cleanup_query.appendfmt("(\'%s\'),", db_glob_partition_tbls[i]);
 		}	
 
 		cleanup_query.set_last_char(' ');
@@ -842,8 +842,8 @@ bool SHCONN_HANDLER::db_add_partitions() noexcept
 
 		qbuf.appendfmt("select gy_add_partition(%u, ARRAY[", db_storage_days_);
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls_); ++i) {
-			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls[i]);
 		}	
 
 		qbuf.set_last_char(' ');
@@ -921,8 +921,8 @@ bool SHCONN_HANDLER::db_set_part_logged() noexcept
 
 		qbuf.appendconst("select public.gy_set_tbl_logged(ARRAY[");
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls_); ++i) {
-			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls[i]);
 		}	
 
 		qbuf.set_last_char(' ');

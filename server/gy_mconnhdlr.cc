@@ -765,8 +765,8 @@ bool MCONN_HANDLER::db_cleanup_old_partitions(PGConnPool & dbpool, bool is_non_b
 		cleanup_query.appendconst("with nsname(ns, name) as "
 			"(select nstbl.ns, tbl.name from (select 'public') as nstbl(ns) cross join (values");
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls_); ++i) {
-			cleanup_query.appendfmt("(\'%s\'),", db_glob_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls); ++i) {
+			cleanup_query.appendfmt("(\'%s\'),", db_glob_partition_tbls[i]);
 		}	
 
 		cleanup_query.set_last_char(' ');
@@ -777,8 +777,8 @@ bool MCONN_HANDLER::db_cleanup_old_partitions(PGConnPool & dbpool, bool is_non_b
 		cleanup_query.appendconst("with nsname(ns, name) as "
 			"(select nstbl.ns, tbl.name from (select nspname from pg_catalog.pg_namespace where nspname ~ '^sch[0-9a-f]{32}$') as nstbl(ns) cross join (values");
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls_); ++i) {
-			cleanup_query.appendfmt("(\'%s\'),", db_partha_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls); ++i) {
+			cleanup_query.appendfmt("(\'%s\'),", db_partha_partition_tbls[i]);
 		}	
 
 		cleanup_query.set_last_char(' ');
@@ -861,8 +861,8 @@ bool MCONN_HANDLER::db_add_init_partitions() noexcept
 
 		qbuf.appendfmt("select public.gy_add_partition(%u, ARRAY[", db_storage_days_);
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls_); ++i) {
-			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls[i]);
 		}	
 
 		qbuf.set_last_char(' ');
@@ -875,8 +875,8 @@ bool MCONN_HANDLER::db_add_init_partitions() noexcept
 		
 		qbuf.appendfmt("select public.gy_add_partition(%u, ARRAY[", db_storage_days_);
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls_); ++i) {
-			qbuf.appendfmt("\'%s\',", db_partha_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_partha_partition_tbls[i]);
 		}	
 
 		qbuf.set_last_char(' ');
@@ -983,8 +983,8 @@ bool MCONN_HANDLER::db_add_partitions() noexcept
 
 			qbuf.appendfmt("select public.gy_add_partition(%u, ARRAY[", db_storage_days_);
 
-			for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls_); ++i) {
-				qbuf.appendfmt("\'%s\',", db_partha_partition_tbls_[i]);
+			for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls); ++i) {
+				qbuf.appendfmt("\'%s\',", db_partha_partition_tbls[i]);
 			}	
 
 			qbuf.set_last_char(' ');
@@ -1036,8 +1036,8 @@ bool MCONN_HANDLER::db_add_partitions() noexcept
 
 		qbuf.appendfmt("select public.gy_add_partition(%u, ARRAY[", db_storage_days_);
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls_); ++i) {
-			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls[i]);
 		}	
 
 		qbuf.set_last_char(' ');
@@ -1090,8 +1090,8 @@ bool MCONN_HANDLER::db_set_part_logged() noexcept
 
 		qbuf.appendconst("select public.gy_set_tbl_logged(ARRAY[");
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls_); ++i) {
-			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_glob_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_glob_partition_tbls[i]);
 		}	
 
 		qbuf.set_last_char(' ');
@@ -1100,8 +1100,8 @@ bool MCONN_HANDLER::db_set_part_logged() noexcept
 
 		qbuf.appendconst("select public.gy_set_tbl_logged(ARRAY[");
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls_); ++i) {
-			qbuf.appendfmt("\'%s\',", db_partha_partition_tbls_[i]);
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_partha_partition_tbls[i]);
 		}	
 
 		qbuf.set_last_char(' ');
@@ -13216,7 +13216,7 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 		return -1;
 	}	
 
-	bool				bret, is_new = false, info_chg = false;
+	bool				bret, is_new = false, info_chg = false, is_req_trace = (preg->flags_ & PM_CONNECT_CMD_S::CONN_FLAGS_REQ_TRACING);
 	char				info_chg_buf[600];
 	PARTHA_INFO_ELEM		pstatshr;
 	PARTHA_INFO			*pinfo = nullptr;
@@ -13264,8 +13264,20 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 	}	
 	else {
 		/*
-		 * Check the partha_id_tbl_
+		 * Check the partha_id_tbl_. Also reject a new Partha registration for Req Trace connections (a normal conn should register first)
 		 */
+		if (is_req_trace) {
+			send_l1_register_connect_error<PM_CONNECT_RESP_S, PM_CONNECT_RESP>(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), 
+				dbarr.comm_magic_, statsmap, ERR_NOT_VALIDATED,  "Partha Registration not validated as New Register for Trace API not allowed", pthrpoolarr);
+
+			ERRORPRINT_OFFLOAD("Invalid Partha Registration request : Register rejected as new Partha requird for a Trace API connection "
+				"for partha Machine ID %016lx%016lx from %s and hostname %s\n",
+				preg->machine_id_hi_, preg->machine_id_lo_, pconn1->print_peer(STRING_BUFFER<128>().get_str_buf()), preg->hostname_);
+
+			statsmap["New Partha for Trace Rejects"]++;
+			return -1;
+		}
+
 		SCOPE_GY_MUTEX		scopelock(&node_partha_mutex_);
 
 		auto it = partha_id_tbl_.find(machid); 
@@ -14775,7 +14787,8 @@ int MCONN_HANDLER::sync_partha_node_stats() noexcept
 			nconn = prawpartha->get_num_conns();
 			nparthaconn += nconn;
 
-			strbuf.appendfmt("\t\t\tPartha Host %s Region %s Zone %s : # conns %lu\n", prawpartha->hostname_, prawpartha->region_name_, prawpartha->zone_name_, nconn);
+			strbuf.appendfmt("\t\t\tPartha Host %s Region %s Zone %s : # conns %lu\n", 
+					prawpartha->hostname_, prawpartha->region_name_, prawpartha->zone_name_, nconn + prawpartha->trace_req_sock_.isvalid());
 
 			if (nconn > 0) {
 				nparnodes++;

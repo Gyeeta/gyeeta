@@ -45,8 +45,14 @@ public :
 	uint64_t get_madhava_id() const noexcept;
 
 	bool is_server_connected() const noexcept;
-	
+
 	std::shared_ptr<SERVER_CONNTRACK> get_server_conn(comm::CLI_TYPE_E cli_type) noexcept;
+
+	int get_trace_sock(bool connect_if_none) const noexcept;
+
+	void reconnect_trace_sock() noexcept;
+
+	bool send_trace_data_blocking(const DATA_BUFFER_ELEM & elem) noexcept;
 
 	bool send_server_data(EPOLL_IOVEC_ARR && iovarr, comm::CLI_TYPE_E cli_type, comm::COMM_TYPE_E comm_type, const std::shared_ptr<SERVER_CONNTRACK> & shrconn) noexcept;
 	

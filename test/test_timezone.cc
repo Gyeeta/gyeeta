@@ -9,7 +9,7 @@ using namespace gyeeta;
 int main()
 {
 	struct timeval		tv;
-	struct tm		tm;
+	struct tm		tm, tm1, tm2;
 	time_t			tcur, tcur2, tnxt;
 	int64_t			nsec, nsec2;
 	char			timebuf[128];
@@ -19,6 +19,10 @@ int main()
 	GY_TIMEZONE::init_singleton(); 
 
 	gettimeofday(&tv, nullptr);
+
+	localtime_r(&tv.tv_sec, &tm);
+
+	GY_TIME_OFFSET		tmoff(tm, tv.tv_sec);
 
 	INFOPRINT("Current time in ISO8601 format		: %s : Current Timezone is %s\n", 
 		gy_localtime_iso8601(tv, timebuf, sizeof(timebuf)), GY_TIMEZONE::get_singleton()->get_tz_string());
@@ -64,6 +68,23 @@ int main()
 	bret = gy_iso8601_to_timespec(timebuf, tcur, nsec);
 	
 	assert(bret == true && tcur == tv.tv_sec);
+
+	bret = gy_iso8601_to_timespec("2024-03-10 02:00:01", tcur, nsec);
+	
+	assert(bret == true);
+
+	localtime_r(&tcur, &tm2);
+
+	GY_TIME_OFFSET			nytm(tm2, tcur);
+
+	INFOPRINT("EST to EDT Time in NY in ISO8601		: %s\n", nytm.get_iso8601_offset(0).get());
+
+	INFOPRINT("EST to EDT Time - 10 sec in NY in ISO8601	: %s\n", nytm.get_iso8601_offset(-10).get());
+
+	get_tm_sec_offset(tm2, -10);
+
+	INFOPRINT("EST to EDT Time - 10 sec in NY in ISO8601	: %s\n", gy_tm_iso8601(tm2, timebuf, sizeof(timebuf)));
+
 
 	GY_TIMEZONE::get_singleton()->set_new_proc_timezone("Japan");
 
@@ -131,7 +152,34 @@ int main()
 
 	IRPRINT("\n\n");
 
+	gmtime_r(&tcur, &tm1);
+	
+	tm = tm1;
+
+	nsec = 1234567;
+
+	INFOPRINT("Current Time in UTC in ISO8601		: %s\n", gy_tm_iso8601(tm, timebuf, sizeof(timebuf), &nsec, true /* is_nsec_subsec */));
+
+	get_tm_sec_offset(tm, -10, tcur);
+
+	INFOPRINT("Current Time - 10 sec in UTC in ISO8601	: %s\n", gy_tm_iso8601(tm, timebuf, sizeof(timebuf), &nsec, true /* is_nsec_subsec */));
+
+	tm = tm1;
+	nsec = 1234;
+
+	get_tm_sec_offset(tm, -30);
+
+	INFOPRINT("Current Time - 30 sec in UTC in ISO8601	: %s\n\n", gy_tm_iso8601(tm, timebuf, sizeof(timebuf), &nsec, false /* is_nsec_subsec */));
+
 	localtime_r(&tcur, &tm);
+
+	INFOPRINT("Current Time in Localtime in ISO8601		: %s\n", tmoff.get_iso8601_offset(0, &nsec, true /* is_nsec_subsec */).get());
+
+	INFOPRINT("Current Time - 10 sec in Localtime in ISO8601	: %s\n", tmoff.get_iso8601_offset(-10, timebuf, sizeof(timebuf), &nsec, true /* is_nsec_subsec */));
+
+	nsec = 1234;
+
+	INFOPRINT("Current Time - 30 sec in Localtime in ISO8601	: %s\n\n", tmoff.get_iso8601_offset(-30, &nsec, false /* is_nsec_subsec */).get());
 
 	get_tm_offset(tm, 1, 1, 1, 0, tcur);
 

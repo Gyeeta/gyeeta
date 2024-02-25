@@ -8,6 +8,7 @@
 #include			"gy_statistics.h"
 #include			"gy_inet_inc.h"
 #include			"gy_json_field_maps.h"
+#include			"gy_proto_common.h"
 
 namespace gyeeta {
 namespace comm {
@@ -189,7 +190,7 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_AGGR_TASK_HIST_STATS,
 	NOTIFY_LISTEN_CLUSTER_INFO,
 	NOTIFY_HOST_STATE,
-	NOTIFY_API_TRAN,
+	NOTIFY_REQ_TRACE_TRAN,
 
 	NOTIFY_PM_EVT_MAX,
 
@@ -626,6 +627,12 @@ struct alignas(8) PS_REGISTER_RESP_S
 
 struct alignas(8) PM_CONNECT_CMD_S
 {
+	enum : uint64_t
+	{
+		CONN_FLAGS_NONE		= 0,
+		CONN_FLAGS_REQ_TRACING	= 1 << 0,
+	};
+	
 	uint32_t			comm_version_;
 	uint32_t			partha_version_;
 	uint32_t			min_madhava_version_;
@@ -2986,7 +2993,12 @@ struct alignas(8) MS_REG_PARTHA
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept;
 };
 
+struct alignas(8) REQ_TRACE_TRAN : public API_TRAN
+{
+	using API_TRAN::API_TRAN;
 
+	static bool validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY *pnotify) noexcept;
+};	
 
 } // namespace comm
 } // namespace gyeeta

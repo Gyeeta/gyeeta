@@ -636,6 +636,8 @@ struct API_PARSER_STATS
 	uint64_t				ninvalid_msg_		{0};
 	uint64_t				nrdr_alloc_fails_	{0};
 	uint64_t				nxfer_pool_fail_	{0};
+	uint64_t				nsend_req_fail_		{0};
+	uint64_t				nsend_bytes_		{0};
 
 	alignas(64) gy_atomic<uint64_t>		nskip_pool_		{0};
 

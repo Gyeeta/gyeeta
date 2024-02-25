@@ -35,7 +35,23 @@ public :
 		"GET ", "POST ", "PUT ", "OPTIONS ", "HEAD ", "DELETE ", "CONNECT ", "TRACE ", "PATCH ",
 	};	
 
-	static_assert(GY_ARRAY_SIZE(http_methods) == METHOD_UNKNOWN);
+	/*
+	 * tran_type definitions :
+	 */
+	enum TRAN_TYPES_E : int
+	{
+		TYPE_METHOD_GET			= 1 << METHOD_GET,
+		TYPE_METHOD_POST		= 1 << METHOD_POST,
+		TYPE_METHOD_PUT			= 1 << METHOD_PUT,
+		TYPE_METHOD_OPTIONS		= 1 << METHOD_OPTIONS,
+		TYPE_METHOD_HEAD		= 1 << METHOD_HEAD,
+		TYPE_METHOD_DELETE		= 1 << METHOD_DELETE,
+		TYPE_METHOD_CONNECT		= 1 << METHOD_CONNECT,
+		TYPE_METHOD_TRACE		= 1 << METHOD_TRACE,
+		TYPE_METHOD_PATCH		= 1 << METHOD_PATCH,
+	};
+
+	static_assert(GY_ARRAY_SIZE(http_methods) == METHOD_UNKNOWN && METHOD_UNKNOWN < 32);
 
 	static constexpr uint32_t		MIN_HTTP_FRAME = 18, MAX_METHOD_LEN = 8, MIN_STATUS_LEN = 19;
 

@@ -4,7 +4,6 @@
 #pragma				once
 
 #include			"gy_common_inc.h"
-#include			"gy_comm_proto.h"
 
 namespace gyeeta {
 
@@ -45,22 +44,20 @@ static constexpr const char * proto_to_string(PROTO_TYPES proto) noexcept
 
 enum PARSE_FIELD_E : uint16_t
 {
-	FIELD_NONE				= 0,
+	FIELD_NONE		= 0,
 
-	FIELD_APPNAME				= 1,		/* AppName : Data Type char* */
-	FIELD_USERNAME				= 2,		/* UserName : Data Type char* */
-	FIELD_DBNAME				= 3,		/* DBName : Data Type char* */
-	FIELD_ERRTXT				= 4,		/* Error Text : Data Type char* */
-	FIELD_ERRCLASS				= 5,		/* Error Class : Data Type uint16_t */
-	FIELD_SESSID				= 6,		/* DB Session ID : Data Type uint32_t */
-	FIELD_PREP_REQNUM			= 7,		/* DB Prepare SQL reqnum_ : Data Type uint64_t */
-	FIELD_PREP_REQTIME			= 8,		/* DB Prepare SQL treq : Data Type time_t */
-	FIELD_HOSTPID				= 9,		/* DB Process ID : Data Type uint32_t */
-	FIELD_NROWS				= 10,		/* Number of rows returned : Data Type uint32_t */
-	FIELD_CURSORNAME			= 11,		/* DB Cursor Name : Data Type char* */
-	
-	FIELD_STATUSCODE,					/* Status Code (e.g. HTTP) : Data Type int */
-	FIELD_REQ_METHOD,					/* HTTP Method : Data Type char* */			
+	FIELD_APPNAME,		/* AppName : Data Type char* */
+	FIELD_USERNAME,		/* UserName : Data Type char* */
+	FIELD_DBNAME,		/* DBName : Data Type char* */
+	FIELD_ERRTXT,		/* Error Text : Data Type char* */
+	FIELD_ERRCLASS,		/* Error Class : Data Type uint16_t */
+	FIELD_SESSID,		/* DB Session ID : Data Type uint32_t */
+	FIELD_PREP_REQNUM,	/* DB Prepare SQL reqnum_ : Data Type uint64_t */
+	FIELD_PREP_REQTIME,	/* DB Prepare SQL treq : Data Type time_t */
+	FIELD_HOSTPID,		/* DB Process ID : Data Type uint32_t */
+	FIELD_NROWS,		/* Number of rows returned : Data Type uint32_t */
+	FIELD_CURSORNAME,	/* DB Cursor Name : Data Type char* */
+	FIELD_STATUSCODE,	/* Status Code (e.g. HTTP) : Data Type int */
 
 	FIELD_MAX,
 };	
@@ -68,7 +65,7 @@ enum PARSE_FIELD_E : uint16_t
 static constexpr const char			*parse_field_str[FIELD_MAX] =
 {
 	"", "appname", "username", "dbname", "errtxt", "errclass", "sessid", "prep_reqnum", "prep_reqtime", "hostpid",
-	"nrows", "cursorname", "statuscode", "reqmethod",
+	"nrows", "cursorname", "statuscode",
 };	
 
 
@@ -90,12 +87,11 @@ struct PARSE_FIELD_LEN
 };	
 
 
-struct alignas(8) API_TRAN
+struct API_TRAN
 {
 	uint64_t				treq_usec_	{0};		/* Time of Request Start */	
 	uint64_t				tres_usec_	{0};		/* Time of Response Start */	
 	uint64_t				tupd_usec_	{0};		/* last in/out data timestamp for processing */
-	uint64_t				tin_usec_	{0};		/* last data inbound time */
 
 	uint64_t				reqlen_		{0};		/* Total Bytes In for Request */
 	uint64_t				reslen_		{0};		/* Total Bytes Out for Request */
@@ -107,10 +103,10 @@ struct alignas(8) API_TRAN
 	GY_IP_ADDR				cliip_;
 	GY_IP_ADDR				serip_;
 	uint64_t				glob_id_	{0};
-	uint64_t				conn_id_	{0};
+	uint64_t				conn_id_	{0};		/* Connection Identifier */
 	
 	int					errorcode_	{0};
-	uint32_t				app_sleep_ms_	{0};
+	uint32_t				app_sleep_ms_	{0};		/* Delay between a request and preceding response */
 	uint32_t				tran_type_	{0};
 	
 	PROTO_TYPES				proto_		{PROTO_UNINIT};
@@ -134,7 +130,7 @@ struct alignas(8) API_TRAN
 	API_TRAN() noexcept			= default;
 
 	API_TRAN(uint64_t tlastpkt_usec, uint64_t tconnect_usec, const IP_PORT & cli_ipport, const IP_PORT & ser_ipport, uint64_t glob_id, PROTO_TYPES proto) noexcept
-		: treq_usec_(tlastpkt_usec), tupd_usec_(treq_usec_), tin_usec_(treq_usec_), tconnect_usec_(tconnect_usec),
+		: treq_usec_(tlastpkt_usec), tupd_usec_(treq_usec_), tconnect_usec_(tconnect_usec),
 		cliip_(cli_ipport.ipaddr_), serip_(ser_ipport.ipaddr_), glob_id_(glob_id), proto_(proto), cliport_(cli_ipport.port_), serport_(ser_ipport.port_)
 	{
 		BIN_BUFFER<2 * sizeof(GY_IP_ADDR) + 2 * sizeof(uint16_t) + sizeof(uint64_t)>	hbuf;
@@ -201,7 +197,6 @@ struct alignas(8) API_TRAN
 	void update_req_stats(uint64_t tlastpkt_usec, uint32_t datalen) noexcept
 	{
 		tupd_usec_		= tlastpkt_usec;
-		tin_usec_		= tlastpkt_usec;
 		reqlen_			+= datalen;
 	}	
 
@@ -222,7 +217,6 @@ struct alignas(8) API_TRAN
 		reaction_usec_	= tres_usec_ - treq_usec_;
 	}	
 
-	static bool validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY *pnotify) noexcept;
 };	
 
 static constexpr uint32_t			MAX_PARSE_TOT_EXT_LEN	{MAX_PARSE_EXT_LEN + sizeof(API_TRAN)};
@@ -230,94 +224,6 @@ static constexpr uint32_t			MAX_PARSE_TRAN_SZ	{MAX_PARSE_API_LEN + MAX_PARSE_TOT
 static constexpr uint32_t			MAX_TRAN_STR_ELEM	{25000};
 
 static constexpr uint16_t			MAX_USER_DB_LEN		{128};
-
-struct TRAN_REQ_WR
-{
-	THR_POOL_ALLOC::UNIQUE_PTR	uniq_;
-	API_TRAN			*ptran_;
-	STR_WR_BUF			tdstrbuf_;
-	STR_WR_BIN			ustrbuf_;
-
-	// urec must be at least api_max_len + MAX_PARSE_TOT_EXT_LEN
-	TRAN_REQ_WR(THR_POOL_ALLOC::UNIQUE_PTR urec, uint32_t sz, uint32_t api_max_len, uint64_t tlastpkt_usec, uint64_t tconnect_usec, 
-						const IP_PORT & cli_ipport, const IP_PORT & ser_ipport, uint64_t glob_id, PROTO_TYPES proto)
-		: uniq_(std::move(urec)), ptran_(
-		({
-			if (sz < API_TRAN::get_max_elem_size(api_max_len)) {
-				GY_THROW_EXCEPTION("Invalid size %u for Tran Req Writer", sz);
-			}	
-
-			(API_TRAN *)urec.get();
-		})	
-		),
-		tdstrbuf_((char *)(ptran_ + 1), api_max_len), ustrbuf_((uint8_t *)tdstrbuf_.buffer() + api_max_len, MAX_PARSE_EXT_LEN)	
-	{
-		new (ptran_) API_TRAN(tlastpkt_usec, tconnect_usec, cli_ipport, ser_ipport, glob_id, proto);
-
-		ustrbuf_ << (uint8_t)0;
-	}	
-
-	~TRAN_REQ_WR() noexcept
-	{
-		ptran_ = nullptr;
-	}	
-
-	size_t get_data_len() const noexcept
-	{
-		return sizeof(*ptran_) + tdstrbuf_.size() + ustrbuf_.size();
-	}	
-
-	// Returns complete record size after packing
-	size_t pack_on_complete() noexcept
-	{
-		ptran_->request_len_ = tdstrbuf_.size();
-
-		if (ptran_->request_len_ > 0) {
-			// Add '\0' byte
-			
-			uint8_t				*pstrdest = (uint8_t *)ptran_ + ptran_->request_len_;
-
-			*pstrdest = 0;
-			ptran_->request_len_++;
-		}
-
-		size_t				fsz = sizeof(*ptran_) + ptran_->request_len_;
-
-		if (ustrbuf_.size() <= 1) {
-			ptran_->lenext_ = 0;
-
-			return fsz;
-		}	
-		else {
-			ptran_->lenext_ = ustrbuf_.size();
-		}	
-
-		uint8_t				*pdest = (uint8_t *)ptran_ + fsz;
-		uint8_t				*psrc = ustrbuf_.buffer();			
-
-		memcpy_or_move(pdest, psrc, ptran_->lenext_);
-
-		return fsz + ptran_->lenext_;
-	}	
-
-	uint8_t num_ext_fields() const noexcept
-	{
-		if (ustrbuf_.size() > 1) {
-			return *ustrbuf_.data();
-		}	
-
-		return 0;
-	}	
-
-	void reset() noexcept
-	{
-		ptran_->reset();
-		tdstrbuf_.reset();
-
-		ustrbuf_.reset();
-		ustrbuf_ << (uint8_t)0;
-	}	
-};	
 
 // Returns number of bytes copied. Will return 0 on truncation. Also updates tran with the tdstrbuf and ustrbuf lens
 static size_t copy_tran_data(uint8_t *pdest, uint32_t maxsz, API_TRAN & tran, const STR_WR_BUF & tdstrbuf, const STR_WR_BIN & ustrbuf) noexcept
@@ -355,7 +261,6 @@ struct PARSE_ALL_FIELDS
 	uint32_t			nrows_			{0};
 	std::string_view		cursorname_;
 	int				statuscode_		{0};
-	std::string_view		reqmethod_;
 
 	PARSE_ALL_FIELDS() noexcept	= default;
 
@@ -463,16 +368,6 @@ struct PARSE_ALL_FIELDS
 				ustr >> statuscode_;
 				break;
 
-			case FIELD_REQ_METHOD :
-				if (ustr.bytes_left() >= fl.len_) {
-					reqmethod_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
-					ustr += fl.len_;
-				}
-				else {
-					return i;
-				}	
-				break;
-
 			default :
 				return i;
 			}	
@@ -482,6 +377,7 @@ struct PARSE_ALL_FIELDS
 	}	
 };	
 
+// Returns the Request string view and populates the PARSE_ALL_FIELDS
 static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_ALL_FIELDS & fields) noexcept
 {
 	const char			*preq = (const char *)(ptran + 1);

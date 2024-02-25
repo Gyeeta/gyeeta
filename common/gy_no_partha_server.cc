@@ -38,6 +38,21 @@ std::shared_ptr<SERVER_CONNTRACK> SERVER_COMM::get_server_conn(comm::CLI_TYPE_E 
 	return {};
 }	
 
+int SERVER_COMM::get_trace_sock(bool connect_if_none) const noexcept
+{
+	return -1;
+}	
+
+void SERVER_COMM::reconnect_trace_sock() noexcept
+{
+
+}	
+
+bool SERVER_COMM::send_trace_data_blocking(const DATA_BUFFER_ELEM & elem) noexcept
+{
+	return false;
+}	
+	
 bool SERVER_COMM::send_server_data(EPOLL_IOVEC_ARR && iovarr, comm::CLI_TYPE_E cli_type, comm::COMM_TYPE_E comm_type, const std::shared_ptr<SERVER_CONNTRACK> & shrconn) noexcept
 {
 	return false;

@@ -104,5 +104,26 @@ bool SERVER_COMM::send_event_cache(DATA_BUFFER & cache, void *palloc, size_t sz,
 
 }	
 
+int SERVER_COMM::get_trace_sock(bool connect_if_none) const noexcept
+{
+	const partha::PACONN_HANDLER		*paconn = static_cast<const partha::PACONN_HANDLER *>(this);
+
+	return paconn->get_trace_sock(connect_if_none);
+}
+
+void SERVER_COMM::reconnect_trace_sock() noexcept
+{
+	partha::PACONN_HANDLER		*paconn = static_cast<partha::PACONN_HANDLER *>(this);
+
+	paconn->reconnect_trace_sock();
+}
+
+bool SERVER_COMM::send_trace_data_blocking(const DATA_BUFFER_ELEM & elem) noexcept
+{
+	partha::PACONN_HANDLER		*paconn = static_cast<partha::PACONN_HANDLER *>(this);
+
+	return paconn->send_trace_data_blocking(std::move(elem));
+}	
+
 } // namespace gyeeta	
 

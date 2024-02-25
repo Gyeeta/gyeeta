@@ -1106,9 +1106,25 @@ struct DATA_BUFFER_ELEM
 
 		return *this;
 	}	
+
+	void * data() const noexcept
+	{
+		return palloc_;
+	}	
+
+	size_t size() const noexcept
+	{
+		return sz_;
+	}	
+
+	size_t nelems() const noexcept
+	{
+		return nelems_;
+	}	
 };	
 
-enum {
+enum PROC_EVENT_E 
+{
 	PROC_EVENT_NONE 	= 0x00000000,
 	PROC_EVENT_FORK 	= 0x00000001,
 	PROC_EVENT_EXEC 	= 0x00000002,
@@ -1124,19 +1140,9 @@ enum {
 /*
  * Copied from linux/cn_proc.h struct proc_event
  */
-struct GY_PROC_EVENT {
-	enum what {
-		PROC_EVENT_NONE 	= 0x00000000,
-		PROC_EVENT_FORK 	= 0x00000001,
-		PROC_EVENT_EXEC 	= 0x00000002,
-		PROC_EVENT_UID  	= 0x00000004,
-		PROC_EVENT_GID  	= 0x00000040,
-		PROC_EVENT_SID  	= 0x00000080,
-		PROC_EVENT_PTRACE 	= 0x00000100,
-		PROC_EVENT_COMM 	= 0x00000200,
-		PROC_EVENT_COREDUMP 	= 0x40000000,
-		PROC_EVENT_EXIT 	= 0x80000000
-	} what;
+struct GY_PROC_EVENT 
+{
+	PROC_EVENT_E what;
 	__u32 cpu;
 	__u64 __attribute__((aligned(8))) timestamp_ns;
 		/* Number of nano seconds since system boot */

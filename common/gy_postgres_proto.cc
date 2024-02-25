@@ -267,7 +267,6 @@ void POSTGRES_SESSINFO::handle_session_end(PARSE_PKT_HDR & hdr)
 
 	tdstrbuf_ << "logout"sv;
 	tran_.tupd_usec_ = common.tlastpkt_usec_;
-	tran_.tin_usec_ = common.tlastpkt_usec_;
 	tran_.reqlen_ = 1;
 	tran_.reslen_ = 1;
 	tran_.tres_usec_ = common.tlastpkt_usec_;
@@ -288,7 +287,6 @@ void POSTGRES_SESSINFO::set_new_req() noexcept
 
 	tran_.treq_usec_			= common.tlastpkt_usec_;
 	tran_.tupd_usec_			= common.tlastpkt_usec_;
-	tran_.tin_usec_				= common.tlastpkt_usec_;
 	
 	tdstrbuf_.reset();
 	tdstat_.reset_on_req();
@@ -2020,7 +2018,7 @@ void POSTGRES_SESSINFO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tla
 		}	
 	}	
 
-	strbuf << " Total Queries "sv << gtotal_queries;
+	strbuf << " Total Requests "sv << gtotal_queries << ", Overall Avg Response usec "sv << gtotal_resp/NUM_OR_1(gtotal_queries);
 
 	strbuf << "\n\n"sv;
 }	

@@ -339,6 +339,9 @@ public :
 		int64_t				last_disconn_tsec_				{0};
 		uint32_t			comm_version_					{1};
 		uint32_t			madhava_version_				{0};
+
+		SCOPE_FD			trace_req_sock_;
+		mutable time_t			trace_sched_sec_				{0};
 		
 		uint64_t			last_madhava_id_				{0};
 		char				last_madhava_hostname_[MAX_DOMAINNAME_SIZE]	{};
@@ -480,7 +483,7 @@ public :
 
 	int blocking_madhava_register() noexcept;
 
-	int connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_storage & sockaddr, socklen_t & socklen);
+	int connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_storage & sockaddr, socklen_t & socklen, uint64_t conn_flags = 0, bool upd_madhava_stats = true);
 
 	void close_all_conns(MADHAVA_INFO & madhava) noexcept;
 
@@ -505,6 +508,27 @@ public :
 	std::shared_ptr<SERVER_CONNTRACK> get_server_conn(comm::CLI_TYPE_E cli_type) noexcept
 	{
 		return std::static_pointer_cast<SERVER_CONNTRACK>(gmadhava_.get_last_conn(cli_type));
+	}
+
+	int get_trace_sock(bool connect_if_none) const noexcept
+	{
+		if (false == gmadhava_.trace_req_sock_.isvalid() && connect_if_none) {
+			gmadhava_.trace_sched_sec_ = time(nullptr);
+			schedule_madhava_register(100);
+		}	
+		
+		return gmadhava_.trace_req_sock_.getfd();
+	}
+
+	void reconnect_trace_sock() noexcept
+	{
+		if (gmadhava_.trace_req_sock_.isvalid()) {
+
+			gmadhava_.trace_req_sock_.close();
+			gmadhava_.trace_sched_sec_ = gmadhava_.last_disconn_tsec_ = time(nullptr);
+
+			schedule_madhava_register(100);
+		}
 	}
 
 	bool send_server_data(EPOLL_IOVEC_ARR && iovarr, comm::CLI_TYPE_E cli_type, comm::COMM_TYPE_E comm_type, const std::shared_ptr<SERVER_CONNTRACK> & shrconn) noexcept
@@ -580,6 +604,41 @@ public :
 		}
 		
 		return false;
+	}	
+
+	bool send_trace_data_blocking(const DATA_BUFFER_ELEM & elem) noexcept
+	{
+		ssize_t				sret = 0;
+		int				sock;
+
+		sock = gmadhava_.trace_req_sock_.getfd();
+
+		if (sock < 0) {
+			if (auto tc = time(nullptr); tc > gmadhava_.trace_sched_sec_ + 60) {
+				gmadhava_.trace_sched_sec_ = tc;
+				schedule_madhava_register(100);
+			}	
+			return false;
+		}	
+
+try_again :		
+		sret = ::send(sock, (const uint8_t *)elem.data() + sret, elem.size() - sret, MSG_NOSIGNAL);
+		if (sret != (ssize_t)elem.size()) {
+			if (errno == EINTR) {
+				if (sret < 0) sret = 0;
+				goto try_again;
+			}
+
+			// Socket is blocking so close conn directly...
+			
+			PERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to send Request Trace data to Madhava server : Closing connection");
+
+			reconnect_trace_sock();
+
+			return false;
+		}	
+
+		return true;
 	}	
 
 };	

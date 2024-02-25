@@ -2864,18 +2864,27 @@ static CHAR_BUF<64> gy_time_iso8601_nsec(struct timespec ts = get_timespec(), bo
 	return buf;
 }	
 
-static char * gy_tm_iso8601(const struct tm & tm, char *timebuf, size_t szbuf, const char *iso_fmt = "%FT%H:%M:%S") noexcept
+static char * gy_tm_iso8601(const struct tm & tm, char *timebuf, size_t szbuf, int64_t *psubsec = nullptr, bool is_nsec_subsec = false, const char *iso_fmt = "%FT%H:%M:%S") noexcept
 {
 	size_t				buflen;
 	auto				tm_gmtoff = tm.tm_gmtoff;
 
-	assert(szbuf > GY_CONST_STRLEN("2018-06-01T13:00:00+05:30"));
+	assert(szbuf > GY_CONST_STRLEN("2018-06-01T13:00:00.123456789+05:30"));
 
-	buflen = strftime(timebuf, szbuf - 8, iso_fmt, &tm);
+	buflen = strftime(timebuf, szbuf - 18, iso_fmt, &tm);
 
 	if (gy_unlikely(buflen == 0)) {
 		*timebuf = '\0';
 		return timebuf;
+	}	
+
+	if (psubsec) {
+		if (is_nsec_subsec) {
+			buflen += GY_SAFE_SNPRINTF(timebuf + buflen, szbuf - buflen - 1, ".%09ld", *psubsec);
+		}
+		else {
+			buflen += GY_SAFE_SNPRINTF(timebuf + buflen, szbuf - buflen - 1, ".%06ld", *psubsec);
+		}
 	}	
 
 	if (tm_gmtoff != 0) {
@@ -2896,11 +2905,11 @@ static char * gy_tm_iso8601(const struct tm & tm, char *timebuf, size_t szbuf, c
 	return timebuf;	
 }
 
-static CHAR_BUF<64> gy_tm_iso8601(const struct tm & tm, const char *iso_fmt = "%FT%H:%M:%S") noexcept
+static CHAR_BUF<64> gy_tm_iso8601(const struct tm & tm, int64_t *psubsec = nullptr, bool is_nsec_subsec = false, const char *iso_fmt = "%FT%H:%M:%S") noexcept
 {
 	CHAR_BUF<64>			buf;
 
-	gy_tm_iso8601(tm, buf.get(), sizeof(buf), iso_fmt);
+	gy_tm_iso8601(tm, buf.get(), sizeof(buf), psubsec, is_nsec_subsec, iso_fmt);
 
 	return buf;
 }	
@@ -3426,6 +3435,48 @@ static time_t get_tm_offset(struct tm & tm, int days_offset, int hours_offset, i
 		return mktime(&tm);
 	}	
 }
+
+class GY_TIME_OFFSET
+{
+public :
+	struct tm			tm_			{};
+	time_t				tinit_			{0};
+
+	GY_TIME_OFFSET(bool is_tz_utc = true, time_t tinit = time(nullptr)) noexcept
+		: tinit_(tinit)
+	{
+		if (is_tz_utc) {
+			gmtime_r(&tinit_, &tm_);
+		}
+		else {
+			localtime_r(&tinit_, &tm_);
+		}	
+	}	
+
+	// Based on an already populated tm
+	GY_TIME_OFFSET(const struct tm & tm, time_t tinit) noexcept
+		: tm_(tm), tinit_(tinit)
+	{}
+
+	CHAR_BUF<64> get_iso8601_offset(int sec_offset, int64_t *psubsec = nullptr, bool is_nsec_subsec = false, const char *iso_fmt = "%FT%H:%M:%S") const noexcept
+	{
+		struct tm		tm1 = tm_;
+
+		get_tm_sec_offset(tm1, sec_offset, tinit_);
+
+		return gy_tm_iso8601(tm1, psubsec, is_nsec_subsec, iso_fmt);
+	}	
+
+	char * get_iso8601_offset(int sec_offset, char *timebuf, size_t szbuf, int64_t *psubsec = nullptr, bool is_nsec_subsec = false, const char *iso_fmt = "%FT%H:%M:%S") const noexcept
+	{
+		struct tm		tm1 = tm_;
+
+		get_tm_sec_offset(tm1, sec_offset, tinit_);
+
+		return gy_tm_iso8601(tm1, timebuf, szbuf, psubsec, is_nsec_subsec, iso_fmt);
+	}	
+	
+};	
 
 static inline bool is_leap_year(int year) noexcept
 {
@@ -13011,6 +13062,11 @@ public :
 		}	
 		return pfp_;
 	}	 
+
+	bool isvalid() const noexcept
+	{
+		return !!pfp_;
+	}	
 };	
 
 class SCOPE_FD

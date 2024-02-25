@@ -354,6 +354,18 @@ public :
 		return errschedthr_;
 	}	
 
+	API_PARSE_HDLR * get_api_handler(size_t parseridx) noexcept
+	{
+		/*
+		 * For now, only a single API Handler...
+		 */
+		if (parseridx == 0) {
+			return apihdlr_.get();
+		}	
+
+		return nullptr;
+	}	
+	
 	static void svc_ssl_probe_cb(void *pcb_cookie, void *pdata, int data_size) noexcept;
 
 	static SVC_NET_CAPTURE *		get_singleton() noexcept;

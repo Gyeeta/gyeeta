@@ -1445,14 +1445,11 @@ bool ALERT_STAT_INFO::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnot
 	return (i == nelems);
 }	
 
-} // namespace comm
-
-
-bool API_TRAN::validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY *pnotify) noexcept
+bool REQ_TRACE_TRAN::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 {
-	using namespace			comm;
-
 	static constexpr size_t 	fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
+
+	static_assert(sizeof(REQ_TRACE_TRAN) == sizeof(API_TRAN), "Please change code directly referencing API_TRAN");
 
 	if (phdr->get_act_len() < fixed_sz) {
 		return false;
@@ -1460,7 +1457,7 @@ bool API_TRAN::validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY 
 	
 	ssize_t				totallen = phdr->get_act_len();
 	const uint32_t			nelems = pnotify->nevents_;
-	API_TRAN			*pone = (API_TRAN *)(pnotify + 1);
+	REQ_TRACE_TRAN			*pone = (REQ_TRACE_TRAN *)(pnotify + 1);
 	uint32_t			i;
 
 	if (nelems > MAX_NUM_REQS) {
@@ -1469,7 +1466,7 @@ bool API_TRAN::validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY 
 
 	totallen -= fixed_sz;
 
-	for (i = 0; i < nelems && totallen >= (ssize_t)sizeof(API_TRAN); ++i) {
+	for (i = 0; i < nelems && totallen >= (ssize_t)sizeof(REQ_TRACE_TRAN); ++i) {
 		ssize_t elem_sz = pone->get_elem_size();
 
 		if (totallen < elem_sz) {
@@ -1493,13 +1490,11 @@ bool API_TRAN::validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY 
 
 		totallen -= elem_sz;
 
-		pone = (API_TRAN *)((uint8_t *)pone + elem_sz);
+		pone = (REQ_TRACE_TRAN *)((uint8_t *)pone + elem_sz);
 	}
 	
 	return (i == nelems);
 }	
-
-namespace comm {
 
 bool MS_REG_PARTHA::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 {

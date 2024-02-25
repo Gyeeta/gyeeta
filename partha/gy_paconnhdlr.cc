@@ -1432,7 +1432,7 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 			 * alarm...
 			 */
 			if ((false == gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_ONLY)) || (false == gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_RESP))
-				|| (false == gmadhava_.is_cli_type_avail(CLI_TYPE_RESP_REQ))) {
+				|| (false == gmadhava_.is_cli_type_avail(CLI_TYPE_RESP_REQ)) || (false == gmadhava_.trace_req_sock_.isvalid())) {
 
 				stop_madhava_scheduler();
 				schedule_shyama_register();
@@ -1444,12 +1444,19 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 			}	
 		}	
 
-		// We register 3 connections to Madhava : 1 of type CLI_TYPE_REQ_ONLY, 1 of CLI_TYPE_REQ_RESP, 1 of CLI_TYPE_RESP_REQ
-		bool				bret;
+		/*
+		 * We register 4 connections to Madhava : 1 of type CLI_TYPE_REQ_ONLY, 1 of CLI_TYPE_REQ_RESP, 1 of CLI_TYPE_RESP_REQ and 
+		 * 						1 Trace Request Socket also of CLI_TYPE_REQ_ONLY
+		 */						
+
+		bool				bret, reqonly = false;
 		int				ret, nconnects = 0;
 		int				sock_req_only = -1, sock_req_resp = -1, sock_resp_req = -1;
 		struct sockaddr_storage		saddr_req_only {}, saddr_req_resp {}, saddr_resp_req {};
 		socklen_t			slen_req_only = 0, slen_req_resp = 0, slen_resp_req = 0;
+		struct sockaddr_storage		tsaddr {};
+		socklen_t			tslen = 0;
+		int				tsock = -1;
 
 		GY_SCOPE_EXIT {
 			if (sock_req_only >= 0) {
@@ -1460,6 +1467,9 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 			}	
 			if (sock_resp_req >= 0) {
 				::close(sock_resp_req);
+			}	
+			if (tsock >= 0) {
+				::close(tsock);
 			}	
 		};
 
@@ -1486,6 +1496,8 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 			sock_req_only = -1;
 
 			nconnects++;
+
+			reqonly = true;
 		}	
 
 		bret = gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_RESP);
@@ -1538,14 +1550,37 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 			nconnects++;
 		}	
 
-		// Again check if all 3 connections still connected and if so, then cancel the schedule
-		if ((gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_ONLY)) && (gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_RESP)) && (gmadhava_.is_cli_type_avail(CLI_TYPE_RESP_REQ))) {
+		if (false == gmadhava_.trace_req_sock_.isvalid() && true == gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_ONLY)) {
+
+			tsock = connect_madhava(CLI_TYPE_REQ_ONLY, tsaddr, tslen, comm::PM_CONNECT_CMD_S::CONN_FLAGS_REQ_TRACING, false /* upd_madhava_stats */);
+			if (tsock < 0) {
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to connect to Madhava Server for Request Tracing. Will retry later...\n");
+				return -1;
+			}	
+			else {
+				// Set blocking
+				set_sock_nonblocking(tsock, 0);
+				set_sock_keepalive(tsock);
+				
+				gmadhava_.trace_req_sock_.set_fd(tsock);
+				gmadhava_.trace_sched_sec_ = time(nullptr);
+
+				tsock = -1;
+
+				nconnects++;
+			}	
+		}	
+
+		// Again check if all connections still connected and if so, then cancel the schedule
+		if (gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_ONLY) && gmadhava_.is_cli_type_avail(CLI_TYPE_REQ_RESP) && gmadhava_.is_cli_type_avail(CLI_TYPE_RESP_REQ)
+			&& gmadhava_.trace_req_sock_.isvalid()) {
+
 			stop_madhava_scheduler();
 		}	
 
 		if (nconnects > 0) {
 			snprintf(last_error_buf_, sizeof(last_error_buf_), "Successfully Registered with Madhava Server \'%s\' Host %s port %hu with %lu connections\n",
-				gmadhava_.madhava_name_, gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, gmadhava_.get_num_conns());
+				gmadhava_.madhava_name_, gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, gmadhava_.get_num_conns() + gmadhava_.trace_req_sock_.isvalid());
 
 			char				zbuf[512];
 
@@ -1569,7 +1604,8 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 
 			ppartha_->update_server_status(last_error_buf_);
 
-			PACONN_HANDLER::get_singleton()->scheduler_.add_schedule(90'000, 60'000, 0, "Schedule Host Extended Info send",
+			if (reqonly) {
+				PACONN_HANDLER::get_singleton()->scheduler_.add_schedule(90'000, 60'000, 0, "Schedule Host Extended Info send",
 				[] {
 					auto			psys = SYS_HARDWARE::get_singleton();
 					bool			bret;
@@ -1585,6 +1621,7 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 						}	
 					}
 				}, false);	
+			}	
 		}
 
 		return 0;
@@ -1595,13 +1632,13 @@ int PACONN_HANDLER::blocking_madhava_register() noexcept
 	);
 }
 
-int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_storage & saddr, socklen_t & socklen) 
+int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_storage & saddr, socklen_t & socklen, uint64_t conn_flags, bool upd_madhava_stats) 
 {
 	bool				is_registered = false;
 	struct sockaddr_storage		saddr_store;
 	char				ebuf[128];
 
-	if (gmadhava_.last_disconn_tsec_ == 0) {
+	if (upd_madhava_stats && gmadhava_.last_disconn_tsec_ == 0) {
 		gmadhava_.last_disconn_tsec_ = time(nullptr);
 	}
 
@@ -1617,7 +1654,9 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 			gmadhava_.madhava_name_, gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, gmadhava_.last_error_buf_, 
 			gmadhava_.last_disconn_tsec_ ? (get_sec_time() - gmadhava_.last_disconn_tsec_)/60 : get_process_uptime_sec()/60);
 		
-		ppartha_->update_server_status(last_error_buf_);
+		if (upd_madhava_stats) {
+			ppartha_->update_server_status(last_error_buf_);
+		}
 
 		// We will retry at the next scheduler signal
 		return -1;
@@ -1675,6 +1714,7 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 	preq->clock_sec_		= get_sec_clock();
 	preq->process_uptime_sec_	= get_process_uptime_sec();
 	preq->last_connect_sec_		= gmadhava_.last_success_tsec_;
+	preq->flags_			= conn_flags;
 
 	struct iovec			iov[2] {{phdr, fixed_sz_pm}, {(void *)gpadbuf, phdr->get_pad_len()}};	
 	
@@ -1688,7 +1728,9 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 			gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, gmadhava_.last_error_buf_, 
 			gmadhava_.last_disconn_tsec_ ? (get_sec_time() - gmadhava_.last_disconn_tsec_)/60 : get_process_uptime_sec()/60);
 
-		ppartha_->update_server_status(last_error_buf_);
+		if (upd_madhava_stats) {
+			ppartha_->update_server_status(last_error_buf_);
+		}
 
 		return -1;
 	}	
@@ -1706,7 +1748,9 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 		}	
 		GY_STRNCPY(last_error_buf_, gmadhava_.last_error_buf_, sizeof(last_error_buf_));
 
-		ppartha_->update_server_status(last_error_buf_);
+		if (upd_madhava_stats) {
+			ppartha_->update_server_status(last_error_buf_);
+		}
 
 		ERRORPRINT_OFFLOAD("Madhava Registration failed : %s : Will retry later. Time since last disconnect to Madhava : %ld minutes\n", 
 			gmadhava_.last_error_buf_, 
@@ -1721,7 +1765,9 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 			gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, strerror_r(errno, tbuf, sizeof(tbuf)));
 		GY_STRNCPY(last_error_buf_, gmadhava_.last_error_buf_, sizeof(last_error_buf_));
 
-		ppartha_->update_server_status(last_error_buf_);
+		if (upd_madhava_stats) {
+			ppartha_->update_server_status(last_error_buf_);
+		}
 
 		ERRORPRINT_OFFLOAD("Failed to recv registration response from Madhava Server %s port %hu due to %s : Will retry later. Time since last disconnect to Madhava : %ld minutes\n", 
 			gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, gmadhava_.last_error_buf_, 
@@ -1738,7 +1784,9 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 			gmadhava_.madhava_hostname_, gmadhava_.madhava_port_);
 		GY_STRNCPY(last_error_buf_, gmadhava_.last_error_buf_, sizeof(last_error_buf_));
 
-		ppartha_->update_server_status(last_error_buf_);
+		if (upd_madhava_stats) {
+			ppartha_->update_server_status(last_error_buf_);
+		}
 
 		ERRORPRINT_OFFLOAD("Invalid Registration response from Madhava Server %s port %hu : Will retry later. Time since last disconnect to Madhava : %ld minutes\n", 
 			gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, 
@@ -1752,7 +1800,9 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 			presp->error_string_, gmadhava_.madhava_hostname_, gmadhava_.madhava_port_);
 		GY_STRNCPY(last_error_buf_, gmadhava_.last_error_buf_, sizeof(last_error_buf_));
 
-		ppartha_->update_server_status(last_error_buf_);
+		if (upd_madhava_stats) {
+			ppartha_->update_server_status(last_error_buf_);
+		}
 
 		ERRORPRINT_OFFLOAD("Registration failed as Error response from Madhava Server %s : Server %s port %hu : Will retry later. Time since last disconnect to Madhava : %ld minutes\n", 
 			presp->error_string_, gmadhava_.madhava_hostname_, gmadhava_.madhava_port_, 
@@ -1761,7 +1811,7 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 		/*
 		 * Check for specific Error codes
 		 */
-		if (presp->error_code_ == ERR_NOT_VALIDATED) {
+		if (upd_madhava_stats && presp->error_code_ == ERR_NOT_VALIDATED) {
 			// Check if Shyama was last connected over 30 sec back. If so, we need to send a new Shyama register
 			if (get_sec_time() - GY_READ_ONCE(gshyama_.last_success_tsec_) > 30) {
 				gmadhava_.madhava_expiry_sec_ = 1;
@@ -1771,21 +1821,23 @@ int PACONN_HANDLER::connect_madhava(comm::CLI_TYPE_E cli_type, struct sockaddr_s
 		return -1;
 	}	
 	
-	gmadhava_.comm_version_		= presp->comm_version_;
-	gmadhava_.madhava_version_	= presp->madhava_version_;
-	gmadhava_.last_success_tsec_ 	= get_sec_time();
-	gmadhava_.last_disconn_tsec_ 	= 0;
+	if (upd_madhava_stats) {
+		gmadhava_.comm_version_		= presp->comm_version_;
+		gmadhava_.madhava_version_	= presp->madhava_version_;
+		gmadhava_.last_success_tsec_ 	= get_sec_time();
+		gmadhava_.last_disconn_tsec_ 	= 0;
 
-	GY_STRNCPY(gmadhava_.region_name_, presp->region_name_, sizeof(gmadhava_.region_name_));
-	GY_STRNCPY(gmadhava_.zone_name_, presp->zone_name_, sizeof(gmadhava_.zone_name_));
-	GY_STRNCPY(gmadhava_.madhava_name_, presp->madhava_name_, sizeof(gmadhava_.madhava_name_));
+		GY_STRNCPY(gmadhava_.region_name_, presp->region_name_, sizeof(gmadhava_.region_name_));
+		GY_STRNCPY(gmadhava_.zone_name_, presp->zone_name_, sizeof(gmadhava_.zone_name_));
+		GY_STRNCPY(gmadhava_.madhava_name_, presp->madhava_name_, sizeof(gmadhava_.madhava_name_));
+	}
 
 	is_registered = true;
 
 	/*
 	 * Now check the response presp->flags_
 	 */
-	if (presp->flags_ & comm::PM_CONNECT_RESP_S::CONN_FLAGS_RESET_STATS) {
+	if (upd_madhava_stats && presp->flags_ & comm::PM_CONNECT_RESP_S::CONN_FLAGS_RESET_STATS) {
 		handle_reset_stats();
 	}	
 
@@ -1827,6 +1879,10 @@ void PACONN_HANDLER::close_all_conns(MADHAVA_INFO & madhava) noexcept
 	};	
 
 	madhava.walk_conn_list(lwalk);
+
+	if (madhava.trace_req_sock_.isvalid()) {
+		madhava.trace_req_sock_.close();
+	}	
 }	
 
 bool PACONN_HANDLER::notify_new_conn(SERVER_SIGNAL *pl1, comm::CLI_TYPE_E cli_type, struct sockaddr_storage & saddr, int newsockfd) noexcept

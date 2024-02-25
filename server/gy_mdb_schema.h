@@ -10,12 +10,12 @@ namespace madhava {
 
 extern const int 		CURR_DB_VERSION;
 
-static constexpr const char	*db_glob_partition_tbls_[] = {
+static constexpr const char	*db_glob_partition_tbls[] = {
 	"notificationtbl", 
 };	
 
 // Must end with "tbl" as its used in alerts db queries
-static constexpr const char	*db_partha_partition_tbls_[] = {
+static constexpr const char	*db_partha_partition_tbls[] = {
 	"hoststatetbl", "listenstatetbl", "cpumemstatetbl", "aggrtaskstatetbl", "topcputbl", "toppgcputbl", 
 	"toprsstbl", "topforktbl", "activeconntbl", "deplistenissuetbl", "tasktbl", "listensummtbl", "listentaskmaptbl", "remoteconntbl",
 	"aggrtaskinfotbl", "listeninfotbl", 

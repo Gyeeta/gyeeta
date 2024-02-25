@@ -12,7 +12,7 @@ namespace shyama {
 extern const int		CURR_DB_VERSION;
 
 // Must end with "tbl" as its used in alerts db queries
-static constexpr const char	*db_glob_partition_tbls_[] = {
+static constexpr const char	*db_glob_partition_tbls[] = {
 	"clusterstatetbl", "svcmeshtbl", "svcnatiptbl", "alertstbl",
 };	
 

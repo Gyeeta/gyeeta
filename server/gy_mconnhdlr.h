@@ -62,12 +62,14 @@ public :
 	static constexpr size_t			MAX_L2_DB_READERS 		= 8; 
 	static constexpr size_t			MAX_L2_MISC_THREADS 		= 16; 
 	static constexpr size_t			MAX_L2_ALERT_THREADS		= 1;	// This thread will in turn spawn 2 DB and 1 realtime thread
-	static constexpr size_t			MAX_L2_THREADS			= MAX_L2_DB_READERS + MAX_L2_MISC_THREADS + MAX_L2_ALERT_THREADS;
+	static constexpr size_t			MAX_L2_TRACE_THREADS 		= 2; 	// For Trace Requests only
+	static constexpr size_t			MAX_L2_THREADS			= MAX_L2_DB_READERS + MAX_L2_MISC_THREADS + MAX_L2_ALERT_THREADS + MAX_L2_TRACE_THREADS;
 	
 	// Multiple L2 threads will handle each pool
 	static constexpr size_t			MAX_L2_DB_RD_POOLS 		= 1;
 	static constexpr size_t			MAX_L2_MISC_POOLS 		= 4;
 	static constexpr size_t			MAX_L2_ALERT_POOLS 		= 1;
+	static constexpr size_t			MAX_L2_TRACE_POOLS 		= 1;
 	static constexpr size_t			MAX_MPMC_ELEMS			= 64 * 1024;
 	
 	// 2 Alert DB Threads and 1 Realtime Alert Thread
@@ -447,7 +449,7 @@ public :
 		std::weak_ptr <MCONNTRACK>	weakconn_;
 		MCONNTRACK			*pconn_			{nullptr};
 
-		std::optional <ASYNC_SOCK_CB>	async_cb_;
+		std::optional <ASYNC_SOCK_CB>	async_cb_;		// Called after a send and on the subsequent recv
 		uint64_t			resp_usec_		{0};
 
 		comm::COMM_TYPE_E		output_data_type_	{comm::COMM_MIN_TYPE};
@@ -1087,6 +1089,9 @@ public :
 		MAGGR_TASK_HASH_TABLE		task_aggr_tbl_				{1};
 		int64_t				cli_task_missed_			{0};
 
+		SCOPE_FD			trace_req_sock_;
+		time_t				trace_tsec_				{0};
+
 		CPU_MEM_STATE			cpu_mem_state_;	
 		comm::HOST_STATE_NOTIFY		host_state_;
 		TASK_TOP_PROCS_INFO		toptasks_;
@@ -1098,6 +1103,9 @@ public :
 		void handle_disconnect() noexcept
 		{
 			last_disconnect_tsec_.store(time(nullptr), mo_release);
+			
+			trace_req_sock_.close();
+
 			INFOPRINT_OFFLOAD("Partha Host %s disconnected all connections...\n", hostname_);
 		}
 
