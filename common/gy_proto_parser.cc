@@ -222,7 +222,8 @@ static bool test_reorders(uint8_t parseridx, SVC_INFO_CAP *psvc, ParserMemPool::
 #endif /* GY_TEST_REORDER_PKTS */
 
 API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint32_t api_max_len)
-		: reqbuffer_(API_TRAN::get_max_elem_size(api_max_len), 256, 32, 128, sizeof(comm::COMM_HEADER) + sizeof(comm::EVENT_NOTIFY), false), 
+		: reqbuffer_(API_TRAN::get_max_elem_size(api_max_len), API_TRAN::MAX_NUM_REQS, 32, API_TRAN::MAX_NUM_REQS/2, 
+				sizeof(comm::COMM_HEADER) + sizeof(comm::EVENT_NOTIFY), false, API_TRAN::MAX_SEND_SZ), 
 		svcnet_(svcnet), api_max_len_(api_max_len), parseridx_(parseridx)
 {
 	if (api_max_len_ > MAX_PARSE_API_LEN) {
@@ -1335,7 +1336,7 @@ try1 :
 							}
 
 							char				stimebuf[128];
-							PARSE_ALL_FIELDS		fields;
+							PARSE_EXT_FIELDS		fields;
 							auto				sv = get_api_tran(pone, fields);
 
 							if (sv.size()) {

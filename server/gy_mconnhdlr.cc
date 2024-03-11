@@ -145,10 +145,12 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 		pl2_db_rd_arr_		= new L2_PARAMS[MAX_L2_DB_READERS];
 		pl2_misc_arr_		= new L2_PARAMS[MAX_L2_MISC_THREADS];
 		pl2_alert_arr_		= new L2_PARAMS[MAX_L2_ALERT_THREADS];
+		pl2_trace_arr_		= new L2_PARAMS[MAX_L2_TRACE_THREADS];
 
 		ppmpmc_db_rd_arr_	= new MPMCQ_COMM *[MAX_L2_DB_RD_POOLS];
 		ppmpmc_misc_arr_	= new MPMCQ_COMM *[MAX_L2_MISC_POOLS];
 		ppmpmc_alert_arr_	= new MPMCQ_COMM *[MAX_L2_ALERT_POOLS];
+		ppmpmc_trace_arr_	= new MPMCQ_COMM *[MAX_L2_TRACE_POOLS];
 
 		for (size_t i = 0; i < MAX_L2_DB_RD_POOLS; ++i) {
 			ppmpmc_db_rd_arr_[i]	= new MPMCQ_COMM(MAX_MPMC_ELEMS);
@@ -160,6 +162,10 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 
 		for (size_t i = 0; i < MAX_L2_ALERT_POOLS; ++i) {
 			ppmpmc_alert_arr_[i]	= new MPMCQ_COMM(MAX_MPMC_ELEMS);
+		}	
+
+		for (size_t i = 0; i < MAX_L2_TRACE_POOLS; ++i) {
+			ppmpmc_trace_arr_[i]	= new MPMCQ_COMM(1024);
 		}	
 
 		// Now clear the Temp Listener
@@ -1289,6 +1295,9 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 	if (maxcore >= 16 && maxmem >= GY_UP_GB(32 - 1)) {
 		max_partha_allowed_	= 200;
 	}	
+	else if (maxcore >= 8 && maxmem >= GY_UP_GB(24 - 1)) {
+		max_partha_allowed_	= 150;
+	}	
 	else if (maxcore >= 8 && maxmem >= GY_UP_GB(16 - 1)) {
 		max_partha_allowed_	= 125;
 	}	
@@ -1309,6 +1318,17 @@ void MCONN_HANDLER::set_max_partha_allowed() noexcept
 
 void MCONN_HANDLER::spawn_init_threads()
 {
+	for (int i = 0; i < (int)MAX_L2_TRACE_THREADS; ++i) {
+		int			tepollfd = epoll_create1(EPOLL_CLOEXEC);
+
+		if (tepollfd == -1) {
+			PERRORPRINTCOLOR(GY_COLOR_RED, "Failed to create Request Trace API epoll socket");
+			exit(EXIT_FAILURE);
+		}
+
+		trace_epoll_fd_[i] = tepollfd;
+	}	
+
 	/*
 	 * We first spawn the accept threads (REUSEPORTs)
 	 */
@@ -1501,14 +1521,21 @@ void MCONN_HANDLER::spawn_init_threads()
 
 			parray			= pl2_misc_arr_ + pretdata->thr_num_;
 		}
-		else {
+		else if (n < MAX_L2_DB_READERS + MAX_L2_MISC_THREADS + MAX_L2_ALERT_THREADS) {
 			pretdata->thr_num_ 	= n - MAX_L2_DB_READERS - MAX_L2_MISC_THREADS;
 			pretdata->thr_type_ 	= TTYPE_L2_ALERT;
 			pretdata->pmpmc_	= ppmpmc_alert_arr_[pretdata->thr_num_ % MAX_L2_ALERT_POOLS];
 
 			parray			= pl2_alert_arr_ + pretdata->thr_num_;
 		}	
+		else {
+			pretdata->thr_num_ 	= n - MAX_L2_DB_READERS - MAX_L2_MISC_THREADS - MAX_L2_ALERT_THREADS;
+			pretdata->thr_type_ 	= TTYPE_L2_TRACE;
+			pretdata->pmpmc_	= ppmpmc_trace_arr_[pretdata->thr_num_ % MAX_L2_TRACE_POOLS];
 
+			parray			= pl2_trace_arr_ + pretdata->thr_num_;
+		}	
+			
 		do {
 			try {
 				pthr = new GY_THREAD("Level 2 handler", l2lam, nullptr, this, psignal, true /* start_immed */, 2 * 1024 * 1024 /* 2 MB Stack size */);
@@ -4245,6 +4272,7 @@ int MCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 		case TTYPE_L2_DB_RD 	:	ptype = "DB Reader"; break;
 		case TTYPE_L2_MISC 	:	ptype = "Misc Thread"; break;
 		case TTYPE_L2_ALERT 	:	ptype = "Alert Handler"; break;
+		case TTYPE_L2_TRACE 	:	ptype = "Trace Request Handler"; break;
 
 		default 		:
 			ERRORPRINTCOLOR(GY_COLOR_RED, "Invalid L2 Thread Type specified : %u : Exiting...\n", psigdata->thr_type_);
@@ -4309,6 +4337,24 @@ int MCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 
 				new (palerthdlr_) MALERT_HDLR(this);
 			}
+			else if (psigdata->thr_type_ == TTYPE_L2_TRACE) {
+				size_t		pool_szarr[2], pool_maxarr[2];
+			
+				pool_szarr[0] 	= 512;
+				pool_maxarr[0]	= 2048;
+
+				pool_szarr[1] 	= 4096;
+				pool_maxarr[1]	= 1024;
+
+				pthrpoolarr = new POOL_ALLOC_ARRAY(pool_szarr, pool_maxarr, GY_ARRAY_SIZE(pool_szarr), true);
+
+				INFOPRINT("L2 Trace Request Reader Thread %u initiating Postgres Connection...\n", l2_thr_num);
+
+				dbpool.emplace(gy_to_charbuf<128>("Trace Request Pool %u", l2_thr_num).get(), TRACE_DB_POOL_CONNS,
+							psettings->postgres_hostname, psettings->postgres_port, psettings->postgres_user, psettings->postgres_password,
+							get_dbname().get(), gy_to_charbuf<64>("madhava_trace%u", l2_thr_num).get(), 
+							get_db_init_commands().get(), true /* auto_reconnect */, 12, 10, 10);
+			}			
 		}
 		GY_CATCH_EXCEPTION(
 			ERRORPRINTCOLOR(GY_COLOR_RED, "Failed to create Level 2 Pool objects for %s : %s\n", psigdata->descbuf_, GY_GET_EXCEPT_STRING);
@@ -4352,6 +4398,8 @@ int MCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 	case TTYPE_L2_MISC 	:	do { handle_l2_misc(param, pthrpoolarr, *dbpool); } while (true);
 
 	case TTYPE_L2_ALERT 	:	do { handle_alert_mgr(param); } while (true);
+
+	case TTYPE_L2_TRACE 	:	do { handle_l2_trace_req(param, pthrpoolarr, *dbpool); } while (true);
 
 	default 		: 	break;
 	}
@@ -5292,6 +5340,44 @@ int MCONN_HANDLER::handle_l2_misc(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoola
 		return -1;
 	);
 }
+
+int MCONN_HANDLER::handle_l2_trace_req(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	try {
+		MPMCQ_COMM			* const pl2pool = param.pmpmc_;
+		const uint32_t			l2_thr_num = param.thr_num_;
+		const pid_t			tid = gy_gettid();
+		uint64_t			curr_usec_clock = get_usec_clock() + ((tid * 10) & 0xFFFF), last_usec_clock = curr_usec_clock, last_dbreset_cusec = curr_usec_clock;
+		int				tpoolcnt = 0;
+		STATS_STR_MAP			statsmap;
+		bool				bret;
+
+		statsmap.reserve(128);
+
+		statsmap["Exception Occurred"] = 0;
+		statsmap["Idle Timeout"] = 0;
+
+		do {
+			try {
+				gy_thread_rcu().gy_rcu_thread_offline();
+
+
+			}
+			GY_CATCH_EXCEPTION(
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught in %s while handling message : %s\n\n", param.descbuf_, GY_GET_EXCEPT_STRING);
+				statsmap["Exception Occurred"]++;
+			);
+
+		} while (true);	
+
+		return 0;
+	}
+	GY_CATCH_EXCEPTION(
+		ERRORPRINTCOLOR(GY_COLOR_RED, "Exception caught in %s : %s\n\n", param.descbuf_, GY_GET_EXCEPT_STRING);
+		return -1;
+	);
+}
+
 
 MA_SETTINGS_C * MCONN_HANDLER::get_settings() const noexcept
 {
@@ -13225,6 +13311,7 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 	time_t				tcurr = time(nullptr);
 	SM_PARTHA_IDENT_NOTIFY		parnotify;
 	size_t				curr_partha_nodes = 0;
+	int				tracefd = -1;
 
 	*info_chg_buf = 0;
 
@@ -13359,96 +13446,118 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 		partha_tbl_.insert_unique(pelem, pinfo->machine_id_, mhash, palam, true /* delete_after_callback */);
 	}
 	
-	SCOPE_GY_MUTEX			scopelock(&pinfo->mutex_);
-	size_t				nconns;
-	int64_t				tcurrusec = get_usec_time();
+	if (!is_req_trace) {
+		SCOPE_GY_MUTEX			scopelock(&pinfo->mutex_);
+		size_t				nconns;
+		int64_t				tcurrusec = get_usec_time();
 
-	if (!is_new && pinfo->last_register_tusec_ > 0 && (tcurrusec - int64_t(pinfo->last_register_tusec_/GY_USEC_PER_SEC)) > preg->process_uptime_sec_ && preg->process_uptime_sec_) {
-		// Partha was restarted since last registration. We need to clear out in memory stuff such as related_listen_tbl_ etc..
-		// XXX Currently we just wait for cleanup_partha_unused_structs()
-	}
-
-	pinfo->madhava_id_		= gmadhava_id_;
-	pinfo->madhava_weak_		= gmadhava_shr_;
-
-	pinfo->comm_version_		= preg->comm_version_;
-	pinfo->partha_version_		= preg->partha_version_;
-	pinfo->last_register_tusec_	= tcurrusec;
-	pinfo->last_register_cusec_	= get_usec_clock();
-
-	last_partha_chg_tusec_.store(tcurrusec, mo_release);
-	
-	if (!is_new) {
-		if (strcmp(pinfo->hostname_, preg->hostname_)) {
-			info_chg 	= true;
-
-			snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Hostname %s : New Hostname %s",
-				preg->machine_id_hi_, preg->machine_id_lo_, pinfo->hostname_, preg->hostname_);
-
-		}	
-		else if (strcmp(pinfo->cluster_name_, preg->cluster_name_)) {
-			info_chg	= true;
-
-			snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Cluster %s : New Cluster %s",
-				preg->machine_id_hi_, preg->machine_id_lo_, pinfo->cluster_name_, preg->cluster_name_);
-		}	
-		else if (strcmp(pinfo->region_name_, preg->region_name_)) {
-			info_chg	= true;
-
-			snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Region %s : New Region %s",
-				preg->machine_id_hi_, preg->machine_id_lo_, pinfo->region_name_, preg->region_name_);
-		}	
-		else if (strcmp(pinfo->zone_name_, preg->zone_name_)) {
-			info_chg	= true;
-
-			snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Zone %s : New Zone %s",
-				preg->machine_id_hi_, preg->machine_id_lo_, pinfo->zone_name_, preg->zone_name_);
-		}	
-
-		if (info_chg) {
-			// Reset RT Alerts checks
-			pinfo->rtalerts_.last_upd_cusec_.store(0, mo_relaxed);
+		if (!is_new && pinfo->last_register_tusec_ > 0 && (tcurrusec - int64_t(pinfo->last_register_tusec_/GY_USEC_PER_SEC)) > preg->process_uptime_sec_ && preg->process_uptime_sec_) {
+			// Partha was restarted since last registration. We need to clear out in memory stuff such as related_listen_tbl_ etc..
+			// XXX Currently we just wait for cleanup_partha_unused_structs()
 		}
+
+		pinfo->madhava_id_		= gmadhava_id_;
+		pinfo->madhava_weak_		= gmadhava_shr_;
+
+		pinfo->comm_version_		= preg->comm_version_;
+		pinfo->partha_version_		= preg->partha_version_;
+		pinfo->last_register_tusec_	= tcurrusec;
+		pinfo->last_register_cusec_	= get_usec_clock();
+
+		last_partha_chg_tusec_.store(tcurrusec, mo_release);
+		
+		if (!is_new) {
+			if (strcmp(pinfo->hostname_, preg->hostname_)) {
+				info_chg 	= true;
+
+				snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Hostname %s : New Hostname %s",
+					preg->machine_id_hi_, preg->machine_id_lo_, pinfo->hostname_, preg->hostname_);
+
+			}	
+			else if (strcmp(pinfo->cluster_name_, preg->cluster_name_)) {
+				info_chg	= true;
+
+				snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Cluster %s : New Cluster %s",
+					preg->machine_id_hi_, preg->machine_id_lo_, pinfo->cluster_name_, preg->cluster_name_);
+			}	
+			else if (strcmp(pinfo->region_name_, preg->region_name_)) {
+				info_chg	= true;
+
+				snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Region %s : New Region %s",
+					preg->machine_id_hi_, preg->machine_id_lo_, pinfo->region_name_, preg->region_name_);
+			}	
+			else if (strcmp(pinfo->zone_name_, preg->zone_name_)) {
+				info_chg	= true;
+
+				snprintf(info_chg_buf, sizeof(info_chg_buf), "Partha Host Info Change Detected for Machine ID %016lx%016lx : Old Zone %s : New Zone %s",
+					preg->machine_id_hi_, preg->machine_id_lo_, pinfo->zone_name_, preg->zone_name_);
+			}	
+
+			if (info_chg) {
+				// Reset RT Alerts checks
+				pinfo->rtalerts_.last_upd_cusec_.store(0, mo_relaxed);
+			}
+		}
+
+		pinfo->hostname_len_ 		= GY_STRNCPY_LEN(pinfo->hostname_, preg->hostname_, sizeof(pinfo->hostname_));
+		pinfo->cluster_len_ 		= GY_STRNCPY_LEN(pinfo->cluster_name_, preg->cluster_name_, sizeof(pinfo->cluster_name_));
+		pinfo->cluster_hash_		= gy_cityhash64(pinfo->cluster_name_, pinfo->cluster_len_);
+		pinfo->region_len_		= GY_STRNCPY_LEN(pinfo->region_name_, preg->region_name_, sizeof(pinfo->region_name_));
+		pinfo->zone_len_		= GY_STRNCPY_LEN(pinfo->zone_name_, preg->zone_name_, sizeof(pinfo->zone_name_));
+
+		/*std::memcpy(pinfo->write_access_key_, preg->write_access_key_, sizeof(pinfo->write_access_key_));*/
+
+		pinfo->kern_version_num_	= preg->kern_version_num_;
+
+		scopelock.unlock();
+
+		/*
+		if (preg->taglen_ > 0) {
+			pinfo->node_tagname_.lock()->assign(preg->node_tagname_, preg->taglen_);
+		}
+		*/
+
+		pconn1->get_peer_ip(pinfo->remote_ip_);
+
+		nconns = pinfo->add_conn(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), HOST_PARTHA, preg->cli_type_);
+
+		// Now update the conn table params
+		pconn1->cli_type_		= preg->cli_type_;
+		pconn1->host_type_	 	= HOST_PARTHA;
+		pconn1->host_shr_		= pinfo->shared_from_this();
+		pconn1->partha_machine_id_	= machid;
+
+		GY_CC_BARRIER();
+
+		if (is_new || info_chg) {
+			// Update DB : RCU offlined already
+			db_add_partha(pinfo, dbpool);
+		}
+		else if (1 == nconns) {
+		}	
+
+		pconn1->set_registered();
+
 	}
+	else {
+		tracefd = duplicate_fd(pconn1->get_sockfd(), true /* cloexec */);
 
-	pinfo->hostname_len_ 		= GY_STRNCPY_LEN(pinfo->hostname_, preg->hostname_, sizeof(pinfo->hostname_));
-	pinfo->cluster_len_ 		= GY_STRNCPY_LEN(pinfo->cluster_name_, preg->cluster_name_, sizeof(pinfo->cluster_name_));
-	pinfo->cluster_hash_		= gy_cityhash64(pinfo->cluster_name_, pinfo->cluster_len_);
-	pinfo->region_len_		= GY_STRNCPY_LEN(pinfo->region_name_, preg->region_name_, sizeof(pinfo->region_name_));
-	pinfo->zone_len_		= GY_STRNCPY_LEN(pinfo->zone_name_, preg->zone_name_, sizeof(pinfo->zone_name_));
+		if (tracefd < 0) {
+			PERRORPRINT_OFFLOAD("Partha Trace API Registration request failed while duplicating socket for partha Machine ID %016lx%016lx from hostname %s",
+				preg->machine_id_hi_, preg->machine_id_lo_, preg->hostname_);
 
-	/*std::memcpy(pinfo->write_access_key_, preg->write_access_key_, sizeof(pinfo->write_access_key_));*/
+			send_l1_register_connect_error<PM_CONNECT_RESP_S, PM_CONNECT_RESP>(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), 
+				dbarr.comm_magic_, statsmap, ERR_SYSERROR,  "Partha Registration failed due to a syscall error at Madhava side", pthrpoolarr);
 
-	pinfo->kern_version_num_	= preg->kern_version_num_;
-
-	scopelock.unlock();
-
-	/*
-	if (preg->taglen_ > 0) {
-		pinfo->node_tagname_.lock()->assign(preg->node_tagname_, preg->taglen_);
-	}
-	*/
-
-	pconn1->get_peer_ip(pinfo->remote_ip_);
-
-	nconns = pinfo->add_conn(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), HOST_PARTHA, preg->cli_type_);
-
-	// Now update the conn table params
-	pconn1->cli_type_		= preg->cli_type_;
-	pconn1->host_type_	 	= HOST_PARTHA;
-	pconn1->host_shr_		= pinfo->shared_from_this();
-	pconn1->partha_machine_id_	= machid;
-
-	GY_CC_BARRIER();
-
-	if (is_new || info_chg) {
-		// Update DB : RCU offlined already
-		db_add_partha(pinfo, dbpool);
-	}
-	else if (1 == nconns) {
+			return -1;
+		}	
 	}	
 
-	pconn1->set_registered();
+	GY_SCOPE_EXIT {
+		if (tracefd >= 0) {
+			close(tracefd);
+		}
+	};	
 
 	// Now schedule the response
 
@@ -13494,7 +13603,7 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 
 	pconn1->schedule_ext_send(EPOLL_IOVEC_ARR(iov, GY_ARRAY_SIZE(iov), free_fp_arr, false));
 	
-	L1_SEND_DATA			l1data(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), dbarr.comm_magic_, PM_CONNECT_RESP, false /* close_conn_on_send */);
+	L1_SEND_DATA			l1data(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), dbarr.comm_magic_, PM_CONNECT_RESP, is_req_trace /* close_conn_on_send */);
 	int				ntries = 0;
 
 	do { 
@@ -13512,6 +13621,13 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 
 	(void)::write(dbarr.pl1_src_->signal_fd_, &n, sizeof(int64_t));
 	
+	if (is_req_trace && tracefd > 0) {
+		uint64_t			traceid = (machid.get_second() % MAX_L2_TRACE_THREADS);
+		SCOPE_GY_MUTEX			scope(trace_mutex_arr_[traceid]);
+
+		
+	}	
+
 	if (is_new) {
 		statsmap["New Partha Registered"]++;
 
@@ -14826,6 +14942,8 @@ int MCONN_HANDLER::sync_partha_node_stats() noexcept
 			}	
 			else {
 				if ((nconn == 0) && (tlast - last_oper > MAX_PARTHA_CONN_DELETE_USEC)) {
+					prawpartha->trace_req_sock_.close();
+
 					if (++prawpartha->ndel_times_ > 2) {
 						// We need to delete this element
 						nparthadel++;

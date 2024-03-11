@@ -275,6 +275,7 @@ public :
 		TTYPE_L2_DB_RD,
 		TTYPE_L2_MISC,
 		TTYPE_L2_ALERT,
+		TTYPE_L2_TRACE,
 	};
 
 	enum MNOTIFY_TYPE_E : uint32_t
@@ -844,6 +845,7 @@ public :
 	using SER_UN_CLI_INFO_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, SER_UN_CLI_INFO_VEC, 8192>;
 	using SER_UN_CLI_INFO_MAP_ARENA		= SER_UN_CLI_INFO_MAP::allocator_type::arena_type;
 
+	using PARTHA_TRACE_MAP			= std::unordered_map<int, std::weak_ptr<PARTHA_INFO>>;
 
 	using DOWNSTREAM_VEC			= GY_STACK_VECTOR<comm::MM_LISTENER_ISSUE_RESOL::DOWNSTREAM_ONE, 200 * 1024>;
 	using DOWNSTREAM_VEC_ARENA		= DOWNSTREAM_VEC::allocator_type::arena_type;
@@ -1090,7 +1092,7 @@ public :
 		int64_t				cli_task_missed_			{0};
 
 		SCOPE_FD			trace_req_sock_;
-		time_t				trace_tsec_				{0};
+		std::unique_ptr<uint8_t>	trace_buf_;
 
 		CPU_MEM_STATE			cpu_mem_state_;	
 		comm::HOST_STATE_NOTIFY		host_state_;
@@ -1554,10 +1556,12 @@ public :
 	L2_PARAMS 				*pl2_db_rd_arr_		{nullptr};
 	L2_PARAMS 				*pl2_misc_arr_		{nullptr};
 	L2_PARAMS 				*pl2_alert_arr_		{nullptr};
+	L2_PARAMS 				*pl2_trace_arr_		{nullptr};
 
 	MPMCQ_COMM				**ppmpmc_db_rd_arr_	{nullptr};
 	MPMCQ_COMM				**ppmpmc_misc_arr_	{nullptr};
 	MPMCQ_COMM				**ppmpmc_alert_arr_	{nullptr};
+	MPMCQ_COMM				**ppmpmc_trace_arr_	{nullptr};
 
 	GY_MUTEX				node_partha_mutex_;
 	NODE_STATS_HTABLE			node_tbl_;
@@ -1608,6 +1612,10 @@ public :
 
 	MALERT_HDLR				*palerthdlr_		{nullptr};
 
+	GY_MUTEX				trace_mutex_arr_[MAX_L2_TRACE_THREADS];
+	PARTHA_TRACE_MAP			trace_map_arr_[MAX_L2_TRACE_THREADS];
+	int					trace_epoll_fd_[MAX_L2_TRACE_THREADS] {};
+
 	COND_VAR <SCOPE_GY_MUTEX>		barcond_;
 	std::atomic<size_t>			nblocked_acc_		{0};
 	std::atomic<size_t>			nblocked_l1_		{0};
@@ -1629,6 +1637,7 @@ public :
 	static constexpr uint8_t		gpadbuf[8] = "\x0\x0\x0\x0\x0\x0\x0";
 	static constexpr size_t			MISC_DB_POOL_CONNS = 3;	
 	static constexpr size_t			RD_DB_POOL_CONNS = 2;	
+	static constexpr size_t			TRACE_DB_POOL_CONNS = 2;	
 
 	MCONN_HANDLER(MADHAVA_C *pmadhava);
 
@@ -1649,6 +1658,7 @@ public :
 
 	int 	handle_l2_db(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 	int 	handle_l2_misc(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+	int 	handle_l2_trace_req(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 
 	void	init_alert_handlers();
 	int 	handle_alert_mgr(L2_PARAMS & param);

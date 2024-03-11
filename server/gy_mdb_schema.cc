@@ -797,6 +797,114 @@ begin
 		logmode, schname, tbltom, schname, timetomor, timedayafter);
 
 
+	execute format($fmt$
+		create %s table if not exists %s.tracereqtbl (
+			time 			timestamptz,
+			req			text,
+			response		bigint,
+			bytesin			bigint,
+			bytesout		bigint,
+			errorcode		int,
+			errtxt			text,
+			statuscode		int,
+			appname			text,
+			username		text,
+			dbname			text,
+			glob_id 		char(16), 
+			comm			char(16),
+			connid			char(16),
+			proto			char(16),
+			uniqid			char(16),
+			reqnum			bigint,
+			conntime		timestamptz,
+			cliip			text,
+			cliport			int,
+			sessid			int,
+			prepreqnum		bigint,
+			preptime		bigint
+
+			) PARTITION BY RANGE (time)
+		$fmt$, logmode, schname);
+
+	execute format('alter table if exists %s.tracereqtbl alter column glob_id SET STORAGE plain', schname);
+	execute format('alter table if exists %s.tracereqtbl alter column comm SET STORAGE plain', schname);
+	execute format('alter table if exists %s.tracereqtbl alter column connid SET STORAGE plain', schname);
+	execute format('alter table if exists %s.tracereqtbl alter column proto SET STORAGE plain', schname);
+	execute format('alter table if exists %s.tracereqtbl alter column uniqid SET STORAGE plain', schname);
+	
+	execute format('create index if not exists tracereqtbl_index_time on %s.tracereqtbl(time)', schname);
+
+	execute format('create %s table if not exists %s.tracereqtbl_%s partition of %s.tracereqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
+		logmode, schname, tbltoday, schname, timetoday, timetomor);
+	execute format('create %s table if not exists %s.tracereqtbl_%s partition of %s.tracereqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
+		logmode, schname, tbltom, schname, timetomor, timedayafter);
+
+
+	execute format($fmt$
+		create %s table if not exists %s.traceconntbl (
+			time 			timestamptz,
+			glob_id 		char(16), 
+			ser_comm		char(16),
+			connid			char(16),
+			cli_aggr_task_id	char(16),
+			cli_comm		char(16),
+			cli_parthaid		char(32),
+			cli_madhavaid		char(16),
+			cli_listener_proc	boolean
+
+			) PARTITION BY RANGE (time)
+		$fmt$, logmode, schname);
+
+	execute format('alter table if exists %s.traceconntbl alter column glob_id SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceconntbl alter column ser_comm SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceconntbl alter column connid SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceconntbl alter column cli_aggr_task_id SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceconntbl alter column cli_comm SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceconntbl alter column cli_parthaid SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceconntbl alter column cli_madhavaid SET STORAGE plain', schname);
+	
+	execute format('create index if not exists traceconntbl_index_time on %s.traceconntbl(time)', schname);
+
+	execute format('create %s table if not exists %s.traceconntbl_%s partition of %s.traceconntbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
+		logmode, schname, tbltoday, schname, timetoday, timetomor);
+	execute format('create %s table if not exists %s.traceconntbl_%s partition of %s.traceconntbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
+		logmode, schname, tbltom, schname, timetomor, timedayafter);
+
+
+	execute format($fmt$
+		create %s table if not exists %s.traceuniqtbl (
+			time 			timestamptz,
+			uniqreq			text,
+			ncnt			bigint,
+			avgresp			bigint,
+			maxresp			bigint,
+			avgbytesin		bigint,
+			avgbytesout		bigint,
+			maxbytesout		bigint,
+			nerror			bigint,
+			glob_id 		char(16), 
+			comm			char(16),
+			proto			char(16),
+			uniqid			char(16)
+
+			) PARTITION BY RANGE (time)
+		$fmt$, logmode, schname);
+
+	execute format('alter table if exists %s.traceuniqtbl alter column glob_id SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceuniqtbl alter column comm SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceuniqtbl alter column connid SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceuniqtbl alter column proto SET STORAGE plain', schname);
+	execute format('alter table if exists %s.traceuniqtbl alter column uniqid SET STORAGE plain', schname);
+	
+	execute format('create index if not exists traceuniqtbl_index_time on %s.traceuniqtbl(time)', schname);
+
+	execute format('create %s table if not exists %s.traceuniqtbl_%s partition of %s.traceuniqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
+		logmode, schname, tbltoday, schname, timetoday, timetomor);
+	execute format('create %s table if not exists %s.traceuniqtbl_%s partition of %s.traceuniqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
+		logmode, schname, tbltom, schname, timetomor, timedayafter);
+
+
+
 	
 end;
 $func1$ language plpgsql;
@@ -992,6 +1100,38 @@ begin
 					i.time = (select max(time) from %s.aggrtaskinfotbl_%s where time between tbl.time - '5 min'::interval and tbl.time + '5 min'::interval)
 			$fmt$, schname, tbltom, schname, tbltom, schname, tbltom, schname, tbltom);		
 	end if;	
+
+	istbl := public.gy_table_exists(schname, 'exttracereqtbl', '');
+	if not istbl then 
+		/*
+		 * NOTE : Please sync any changes here with set_ext_tracereq_fields() function
+		 */
+		execute format($fmt$ create or replace view %s.exttracereqtbl as 
+				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
+					from %s.tracereqtbl tbl left join %s.traceconntbl l on tbl.connid = l.connid and 
+					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '10 sec'::interval
+			$fmt$, schname, schname, schname);		
+	end if;	
+	
+	istbl := public.gy_table_exists(schname, 'exttracereqtbl_', tbltoday);
+	if not istbl then 
+		execute format($fmt$ create or replace view %s.exttracereqtbl_%s as 
+				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
+					from %s.tracereqtbl_%s tbl left join %s.traceconntbl_%s l on tbl.connid = l.connid and 
+					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '10 sec'::interval
+			$fmt$, schname, tbltoday, schname, tbltoday, schname, tbltoday);		
+	end if;	
+
+
+	istbl := public.gy_table_exists(schname, 'exttracereqtbl_', tbltom);
+	if not istbl then 
+		execute format($fmt$ create or replace view %s.exttracereqtbl_%s as 
+				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
+					from %s.tracereqtbl_%s tbl left join %s.traceconntbl_%s l on tbl.connid = l.connid and 
+					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '10 sec'::interval
+			$fmt$, schname, tbltom, schname, tbltom, schname, tbltom);		
+	end if;	
+
 
 end;
 $func1$ language plpgsql;

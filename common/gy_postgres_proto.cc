@@ -54,7 +54,8 @@ void POSTGRES_PROTO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast)
 	
 POSTGRES_SESSINFO::POSTGRES_SESSINFO(POSTGRES_PROTO & prot, SVC_SESSION & svcsess)
 	: POSTGRES_PROTO(prot), 
-	tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, svcsess.common_.glob_id_, svcsess.proto_), 
+	tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, 
+		svcsess.common_.glob_id_, svcsess.proto_, svcsess.psvc_ ? svcsess.psvc_->comm_ : nullptr), 
 	tdstrbuf_(prot.api_max_len_ - 1), 
 	preqfragbuf_(new uint8_t[prot.max_pg_req_token_ + 16 + prot.max_pg_resp_token_ + 16]), presfragbuf_(preqfragbuf_ + prot.max_pg_req_token_ + 16), 
 	svcsess_(svcsess)
@@ -1916,40 +1917,40 @@ bool POSTGRES_SESSINFO::print_req() noexcept
 
 		if (tdstat_.userbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + tdstat_.userbuf_.size() + 1) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_USERNAME, tdstat_.userbuf_.size() + 1) << std::string_view(tdstat_.userbuf_.data(), tdstat_.userbuf_.size() + 1);
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_USERNAME, tdstat_.userbuf_.size() + 1) << std::string_view(tdstat_.userbuf_.data(), tdstat_.userbuf_.size() + 1);
 		}	
 
 		if (tdstat_.appbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + tdstat_.appbuf_.size() + 1) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_APPNAME, tdstat_.appbuf_.size() + 1) << std::string_view(tdstat_.appbuf_.data(), tdstat_.appbuf_.size() + 1);
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_APPNAME, tdstat_.appbuf_.size() + 1) << std::string_view(tdstat_.appbuf_.data(), tdstat_.appbuf_.size() + 1);
 		}	
 
 		if (tdstat_.dbbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + tdstat_.dbbuf_.size() + 1) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_DBNAME, tdstat_.dbbuf_.size() + 1) << std::string_view(tdstat_.dbbuf_.data(), tdstat_.dbbuf_.size() + 1);
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_DBNAME, tdstat_.dbbuf_.size() + 1) << std::string_view(tdstat_.dbbuf_.data(), tdstat_.dbbuf_.size() + 1);
 		}	
 
 		if (ptran->errorcode_ != 0 && (tdstat_.errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + tdstat_.errorbuf_.size() + 1)) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_ERRTXT, tdstat_.errorbuf_.size() + 1) << std::string_view(tdstat_.errorbuf_.data(), tdstat_.errorbuf_.size() + 1);
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, tdstat_.errorbuf_.size() + 1) << std::string_view(tdstat_.errorbuf_.data(), tdstat_.errorbuf_.size() + 1);
 		}	
 
 		if (tdstat_.dyn_prep_reqnum_ && tdstat_.dyn_prep_time_t_ && ustrbuf.bytes_left() >= 2 * sizeof(PARSE_FIELD_LEN) + 2 * sizeof(uint64_t)) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_PREP_REQNUM, sizeof(uint64_t)) << tdstat_.dyn_prep_reqnum_;
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_PREP_REQNUM, sizeof(uint64_t)) << tdstat_.dyn_prep_reqnum_;
 
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_PREP_REQTIME, sizeof(time_t)) << tdstat_.dyn_prep_time_t_;
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_PREP_REQTIME, sizeof(time_t)) << tdstat_.dyn_prep_time_t_;
 		}
 
 		if (tdstat_.nrows_ && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + sizeof(tdstat_.nrows_)) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_NROWS, sizeof(tdstat_.nrows_)) << tdstat_.nrows_;
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_NROWS, sizeof(tdstat_.nrows_)) << tdstat_.nrows_;
 		}
 
 		if (tdstat_.spid_ && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + sizeof(tdstat_.spid_)) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_SESSID, sizeof(tdstat_.spid_)) << tdstat_.spid_;
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_SESSID, sizeof(tdstat_.spid_)) << tdstat_.spid_;
 		}
 
 		*(ustrbuf.data()) = next;

@@ -44,25 +44,25 @@ static constexpr const char * proto_to_string(PROTO_TYPES proto) noexcept
 
 enum PARSE_FIELD_E : uint16_t
 {
-	FIELD_NONE		= 0,
+	EFIELD_NONE		= 0,
 
-	FIELD_APPNAME,		/* AppName : Data Type char* */
-	FIELD_USERNAME,		/* UserName : Data Type char* */
-	FIELD_DBNAME,		/* DBName : Data Type char* */
-	FIELD_ERRTXT,		/* Error Text : Data Type char* */
-	FIELD_ERRCLASS,		/* Error Class : Data Type uint16_t */
-	FIELD_SESSID,		/* DB Session ID : Data Type uint32_t */
-	FIELD_PREP_REQNUM,	/* DB Prepare SQL reqnum_ : Data Type uint64_t */
-	FIELD_PREP_REQTIME,	/* DB Prepare SQL treq : Data Type time_t */
-	FIELD_HOSTPID,		/* DB Process ID : Data Type uint32_t */
-	FIELD_NROWS,		/* Number of rows returned : Data Type uint32_t */
-	FIELD_CURSORNAME,	/* DB Cursor Name : Data Type char* */
-	FIELD_STATUSCODE,	/* Status Code (e.g. HTTP) : Data Type int */
+	EFIELD_APPNAME,		/* AppName : Data Type char* */
+	EFIELD_USERNAME,	/* UserName : Data Type char* */
+	EFIELD_DBNAME,		/* DBName : Data Type char* */
+	EFIELD_ERRTXT,		/* Error Text : Data Type char* */
+	EFIELD_ERRCLASS,	/* Error Class : Data Type uint16_t */
+	EFIELD_SESSID,		/* DB Session ID : Data Type uint32_t */
+	EFIELD_PREP_REQNUM,	/* DB Prepare SQL reqnum_ : Data Type uint64_t */
+	EFIELD_PREP_REQTIME,	/* DB Prepare SQL treq : Data Type time_t */
+	EFIELD_HOSTPID,		/* DB Process ID : Data Type uint32_t */
+	EFIELD_NROWS,		/* Number of rows returned : Data Type uint32_t */
+	EFIELD_CURSORNAME,	/* DB Cursor Name : Data Type char* */
+	EFIELD_STATUSCODE,	/* Status Code (e.g. HTTP) : Data Type int */
 
-	FIELD_MAX,
+	EFIELD_MAX,
 };	
 
-static constexpr const char			*parse_field_str[FIELD_MAX] =
+static constexpr const char			*parse_field_str[EFIELD_MAX] =
 {
 	"", "appname", "username", "dbname", "errtxt", "errclass", "sessid", "prep_reqnum", "prep_reqtime", "hostpid",
 	"nrows", "cursorname", "statuscode",
@@ -74,7 +74,7 @@ static constexpr const char			*parse_field_str[FIELD_MAX] =
  */
 struct PARSE_FIELD_LEN
 {
-	PARSE_FIELD_E				field_		{FIELD_NONE};
+	PARSE_FIELD_E				field_		{EFIELD_NONE};
 	uint16_t				len_		{0};
 
 	/*uint8_t				field_[len_] follows;*/		// No padding done
@@ -104,6 +104,7 @@ struct API_TRAN
 	GY_IP_ADDR				serip_;
 	uint64_t				glob_id_	{0};
 	uint64_t				conn_id_	{0};		/* Connection Identifier */
+	char					comm_[TASK_COMM_LEN]	{};
 	
 	int					errorcode_	{0};
 	uint32_t				app_sleep_ms_	{0};		/* Delay between a request and preceding response */
@@ -126,10 +127,11 @@ struct API_TRAN
 	/*char					padding_[padding_len_]; follows to make the entire 8 byte aligned */
 
 	static constexpr size_t			MAX_NUM_REQS 	{256};		// Send in batches
+	static constexpr size_t			MAX_SEND_SZ 	{GY_UP_MB(1)};	// Approx Max sz to send to Madhava per call
 
 	API_TRAN() noexcept			= default;
 
-	API_TRAN(uint64_t tlastpkt_usec, uint64_t tconnect_usec, const IP_PORT & cli_ipport, const IP_PORT & ser_ipport, uint64_t glob_id, PROTO_TYPES proto) noexcept
+	API_TRAN(uint64_t tlastpkt_usec, uint64_t tconnect_usec, const IP_PORT & cli_ipport, const IP_PORT & ser_ipport, uint64_t glob_id, PROTO_TYPES proto, const char *comm) noexcept
 		: treq_usec_(tlastpkt_usec), tupd_usec_(treq_usec_), tconnect_usec_(tconnect_usec),
 		cliip_(cli_ipport.ipaddr_), serip_(ser_ipport.ipaddr_), glob_id_(glob_id), proto_(proto), cliport_(cli_ipport.port_), serport_(ser_ipport.port_)
 	{
@@ -139,6 +141,10 @@ struct API_TRAN
 		hbuf << cli_ipport.ipaddr_ << ser_ipport.ipaddr_ << cli_ipport.port_ << ser_ipport.port_ << (uint64_t)gy_align_down(tconnect_usec/GY_USEC_PER_SEC, 60);
 
 		conn_id_ = gy_cityhash64((const char *)hbuf.buffer(), hbuf.size());
+
+		if (comm) {
+			GY_STRNCPY(comm_, comm, sizeof(comm_));
+		}	
 	}
 
 	~API_TRAN() noexcept			= default;
@@ -247,7 +253,7 @@ static size_t copy_tran_data(uint8_t *pdest, uint32_t maxsz, API_TRAN & tran, co
 	return tlen;
 }	
 
-struct PARSE_ALL_FIELDS
+struct PARSE_EXT_FIELDS
 {
 	std::string_view		appname_;
 	std::string_view		username_;
@@ -262,9 +268,9 @@ struct PARSE_ALL_FIELDS
 	std::string_view		cursorname_;
 	int				statuscode_		{0};
 
-	PARSE_ALL_FIELDS() noexcept	= default;
+	PARSE_EXT_FIELDS() noexcept	= default;
 
-	PARSE_ALL_FIELDS(const uint8_t *pext, uint32_t lenext) noexcept
+	PARSE_EXT_FIELDS(const uint8_t *pext, uint32_t lenext) noexcept
 	{
 		get_fields(pext, lenext);
 	}	
@@ -290,7 +296,7 @@ struct PARSE_ALL_FIELDS
 			
 			switch (fl.field_) {
 			
-			case FIELD_APPNAME :
+			case EFIELD_APPNAME :
 				if (ustr.bytes_left() >= fl.len_) {
 					appname_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
 					ustr += fl.len_;
@@ -300,7 +306,7 @@ struct PARSE_ALL_FIELDS
 				}	
 				break;
 
-			case FIELD_USERNAME :
+			case EFIELD_USERNAME :
 				if (ustr.bytes_left() >= fl.len_) {
 					username_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
 					ustr += fl.len_;
@@ -310,7 +316,7 @@ struct PARSE_ALL_FIELDS
 				}	
 				break;
 
-			case FIELD_DBNAME :
+			case EFIELD_DBNAME :
 				if (ustr.bytes_left() >= fl.len_) {
 					dbname_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
 					ustr += fl.len_;
@@ -320,7 +326,7 @@ struct PARSE_ALL_FIELDS
 				}	
 				break;
 
-			case FIELD_ERRTXT :
+			case EFIELD_ERRTXT :
 				if (ustr.bytes_left() >= fl.len_) {
 					errtxt_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
 					ustr += fl.len_;
@@ -330,31 +336,31 @@ struct PARSE_ALL_FIELDS
 				}	
 				break;
 
-			case FIELD_ERRCLASS :
+			case EFIELD_ERRCLASS :
 				ustr >> errclass_;
 				break;
 
-			case FIELD_SESSID :
+			case EFIELD_SESSID :
 				ustr >> sessid_;
 				break;
 
-			case FIELD_PREP_REQNUM :
+			case EFIELD_PREP_REQNUM :
 				ustr >> dyn_prep_reqnum_;
 				break;
 
-			case FIELD_PREP_REQTIME :
+			case EFIELD_PREP_REQTIME :
 				ustr >> dyn_prep_time_t_;
 				break;
 
-			case FIELD_HOSTPID :
+			case EFIELD_HOSTPID :
 				ustr >> hostpid_;
 				break;
 
-			case FIELD_NROWS :
+			case EFIELD_NROWS :
 				ustr >> nrows_;
 				break;
 
-			case FIELD_CURSORNAME :
+			case EFIELD_CURSORNAME :
 				if (ustr.bytes_left() >= fl.len_) {
 					cursorname_ = std::string_view((const char *)ustr.get_curr_pos(), fl.len_ > 1 ? fl.len_ - 1 : 0);
 					ustr += fl.len_;
@@ -364,7 +370,7 @@ struct PARSE_ALL_FIELDS
 				}	
 				break;
 
-			case FIELD_STATUSCODE :
+			case EFIELD_STATUSCODE :
 				ustr >> statuscode_;
 				break;
 
@@ -377,8 +383,8 @@ struct PARSE_ALL_FIELDS
 	}	
 };	
 
-// Returns the Request string view and populates the PARSE_ALL_FIELDS
-static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_ALL_FIELDS & fields) noexcept
+// Returns the Request string view and populates the PARSE_EXT_FIELDS
+static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_EXT_FIELDS & fields) noexcept
 {
 	const char			*preq = (const char *)(ptran + 1);
 

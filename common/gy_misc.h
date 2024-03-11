@@ -810,7 +810,8 @@ private :
  * as a single buffer cache... IOVEC_BUFFER_CACHE is more useful for variable length messages whereas
  * DATA_BUFFER is more useful for finite fixed size messages. 
  *
- * Usage : Call get_next_buffer() followed by set_buffer_sz() for each element. After flush_cache()
+ * Usage : Call get_next_buffer() followed by set_buffer_sz() for each element. The buffer will be flushed
+ * on hitting the max cache elems or max total size limits. After flush_cache()
  * a new buffer will be allocated on the next get_next_buffer() call.
  *
  * NOTE : No memory is allocated until the get_next_buffer() method is called except in the case of inline memory pool.
@@ -823,6 +824,7 @@ public :
 	uint8_t					*pcur_			{nullptr};
 	uint8_t					*pendptr_		{nullptr};
 	FREE_FPTR 				free_fp_		{nullptr};
+	size_t					max_total_sz_		{~0ul};
 	uint32_t				ncurr_			{0};			
 	uint32_t				init_reserve_sz_	{0};
 	const uint32_t				max_elem_sz_;
@@ -833,8 +835,8 @@ public :
 	/*
 	 * Use this constructor if a new inline Memory Pool needs to be allocated for this Data cache
 	 */
-	DATA_BUFFER(uint32_t max_elem_sz, uint32_t max_pool_elem, uint32_t min_cache_elem, uint32_t max_cache_elem, uint32_t init_reserve_sz, bool is_caller_allocator_thread) :
-		pmem_pool_(new THR_POOL_ALLOC(max_elem_sz, max_pool_elem, is_caller_allocator_thread)), 
+	DATA_BUFFER(uint32_t max_elem_sz, uint32_t max_pool_elem, uint32_t min_cache_elem, uint32_t max_cache_elem, uint32_t init_reserve_sz, bool is_caller_allocator_thread, size_t max_total_sz = ~0ul) :
+		pmem_pool_(new THR_POOL_ALLOC(max_elem_sz, max_pool_elem, is_caller_allocator_thread)), max_total_sz_(max_total_sz),
 		init_reserve_sz_(init_reserve_sz), max_elem_sz_(pmem_pool_->get_elem_fixed_size()), min_cache_elem_(min_cache_elem), max_cache_elem_(max_cache_elem), 
 		is_ext_pool_(false)
 	{
@@ -844,8 +846,8 @@ public :
 	/*
 	 * Use this constructor if an existing Memory Pool needs to be used for this Data cache
 	 */
-	DATA_BUFFER(THR_POOL_ALLOC & mem_pool, uint32_t max_elem_sz, uint32_t min_cache_elem, uint32_t max_cache_elem, uint32_t init_reserve_sz) noexcept :
-		pmem_pool_(&mem_pool), init_reserve_sz_(init_reserve_sz), max_elem_sz_(mem_pool.get_elem_fixed_size()), 
+	DATA_BUFFER(THR_POOL_ALLOC & mem_pool, uint32_t max_elem_sz, uint32_t min_cache_elem, uint32_t max_cache_elem, uint32_t init_reserve_sz, size_t max_total_sz = ~0ul) noexcept :
+		pmem_pool_(&mem_pool), max_total_sz_(max_total_sz), init_reserve_sz_(init_reserve_sz), max_elem_sz_(mem_pool.get_elem_fixed_size()), 
 		min_cache_elem_(min_cache_elem), max_cache_elem_(max_cache_elem), is_ext_pool_(true)
 	{
 
@@ -855,9 +857,9 @@ public :
 	/*
 	 * Use this constructor if global Heap malloc is the source of the memory for this Data cache
 	 */
-	DATA_BUFFER(uint32_t max_elem_sz, uint32_t min_cache_elem, uint32_t max_cache_elem, uint32_t init_reserve_sz) noexcept :
-		pmem_pool_(nullptr), init_reserve_sz_(init_reserve_sz), max_elem_sz_(max_elem_sz), min_cache_elem_(min_cache_elem), max_cache_elem_(max_cache_elem), 
-		is_ext_pool_(true)
+	DATA_BUFFER(uint32_t max_elem_sz, uint32_t min_cache_elem, uint32_t max_cache_elem, uint32_t init_reserve_sz, size_t max_total_sz = ~0ul) noexcept :
+		pmem_pool_(nullptr), max_total_sz_(max_total_sz), init_reserve_sz_(init_reserve_sz), max_elem_sz_(max_elem_sz), 
+		min_cache_elem_(min_cache_elem), max_cache_elem_(max_cache_elem), is_ext_pool_(true)
 	{
 		assert(min_cache_elem_ > 1 && max_cache_elem_ >= min_cache_elem_);
 	}
@@ -987,7 +989,7 @@ public :
 			szpend = max_elem_sz_;
 		}	
 
-		if ((force_flush && ncurr_ > 0) || ((szpend < max_elem_sz_) || (ncurr_ >= max_cache_elem_))) {
+		if (ncurr_ && (force_flush || ((szpend < max_elem_sz_) || (ncurr_ >= max_cache_elem_) || (size_t(pcur_ - palloc_) > max_total_sz_)))) {
 			try {
 				bret = sendfcb((void *)palloc_, (size_t)(pcur_ - palloc_), free_fp_, (size_t)ncurr_);
 				reset_elems();

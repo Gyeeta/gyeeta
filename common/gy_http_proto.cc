@@ -52,7 +52,8 @@ void HTTP1_PROTO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tlast) no
 
 HTTP1_SESSINFO::HTTP1_SESSINFO(HTTP1_PROTO & prot, SVC_SESSION & svcsess, PARSE_PKT_HDR & hdr)
 	: HTTP1_PROTO(prot), 
-	tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, svcsess.common_.glob_id_, svcsess.proto_), 
+	tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, 
+			svcsess.common_.glob_id_, svcsess.proto_, svcsess.psvc_ ? svcsess.psvc_->comm_ : nullptr), 
 	tdstrbuf_(prot.api_max_len_ - 1), svcsess_(svcsess), is_https_(hdr.src_ == SRC_UPROBE_SSL)
 {
 	std::memset(tdstrbuf_.get(), 0, 128);
@@ -1977,17 +1978,17 @@ bool HTTP1_SESSINFO::print_req() noexcept
 
 		if (useragentbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + useragentbuf_.size() + 1) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_APPNAME, useragentbuf_.size() + 1) << std::string_view(useragentbuf_.data(), useragentbuf_.size() + 1);
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_APPNAME, useragentbuf_.size() + 1) << std::string_view(useragentbuf_.data(), useragentbuf_.size() + 1);
 		}	
 
 		if (ptran->errorcode_ != 0 && (errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + errorbuf_.size() + 1)) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_ERRTXT, errorbuf_.size() + 1) << std::string_view(errorbuf_.data(), errorbuf_.size() + 1);
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, errorbuf_.size() + 1) << std::string_view(errorbuf_.data(), errorbuf_.size() + 1);
 		}	
 
 		if (last_resp_status_ && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + sizeof(int)) {
 			next++;
-			ustrbuf << PARSE_FIELD_LEN(FIELD_STATUSCODE, sizeof(int)) << (int)last_resp_status_;
+			ustrbuf << PARSE_FIELD_LEN(EFIELD_STATUSCODE, sizeof(int)) << (int)last_resp_status_;
 		}
 
 		*(ustrbuf.data()) = next;

@@ -43,15 +43,16 @@ SUBSYS_CLASS subsys_class_list[SUBSYS_MAX] =
 	{ "inhibits",		SUBSYS_INHIBITS, 	fnv1_consthash("inhibits"),	json_db_inhibits_arr,	GY_ARRAY_SIZE(json_db_inhibits_arr),		nullptr },
 	{ "silences",		SUBSYS_SILENCES,	fnv1_consthash("silences"),	json_db_silences_arr,	GY_ARRAY_SIZE(json_db_silences_arr),		nullptr },
 	{ "actions",		SUBSYS_ACTIONS,		fnv1_consthash("actions"),	json_db_actions_arr,	GY_ARRAY_SIZE(json_db_actions_arr),		nullptr },
-
 	{ "madhavalist",	SUBSYS_MADHAVALIST, 	fnv1_consthash("madhavalist"),	json_db_madhavalist_arr,GY_ARRAY_SIZE(json_db_madhavalist_arr),		nullptr },
 	{ "tags",		SUBSYS_TAGS,		fnv1_consthash("tags"),		nullptr,		0,						" %smachid = \'%s\' " },
-
 	{ "shyamastatus",	SUBSYS_SHYAMASTATUS,	fnv1_consthash("shyamastatus"),	nullptr,		0,						nullptr },
 	{ "madhavastatus",	SUBSYS_MADHAVASTATUS,	fnv1_consthash("madhavastatus"),nullptr,		0,						nullptr },
 	{ "parthalist",		SUBSYS_PARTHALIST,	fnv1_consthash("parthalist"),	json_db_parthalist_arr,	GY_ARRAY_SIZE(json_db_parthalist_arr),		nullptr },
-
 	{ "cgroupstate",	SUBSYS_CGROUPSTATE,	fnv1_consthash("cgroupstate"),	nullptr,		0,						" %smachid = \'%s\' " },
+	{ "tracereq",		SUBSYS_TRACEREQ,	fnv1_consthash("tracereq"),	json_db_tracereq_arr,	GY_ARRAY_SIZE(json_db_tracereq_arr),		nullptr },
+	{ "exttracereq",	SUBSYS_EXTTRACEREQ,	fnv1_consthash("exttracereq"),	nullptr,		0,						nullptr },
+	{ "traceconn",		SUBSYS_TRACECONN,	fnv1_consthash("traceconn"),	json_db_traceconn_arr,	GY_ARRAY_SIZE(json_db_traceconn_arr),		nullptr },
+	{ "traceuniq",		SUBSYS_TRACEUNIQ,	fnv1_consthash("traceuniq"),	json_db_traceuniq_arr,	GY_ARRAY_SIZE(json_db_traceuniq_arr),		nullptr },
 };	
 
 
@@ -96,6 +97,11 @@ DB_AGGR_CLASS subsys_aggr_list[SUBSYS_MAX] =
 	{ SUBSYS_PARTHALIST,	nullptr, 			0,						nullptr,			0,					0 },
 
 	{ SUBSYS_CGROUPSTATE,	nullptr, 			0,						nullptr,			0,					0 },
+
+	{ SUBSYS_TRACEREQ,	nullptr, 			0,						nullptr,			0,					0 },
+	{ SUBSYS_EXTTRACEREQ,	nullptr,/* Update at startup */	0,						nullptr,			0,					0 },
+	{ SUBSYS_TRACECONN,	nullptr, 			0,						nullptr,			0,					0 },
+	{ SUBSYS_TRACEUNIQ,	json_db_aggr_traceuniq_arr, 	GY_ARRAY_SIZE(json_db_aggr_traceuniq_arr),	traceuniq_aggr_info,		GY_ARRAY_SIZE(traceuniq_aggr_info),	3600 },
 };	
 
 
@@ -143,6 +149,11 @@ SUBSYS_STATS subsys_stats_list[SUBSYS_MAX] =
 	{ SUBSYS_PARTHALIST,	60,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_NONE,	},
 
 	{ SUBSYS_CGROUPSTATE,	15,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},	// Invalid till its implemented
+
+	{ SUBSYS_TRACEREQ,	5,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},
+	{ SUBSYS_EXTTRACEREQ,	5,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},
+	{ SUBSYS_TRACECONN,	5,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},
+	{ SUBSYS_TRACEUNIQ,	3600,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},
 };	
 
 
@@ -2783,6 +2794,7 @@ void init_subsys_maps()
 	set_ext_activeconn_fields();
 	set_ext_clientconn_fields();
 	set_ext_procstate_fields();
+	set_ext_tracereq_fields();
 
 	for (size_t n = 0; n < GY_ARRAY_SIZE(json_db_alerts_arr); ++n) {
 		alertset.emplace(json_db_alerts_arr[n].jsoncrc);

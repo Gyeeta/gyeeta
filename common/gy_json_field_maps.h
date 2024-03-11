@@ -51,15 +51,16 @@ enum SUBSYS_CLASS_E : int
 	SUBSYS_INHIBITS,
 	SUBSYS_SILENCES,
 	SUBSYS_ACTIONS,
-
 	SUBSYS_MADHAVALIST,
 	SUBSYS_TAGS,
-
 	SUBSYS_SHYAMASTATUS,
 	SUBSYS_MADHAVASTATUS,
 	SUBSYS_PARTHALIST,
-
 	SUBSYS_CGROUPSTATE,
+	SUBSYS_TRACEREQ,
+	SUBSYS_EXTTRACEREQ,
+	SUBSYS_TRACECONN,
+	SUBSYS_TRACEUNIQ,
 
 	SUBSYS_MAX
 };	
@@ -2511,6 +2512,145 @@ static constexpr JSON_DB_MAPPING json_db_parthalist_arr[] =
 
 };
 
+enum : uint32_t
+{
+	FIELD_REQ		= fnv1_consthash("req"),
+	FIELD_RESP		= fnv1_consthash("resp"),
+	FIELD_NETIN		= fnv1_consthash("netin"),
+	FIELD_NETOUT		= fnv1_consthash("netout"),
+	FIELD_ERR		= fnv1_consthash("err"),
+	FIELD_ERRTXT		= fnv1_consthash("errtxt"),
+	FIELD_STATUS		= fnv1_consthash("status"),
+	FIELD_APP		= fnv1_consthash("app"),
+	FIELD_USER		= fnv1_consthash("user"),
+	FIELD_DB		= fnv1_consthash("db"),
+	FIELD_CONNID		= fnv1_consthash("connid"),
+	FIELD_PROTO		= fnv1_consthash("proto"),
+	FIELD_UNIQID		= fnv1_consthash("uniqid"),
+	FIELD_NREQ		= fnv1_consthash("nreq"),
+	FIELD_TCONN		= fnv1_consthash("tconn"),
+	FIELD_CIP		= fnv1_consthash("cip"),
+	FIELD_CPORT		= fnv1_consthash("cport"),
+	FIELD_SESSID		= fnv1_consthash("sessid"),
+	FIELD_NPREP		= fnv1_consthash("nprep"),
+	FIELD_TPREP		= fnv1_consthash("tprep"),
+};	
+
+
+static constexpr JSON_DB_MAPPING json_db_tracereq_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "time", 		"time", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "req",		"req",		 	GYSLEN("req"),		FIELD_REQ,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "resp",		"response",		GYSLEN("resp"),		FIELD_RESP,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "netin",		"bytesin",		GYSLEN("netin"),	FIELD_NETIN,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "netout",		"bytesout",		GYSLEN("netout"),	FIELD_NETOUT,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "err", 		"errcode", 		GYSLEN("err"),		FIELD_ERR,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
+{ "errtxt",		"errtxt",		GYSLEN("errtxt"),	FIELD_ERRTXT,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "status", 		"statuscode", 		GYSLEN("status"),	FIELD_STATUS,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
+{ "app",		"appname",		GYSLEN("app"),		FIELD_APP,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "user",		"username",		GYSLEN("user"),		FIELD_USER,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "db",			"dbname",		GYSLEN("db"),		FIELD_DB,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "svcname", 		"comm", 		GYSLEN("svcname"),	FIELD_SVCNAME,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "connid", 		"connid", 		GYSLEN("connid"),	FIELD_CONNID,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "proto", 		"proto", 		GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "uniqid", 		"uniqid", 		GYSLEN("uniqid"),	FIELD_UNIQID,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "nreq",		"reqnum",		GYSLEN("nreq"),		FIELD_NREQ,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "tconn", 		"conntime", 		GYSLEN("tconn"),	FIELD_TCONN,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "cip", 		"cliip", 		GYSLEN("cip"),		FIELD_CIP,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "cport", 		"cliport", 		GYSLEN("cport"),	FIELD_CPORT,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
+{ "sessid", 		"sessid", 		GYSLEN("sessid"),	FIELD_SESSID,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
+{ "nprep",		"prepreqnum",		GYSLEN("nprep"),	FIELD_NPREP,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "tprep", 		"preptime", 		GYSLEN("tprep"),	FIELD_TPREP,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+// Additional fields not present in DB
+};
+
+
+static constexpr JSON_DB_MAPPING json_db_traceconn_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "time", 		"time", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "connid", 		"connid", 		GYSLEN("connid"),	FIELD_CONNID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "cprocid", 		"cli_aggr_task_id",	GYSLEN("cprocid"),	FIELD_CPROCID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "cname", 		"cli_comm", 		GYSLEN("cname"),	FIELD_CNAME,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "cparid", 		"cli_parthaid", 	GYSLEN("cparid"),	FIELD_CPARID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(32)",	DB_STR_OCHAR,	nullptr,	nullptr,			"", },
+{ "cmadid",		"cli_madhavaid", 	GYSLEN("cmadid"),	FIELD_CMADID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr,	nullptr,			"", },
+{ "csvc",		"cli_listener_proc",	GYSLEN("csvc"),		FIELD_CSVC,		SUBSYS_TRACECONN,JSON_BOOL,	NUM_NAN,	"boolean",	DB_STR_NONE,	nullptr, 	booltojson,			"", },		
+// Additional fields not present in DB
+};
+
+enum : uint32_t
+{
+	FIELD_UNIQREQ		= fnv1_consthash("uniqreq"),
+	FIELD_NCNT		= fnv1_consthash("ncnt"),
+	FIELD_AVGRESP		= fnv1_consthash("avgresp"),
+	FIELD_MAXRESP		= fnv1_consthash("maxresp"),
+	FIELD_AVGNETIN		= fnv1_consthash("avgnetin"),
+	FIELD_AVGNETOUT		= fnv1_consthash("avgnetout"),
+	FIELD_MAXNETOUT		= fnv1_consthash("maxnetout"),
+	FIELD_NERR		= fnv1_consthash("nerr"),
+};
+
+static constexpr JSON_DB_MAPPING json_db_traceuniq_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "time", 		"time", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "uniqreq",		"uniqreq",	 	GYSLEN("uniqreq"),	FIELD_UNIQREQ,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "ncnt",		"ncnt",			GYSLEN("ncnt"),		FIELD_NCNT,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "avgresp",		"avgresp",		GYSLEN("avgresp"),	FIELD_AVGRESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxresp",		"maxresp",		GYSLEN("maxresp"),	FIELD_MAXRESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "avgnetin",		"avgbytesin",		GYSLEN("avgnetin"),	FIELD_AVGNETIN,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "avgnetout",		"avgbytesout",		GYSLEN("avgnetout"),	FIELD_AVGNETOUT,	SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxnetout",		"maxbytesout",		GYSLEN("maxnetout"),	FIELD_MAXNETOUT,	SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "nerr",		"nerror",		GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "name", 		"comm", 		GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "proto", 		"proto", 		GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "uniqid", 		"uniqid", 		GYSLEN("uniqid"),	FIELD_UNIQID,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+
+// Additional fields not present in DB
+};
+
+static constexpr JSON_DB_MAPPING json_db_aggr_traceuniq_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "time", 		"atime", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "uniqreq",		"uniqreq",	 	GYSLEN("uniqreq"),	FIELD_UNIQREQ,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "ncnt",		"ncnt",			GYSLEN("ncnt"),		FIELD_NCNT,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "resp",		"resp",			GYSLEN("resp"),		FIELD_RESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxresp",		"maxresp",		GYSLEN("maxresp"),	FIELD_MAXRESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "netin",		"bytesin",		GYSLEN("netin"),	FIELD_NETIN,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "netout",		"bytesout",		GYSLEN("netout"),	FIELD_NETOUT,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "nerr",		"nerror",		GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "name", 		"comm", 		GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "proto", 		"proto", 		GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "uniqid", 		"uniqid", 		GYSLEN("uniqid"),	FIELD_UNIQID,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "inrecs",		"inrecs",		GYSLEN("inrecs"),	FIELD_INRECS,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+
+// Additional fields not present in DB
+};
+
+static constexpr DB_AGGR_INFO traceuniq_aggr_info[] = 
+{
+	// dbexpr								// jsoncrc		// dbfieldname		// dbfieldtype	// dflt_aggr	// ignore_sum	// extarg	
+	{ "",									FIELD_TIME,		"atime",		"timestamptz",	AOPER_GROUPBY,	false, 		0 },		
+	{ "uniqreq",								FIELD_UNIQREQ,		"uniqreq",		"text",		AOPER_GROUPBY,	false, 		0 },		
+	{ "%s(ncnt)::bigint as ncnt",						FIELD_NCNT,		"ncnt",			"bigint",	AOPER_SUM,	false, 		0 },		
+	{ "%s(avgresp)::bigint as resp",					FIELD_RESP,		"resp",			"bigint",	AOPER_AVG,	true, 		0 },		
+	{ "max(maxresp)::bigint as maxresp",					FIELD_MAXRESP,		"maxresp",		"bigint",	AOPER_MAX,	true, 		0 },		
+	{ "%s(avgbytesin * ncnt)::bigint as bytesin",				FIELD_NETIN,		"bytesin",		"bigint",	AOPER_SUM,	false, 		0 },		
+	{ "%s(avgbytesout * ncnt)::bigint as bytesout",				FIELD_NETOUT,		"bytesout",		"bigint",	AOPER_SUM,	false, 		0 },		
+	{ "%s(nerror)::bigint as nerror",					FIELD_NERR,		"nerror",		"bigint",	AOPER_SUM,	false, 		0 },		
+	{ "glob_id",								FIELD_SVCID,		"glob_id",		"char(16)",	AOPER_GROUPBY,	false, 		0 },		
+	{ "comm",								FIELD_NAME,		"comm",			"char(16)",	AOPER_GROUPBY,	false, 		0 },			
+	{ "proto",								FIELD_PROTO,		"proto",		"char(16)",	AOPER_GROUPBY,	false, 		0 },			
+	{ "uniqid",								FIELD_UNIQID,		"uniqid",		"char(16)",	AOPER_GROUPBY,	false, 		0 },		
+	{ "count(*)::int as inrecs",						FIELD_INRECS,		"inrecs",		"int",		AOPER_COUNT,	false, 		0 },		
+};	
+
 
 struct SUBSYS_CLASS
 {
@@ -2722,6 +2862,14 @@ static size_t upd_subsys_from_qtype(NODE_QUERY_TYPE_E qtype, SUBSYS_CLASS_E *psu
 	case NQUERY_NM_MADHAVASTATUS		:	psubsyarr[0] = SUBSYS_MADHAVASTATUS; return 1;
 
 	case NQUERY_NM_PARTHALIST		:	psubsyarr[0] = SUBSYS_PARTHALIST; return 1;
+
+	case NQUERY_NM_TRACEREQ			:	psubsyarr[0] = SUBSYS_TRACEREQ; return 1;
+
+	case NQUERY_NM_EXTTRACEREQ		:	psubsyarr[0] = SUBSYS_EXTTRACEREQ; return 1;
+
+	case NQUERY_NM_TRACECONN		:	psubsyarr[0] = SUBSYS_TRACECONN; return 1;
+
+	case NQUERY_NM_TRACEUNIQ		:	psubsyarr[0] = SUBSYS_TRACEUNIQ; return 1;
 
 	default					: 	return 0;	
 
@@ -3100,6 +3248,34 @@ static void set_ext_procstate_fields()
 
 	subsys_aggr_list[SUBSYS_EXTPROCSTATE].paggrinfo 	= pextprocstate_aggr_info;
 	subsys_aggr_list[SUBSYS_EXTPROCSTATE].szaggrinfo 	= nextprocstate_aggr_info;
+
+}
+
+static void set_ext_tracereq_fields()
+{
+	uint32_t			nexttracereq_arr = 0;
+	JSON_DB_MAPPING			*pexttracereq_arr = new JSON_DB_MAPPING[GY_ARRAY_SIZE(json_db_tracereq_arr) + GY_ARRAY_SIZE(json_db_traceconn_arr)];
+	
+	std::memcpy(pexttracereq_arr, json_db_tracereq_arr, GY_ARRAY_SIZE(json_db_tracereq_arr) * sizeof(*json_db_tracereq_arr));
+	nexttracereq_arr = GY_ARRAY_SIZE(json_db_tracereq_arr);
+	
+	pexttracereq_arr[nexttracereq_arr++] = *get_jsoncrc_mapping_or_throw(FIELD_CPROCID, json_db_traceconn_arr, GY_ARRAY_SIZE(json_db_traceconn_arr));
+	pexttracereq_arr[nexttracereq_arr++] = *get_jsoncrc_mapping_or_throw(FIELD_CNAME, json_db_traceconn_arr, GY_ARRAY_SIZE(json_db_traceconn_arr));
+	pexttracereq_arr[nexttracereq_arr++] = *get_jsoncrc_mapping_or_throw(FIELD_CPARID, json_db_traceconn_arr, GY_ARRAY_SIZE(json_db_traceconn_arr));
+	pexttracereq_arr[nexttracereq_arr++] = *get_jsoncrc_mapping_or_throw(FIELD_CMADID, json_db_traceconn_arr, GY_ARRAY_SIZE(json_db_traceconn_arr));
+	pexttracereq_arr[nexttracereq_arr++] = *get_jsoncrc_mapping_or_throw(FIELD_CSVC, json_db_traceconn_arr, GY_ARRAY_SIZE(json_db_traceconn_arr));
+
+	ASSERT_OR_THROW(nexttracereq_arr < MAX_COLUMN_LIST, "Internal Error : Number of columns of extended tracereq %u exceeds max allowed %lu", 
+				nexttracereq_arr, MAX_COLUMN_LIST);
+
+	for (uint32_t i = 0; i < nexttracereq_arr; ++i) {
+		pexttracereq_arr[i].subsys	= SUBSYS_EXTTRACEREQ;
+	}
+
+	// Now update subsys_class_list
+	subsys_class_list[SUBSYS_EXTTRACEREQ].pjsonmap 		= pexttracereq_arr;
+	subsys_class_list[SUBSYS_EXTTRACEREQ].szjsonmap 	= nexttracereq_arr;
+
 
 }
 

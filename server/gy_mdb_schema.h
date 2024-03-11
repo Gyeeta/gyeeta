@@ -18,7 +18,7 @@ static constexpr const char	*db_glob_partition_tbls[] = {
 static constexpr const char	*db_partha_partition_tbls[] = {
 	"hoststatetbl", "listenstatetbl", "cpumemstatetbl", "aggrtaskstatetbl", "topcputbl", "toppgcputbl", 
 	"toprsstbl", "topforktbl", "activeconntbl", "deplistenissuetbl", "tasktbl", "listensummtbl", "listentaskmaptbl", "remoteconntbl",
-	"aggrtaskinfotbl", "listeninfotbl", 
+	"aggrtaskinfotbl", "listeninfotbl", "tracereqtbl", "traceconntbl", "traceuniqreqtbl",
 };	
 
 class DBFailStats
@@ -48,6 +48,9 @@ public :
 	gy_atomic<int64_t>		nsvccluster_failed_	{0};
 	gy_atomic<int64_t>		naggrtaskinfo_failed_	{0};
 	gy_atomic<int64_t>		nsvcinfo_failed_	{0};
+	gy_atomic<int64_t>		ntracereq_failed_	{0};
+	gy_atomic<int64_t>		ntraceconn_failed_	{0};
+	gy_atomic<int64_t>		ntraceuniqreq_failed_	{0};
 
 	void print_stats() const noexcept
 	{
@@ -57,7 +60,7 @@ public :
 			"#Dependent Listener Fails %ld, #New Listener Fails %ld, #Del Listener Fails %ld, #Task Add Fails %ld, "
 			"#Listen Task Map Fails %ld, #Close Conn Fails %ld, #Partha Host Info Fails %ld, "
 			"#CPU Mem Change Fails %ld, #Notification Fails %ld, #Svc Cluster Fails %ld, "
-			"#Aggr Task Info Fails %ld, #Svc Info Fails %ld\n",
+			"#Aggr Task Info Fails %ld, #Svc Info Fails %ld, #Trace API Fails %ld, #Trace Conn Fails %ld, $Trace Normalized Req Fails %ld\n",
 			nconns_failed_.load(mo_relaxed), ndbquery_failed_.load(mo_relaxed), ndbquery_timeout_.load(mo_relaxed),
 			nadd_partha_failed_.load(mo_relaxed), nadd_partition_failed_.load(mo_relaxed), ndel_partition_failed_.load(mo_relaxed),
 			nhost_state_failed_.load(mo_relaxed), nlisten_state_failed_.load(mo_relaxed),
@@ -67,7 +70,8 @@ public :
 			nlisten_del_failed_.load(mo_relaxed), ntaskadd_failed_.load(mo_relaxed), 
 			nlistentask_failed_.load(mo_relaxed), ncloseconn_failed_.load(mo_relaxed), nhostinfo_failed_.load(mo_relaxed),
 			ncpumemchange_failed_.load(mo_relaxed), nnotify_failed_.load(mo_relaxed), 
-			nsvccluster_failed_.load(mo_relaxed), naggrtaskinfo_failed_.load(mo_relaxed), nsvccluster_failed_.load(mo_relaxed)
+			nsvccluster_failed_.load(mo_relaxed), naggrtaskinfo_failed_.load(mo_relaxed), nsvccluster_failed_.load(mo_relaxed),
+			ntracereq_failed_.load(mo_relaxed), ntraceconn_failed_.load(mo_relaxed), ntraceuniqreq_failed_.load(mo_relaxed)
 			);
 	}	
 };	
