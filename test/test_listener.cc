@@ -1823,7 +1823,7 @@ int TLISTEN_HDLR::handle_l1(GY_THREAD *pthr)
 		/*
 		 * Currently max_syscall is ignored 
 		 */
-		auto handle_recv = [&, this](TCONNTRACK *pconn1, int sock, const bool is_stream_conn, const bool is_conn_closed, const bool peer_rd_closed, int max_syscall = INT_MAX - 1) -> ssize_t
+		auto handle_recv = [&, this](TCONNTRACK *pconn1, int sock, const bool is_stream_conn, const bool is_conn_closed, const bool peer_wr_closed, int max_syscall = INT_MAX - 1) -> ssize_t
 		{
 			ssize_t				sret, max_bytes, totbytes = 0;
 			ssize_t				max_buf_sz, data_sz;
@@ -2073,7 +2073,7 @@ int TLISTEN_HDLR::handle_l1(GY_THREAD *pthr)
 							case SUBTYPE_LISTENER_REQ :
 								statsmap["Listener Req"]++;
 
-								if (false == peer_rd_closed) {
+								if (false == is_conn_closed) {
 									TEST_LISTENER_REQ 	*plist = (TEST_LISTENER_REQ *)((char *)pquery + sizeof(TEST_QUERY));
 
 									bret = TEST_LISTENER_REQ::validate(&hdr);
@@ -2094,7 +2094,7 @@ int TLISTEN_HDLR::handle_l1(GY_THREAD *pthr)
 							case SUBTYPE_REQUEST_READ_FILE :
 								statsmap["Read File Req"]++;
 
-								if (false == peer_rd_closed) {
+								if (false == is_conn_closed) {
 									TEST_REQUEST_READ_FILE 	*pfile = (TEST_REQUEST_READ_FILE *)((char *)pquery + sizeof(TEST_QUERY));
 
 									bret = pfile->validate(&hdr);
@@ -2115,7 +2115,7 @@ int TLISTEN_HDLR::handle_l1(GY_THREAD *pthr)
 							case SUBTYPE_REQUEST_CURR_TIME :
 								statsmap["Time Req"]++;
 
-								if (false == peer_rd_closed) {
+								if (false == is_conn_closed) {
 									TEST_REQUEST_CURR_TIME 	*ptime = (TEST_REQUEST_CURR_TIME *)((char *)pquery + sizeof(TEST_QUERY));
 
 									bret = TEST_REQUEST_CURR_TIME::validate(&hdr);
@@ -2412,11 +2412,11 @@ int TLISTEN_HDLR::handle_l1(GY_THREAD *pthr)
 
 						try {
 							const bool		conn_closed = (cevents & (EPOLLERR | EPOLLHUP));
-							const bool		peer_rd_closed = (conn_closed || (cevents & EPOLLRDHUP));
+							const bool		peer_wr_closed = (conn_closed || (cevents & EPOLLRDHUP));
 							ssize_t			sret = 0;
 
 							if (cevents & EPOLLIN) {
-								sret = handle_recv(pconn, cfd, is_stream, conn_closed, peer_rd_closed);
+								sret = handle_recv(pconn, cfd, is_stream, conn_closed, peer_wr_closed);
 
 								if (sret == -1) {
 									mconntrack.erase(cfd);
@@ -2425,7 +2425,7 @@ int TLISTEN_HDLR::handle_l1(GY_THREAD *pthr)
 							}	
 							
 							if (cevents & EPOLLOUT) {
-								if (false == peer_rd_closed) {
+								if (false == conn_closed) {
 									sret = handle_send(pconn, false /* throw_on_error */);
 								}	
 							}	
@@ -4099,7 +4099,7 @@ void * cli_thread(void *arg)
 			}	
 		};
 
-		auto handle_recv = [&](TCLI_CONNTRACK *pconn1, int sock, const bool is_conn_closed, const bool peer_rd_closed) -> ssize_t
+		auto handle_recv = [&](TCLI_CONNTRACK *pconn1, int sock, const bool is_conn_closed, const bool peer_wr_closed) -> ssize_t
 		{
 			ssize_t				sret, max_bytes, totbytes = 0;
 			ssize_t				max_buf_sz, data_sz;
@@ -4530,11 +4530,11 @@ void * cli_thread(void *arg)
 
 					try {
 						const bool		conn_closed = (cevents & (EPOLLERR | EPOLLHUP));
-						const bool		peer_rd_closed = (conn_closed || (cevents & EPOLLRDHUP));
+						const bool		peer_wr_closed = (conn_closed || (cevents & EPOLLRDHUP));
 						ssize_t			sret = 0;
 
 						if (cevents & EPOLLIN) {
-							sret = handle_recv(pconn, cfd, conn_closed, peer_rd_closed);
+							sret = handle_recv(pconn, cfd, conn_closed, peer_wr_closed);
 
 							if (sret == -1) {
 								conntrack.erase(cfd);
@@ -4543,7 +4543,7 @@ void * cli_thread(void *arg)
 						}	
 						
 						if (cevents & EPOLLOUT) {
-							if (false == peer_rd_closed) {
+							if (false == conn_closed) {
 								sret = handle_send(pconn);
 							}	
 						}	

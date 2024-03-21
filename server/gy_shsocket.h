@@ -290,13 +290,15 @@ public :
 		uint64_t				ser_madhava_id_			{0};
 		uint64_t				ser_related_listen_id_		{0};
 		char					ser_comm_[TASK_COMM_LEN]	{};
+		uint64_t				ser_tusec_pstart_		{0};	// Start usec when ser conn was added in Partha level
+		uint64_t				ser_nat_conn_hash_		{0};
 		uint32_t				ser_conn_hash_			{0};
 		uint32_t				ser_sock_inode_			{0};
 
 		uint64_t				close_cli_bytes_sent_		{0};	// Will be non-zero only for closed conns
 		uint64_t				close_cli_bytes_rcvd_		{0};
 
-		uint64_t				tusec_start_			{0};	// Start usec when conn was added in Madhava rather than at Partha level
+		uint64_t				tusec_mstart_			{0};	// Start usec when conn was added in Madhava rather than at Partha level
 		uint64_t				tusec_shstart_			{0};	// Start usec when conn was added in Shyama rather than at Partha level
 
 		SHTCP_CONN() noexcept 					= default;

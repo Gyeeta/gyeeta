@@ -358,7 +358,7 @@ int PACONN_HANDLER::handle_l1(GY_THREAD *pthr, bool is_req_rsp)
 		 * Currently max_syscall is ignored TODO
 		 * Called only if is_req_rsp true
 		 */
-		auto handle_recv = [&, this](PACONNTRACK *pconn1, int sock, const bool is_conn_closed, const bool peer_rd_closed, int max_syscall = INT_MAX - 1) -> ssize_t
+		auto handle_recv = [&, this](PACONNTRACK *pconn1, int sock, const bool is_conn_closed, const bool peer_wr_closed, int max_syscall = INT_MAX - 1) -> ssize_t
 		{
 			ssize_t				sret, max_bytes, totbytes = 0;
 			ssize_t				max_buf_sz, data_sz;
@@ -471,7 +471,7 @@ int PACONN_HANDLER::handle_l1(GY_THREAD *pthr, bool is_req_rsp)
 				
 					case COMM_QUERY_CMD :
 
-						if (false == peer_rd_closed) {
+						if (false == is_conn_closed) {
 							QUERY_CMD		*pquery = (QUERY_CMD *)(prdbuf + sizeof(COMM_HEADER));
 						}
 						break;

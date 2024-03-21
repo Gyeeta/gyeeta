@@ -3269,7 +3269,7 @@ static void set_ext_tracereq_fields()
 				nexttracereq_arr, MAX_COLUMN_LIST);
 
 	for (uint32_t i = 0; i < nexttracereq_arr; ++i) {
-		pexttracereq_arr[i].subsys	= SUBSYS_EXTTRACEREQ;
+		pexttracereq_arr[i].subsys			= SUBSYS_EXTTRACEREQ;
 	}
 
 	// Now update subsys_class_list

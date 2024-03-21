@@ -810,6 +810,34 @@ public :
 
 	using WEAK_REMOTE_MADHAVA_TBL		= RCU_HASH_TABLE <uint64_t /* madhava_id */, WEAK_REMOTE_MADHAVA, TPOOL_DEALLOC<WEAK_REMOTE_MADHAVA>>;
 
+	struct PARTHA_TRACE_CONN
+	{
+		time_t				tconn_				{0};
+		uint64_t			glob_id_			{0};
+		uint64_t			ser_connid_			{0};
+		uint64_t			cli_aggr_task_id_		{0};
+		GY_MACHINE_ID			cli_partha_machine_id_;
+		uint64_t			cli_madhavaid_			{0};
+		char				ser_comm_[TASK_COMM_LEN];
+		char				cli_comm_[TASK_COMM_LEN];
+
+		PARTHA_TRACE_CONN(time_t tconn, uint64_t glob_id, uint64_t ser_connid, uint64_t cli_aggr_task_id, const GY_MACHINE_ID & cli_partha_machine_id, \
+					uint64_t cli_madhavaid, const char *ser_comm, const char *cli_comm) noexcept
+				: tconn_(tconn), glob_id_(glob_id), ser_connid_(ser_connid), cli_aggr_task_id_(cli_aggr_task_id), 
+				cli_partha_machine_id_(cli_partha_machine_id), cli_madhavaid_(cli_madhavaid)
+		{
+			GY_STRNCPY(ser_comm_, ser_comm, sizeof(ser_comm_));
+			GY_STRNCPY(cli_comm_, cli_comm, sizeof(cli_comm_));
+		}	
+
+		PARTHA_TRACE_CONN(PARTHA_TRACE_CONN && other) noexcept			= default;
+
+		PARTHA_TRACE_CONN & operator=(PARTHA_TRACE_CONN && other) noexcept	= default;
+
+		~PARTHA_TRACE_CONN() noexcept						= default;
+	};
+	
+	static constexpr size_t			MAX_TRACE_CONN_VEC = 4000;
 
 	static constexpr size_t			AGGR_TASK_DB_STORE_SEC = 6 * 3600; 	// 6 hours
 	static constexpr size_t			LISTENER_DB_STORE_SEC = 3 * 3600 * 24; 	// 3 days
@@ -845,7 +873,7 @@ public :
 	using SER_UN_CLI_INFO_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, SER_UN_CLI_INFO_VEC, 8192>;
 	using SER_UN_CLI_INFO_MAP_ARENA		= SER_UN_CLI_INFO_MAP::allocator_type::arena_type;
 
-	using PARTHA_TRACE_MAP			= std::unordered_map<int, std::weak_ptr<PARTHA_INFO>>;
+	using PARTHA_TRACE_MAP			= std::unordered_map<int, std::weak_ptr<PARTHA_INFO>, GY_JHASHER<int>>;
 
 	using DOWNSTREAM_VEC			= GY_STACK_VECTOR<comm::MM_LISTENER_ISSUE_RESOL::DOWNSTREAM_ONE, 200 * 1024>;
 	using DOWNSTREAM_VEC_ARENA		= DOWNSTREAM_VEC::allocator_type::arena_type;
@@ -1078,6 +1106,14 @@ public :
 		ConnClientMap			connclientmap_;
 		ConnUnknown			unknownmaps_[MAX_UNKNOWN_MAPS];
 		
+		SCOPE_FD			trace_req_sock_;
+		std::unique_ptr<uint8_t>	ptrace_buf_;
+		uint32_t			trace_buf_len_				{0};
+
+		GY_MUTEX			trace_conn_mutex_;
+		std::vector<PARTHA_TRACE_CONN>	trace_conn_vec_;			
+		gy_atomic<time_t>		tlast_trace_conn_			{0};
+
 		uint64_t			last_aggr_state_tusec_			{0};
 		uint64_t			last_aggrinfo_tsec_			{0};
 		AGGR_TASK_TOP_ISSUE		atask_top_issue_			{MAX_AGGR_TASK_TOPN};
@@ -1091,9 +1127,6 @@ public :
 		MAGGR_TASK_HASH_TABLE		task_aggr_tbl_				{1};
 		int64_t				cli_task_missed_			{0};
 
-		SCOPE_FD			trace_req_sock_;
-		std::unique_ptr<uint8_t>	trace_buf_;
-
 		CPU_MEM_STATE			cpu_mem_state_;	
 		comm::HOST_STATE_NOTIFY		host_state_;
 		TASK_TOP_PROCS_INFO		toptasks_;
@@ -1104,9 +1137,17 @@ public :
 		
 		void handle_disconnect() noexcept
 		{
+			int			ret;
+
 			last_disconnect_tsec_.store(time(nullptr), mo_release);
 			
-			trace_req_sock_.close();
+			if (auto tfd = trace_req_sock_.getfd(); tfd > 0) {
+				// So that an epoll notification happens
+				ret = shutdown(tfd, SHUT_RDWR);
+				if (ret == 0) {
+					trace_req_sock_.reset();
+				}	
+			}	
 
 			INFOPRINT_OFFLOAD("Partha Host %s disconnected all connections...\n", hostname_);
 		}
@@ -1658,7 +1699,7 @@ public :
 
 	int 	handle_l2_db(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 	int 	handle_l2_misc(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
-	int 	handle_l2_trace_req(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+	int 	handle_l2_trace_req(L2_PARAMS & param, PGConnPool & dbpool);
 
 	void	init_alert_handlers();
 	int 	handle_alert_mgr(L2_PARAMS & param);
@@ -1742,11 +1783,11 @@ public :
 	void 	insert_db_top_procs(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::TASK_TOP_PROCS * ptask, uint8_t *pendptr, PGConnPool & dbpool);
 	void 	insert_db_task_stats(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::TASK_HISTOGRAM * ptask, int ntasks, uint8_t *pendptr);
 
-	std::tuple<bool, bool, bool> add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
+	std::tuple<bool, bool, bool, bool> add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
 				MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, \
 				MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, \
 				SER_UN_CLI_INFO_MAP & serunmap, SER_UN_CLI_INFO_VEC_ARENA & serunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr); 
-	std::tuple<bool, bool, bool> add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
+	std::tuple<bool, bool, bool, bool> add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, \
 				MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, \
 				MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, \
 				CLI_UN_SERV_INFO_MAP & cliunmap, CLI_UN_SERV_INFO_VEC_ARENA & cliunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr); 
@@ -1828,6 +1869,9 @@ public :
 			POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool); 
 	std::pair<int, int> insert_active_conns(PARTHA_INFO *prawpartha, time_t tcur, const comm::ACTIVE_CONN_STATS * pconn, int nconn, uint8_t *pendptr, PGConnPool & dbpool); 
 	std::pair<int, int> insert_close_conn_records(PARTHA_INFO *prawpartha, time_t currtsec, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+
+	uint32_t handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, \
+			STR_WR_BUF & strbuf, STATS_STR_MAP & statsmap);
 
 	bool	handle_node_query(const std::shared_ptr<MCONNTRACK> & connshr, const comm::QUERY_CMD *pquery, char *pjson, char *pendptr, \
 			POOL_ALLOC_ARRAY *pthrpoolarr, STATS_STR_MAP & statsmap, PGConnPool & dbpool);

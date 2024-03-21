@@ -2376,7 +2376,7 @@ bool QUERY_OPTIONS::to_enable_multi_madhava_aggr() const
 
 	constexpr uint32_t		uniqidcols[] { 	
 							FIELD_PARID, FIELD_HOST, FIELD_MADID, FIELD_SVCID, FIELD_PROCID, FIELD_CPROCID, FIELD_CPARID, FIELD_CMADID, 
-							FIELD_SPARID, FIELD_SMADID, FIELD_CLUSTID,
+							FIELD_SPARID, FIELD_SMADID, FIELD_CLUSTID, FIELD_MADHAVANAME, FIELD_CONNID,
 							};		
 	const char			*colname;
 	uint32_t			jsoncrc;
@@ -2722,7 +2722,7 @@ void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const 
 	assert(maxlen < 1024 - 2);
 
 	if (namelen >= maxlen) {
-		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid %s as name too long (upto max %lu bytes allowed) : \'%s\'", ptype, maxlen, pname);
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid %s as name too long (upto max %lu bytes allowed) : \'%s\'", ptype, maxlen - 1, pname);
 	}
 
 	if (namelen == 0) {

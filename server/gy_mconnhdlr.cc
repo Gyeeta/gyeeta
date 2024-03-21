@@ -12,6 +12,7 @@
 #include		"gy_malerts.h"
 #include 		"gy_refcnt.h"
 #include 		"gy_cloud_metadata.h"
+#include 		"gy_proto_common.h"
 
 #include 		<algorithm>
 
@@ -2263,7 +2264,7 @@ int MCONN_HANDLER::handle_l1(GY_THREAD *pthr)
 		/*
 		 * Currently max_syscall is ignored 
 		 */
-		auto handle_recv = [&, this](MCONNTRACK *pconn1, int sock, const bool is_conn_closed, const bool peer_rd_closed, int max_syscall = INT_MAX - 1) -> ssize_t
+		auto handle_recv = [&, this](MCONNTRACK *pconn1, int sock, const bool is_conn_closed, const bool peer_wr_closed, int max_syscall = INT_MAX - 1) -> ssize_t
 		{
 			ssize_t				sret, max_bytes, totbytes = 0;
 			ssize_t				max_buf_sz, data_sz;
@@ -3344,7 +3345,7 @@ int MCONN_HANDLER::handle_l1(GY_THREAD *pthr)
 
 					case COMM_QUERY_CMD :
 
-						if (false == peer_rd_closed && pconn1->cli_type_ != comm::CLI_TYPE_REQ_ONLY) {
+						if (false == is_conn_closed && pconn1->cli_type_ != comm::CLI_TYPE_REQ_ONLY) {
 							QUERY_CMD		*pquery = (QUERY_CMD *)(prdbuf + sizeof(COMM_HEADER));
 
 							switch (pquery->subtype_) {
@@ -4040,14 +4041,14 @@ int MCONN_HANDLER::handle_l1(GY_THREAD *pthr)
 
 						try {
 							const bool		conn_closed = (cevents & (EPOLLERR | EPOLLHUP));
-							const bool		peer_rd_closed = (conn_closed || (cevents & EPOLLRDHUP));
+							const bool		peer_wr_closed = (conn_closed || (cevents & EPOLLRDHUP));
 							ssize_t			sret = 0;
 
 							if (cevents & EPOLLIN) {
-								sret = handle_recv(pconn, cfd, conn_closed, peer_rd_closed);
+								sret = handle_recv(pconn, cfd, conn_closed, peer_wr_closed);
 							}	
 							
-							if ((sret >= 0) && (cevents & EPOLLOUT) && (false == peer_rd_closed)) {
+							if ((sret >= 0) && (cevents & EPOLLOUT) && (false == conn_closed)) {
 								if ((false == pconn->is_outgoing_conn()) || (0 != pconn->get_bytes_sent())) {
 									sret = send_immediate(pconn, false /* throw_on_error */);
 								}	
@@ -4338,15 +4339,6 @@ int MCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 				new (palerthdlr_) MALERT_HDLR(this);
 			}
 			else if (psigdata->thr_type_ == TTYPE_L2_TRACE) {
-				size_t		pool_szarr[2], pool_maxarr[2];
-			
-				pool_szarr[0] 	= 512;
-				pool_maxarr[0]	= 2048;
-
-				pool_szarr[1] 	= 4096;
-				pool_maxarr[1]	= 1024;
-
-				pthrpoolarr = new POOL_ALLOC_ARRAY(pool_szarr, pool_maxarr, GY_ARRAY_SIZE(pool_szarr), true);
 
 				INFOPRINT("L2 Trace Request Reader Thread %u initiating Postgres Connection...\n", l2_thr_num);
 
@@ -4399,7 +4391,7 @@ int MCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 
 	case TTYPE_L2_ALERT 	:	do { handle_alert_mgr(param); } while (true);
 
-	case TTYPE_L2_TRACE 	:	do { handle_l2_trace_req(param, pthrpoolarr, *dbpool); } while (true);
+	case TTYPE_L2_TRACE 	:	do { handle_l2_trace_req(param, *dbpool); } while (true);
 
 	default 		: 	break;
 	}
@@ -5341,30 +5333,346 @@ int MCONN_HANDLER::handle_l2_misc(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoola
 	);
 }
 
-int MCONN_HANDLER::handle_l2_trace_req(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+int MCONN_HANDLER::handle_l2_trace_req(L2_PARAMS & param, PGConnPool & dbpool)
 {
 	try {
 		MPMCQ_COMM			* const pl2pool = param.pmpmc_;
-		const uint32_t			l2_thr_num = param.thr_num_;
+		const uint32_t			l2_thr_num = param.thr_num_  % MAX_L2_TRACE_POOLS;
 		const pid_t			tid = gy_gettid();
-		uint64_t			curr_usec_clock = get_usec_clock() + ((tid * 10) & 0xFFFF), last_usec_clock = curr_usec_clock, last_dbreset_cusec = curr_usec_clock;
-		int				tpoolcnt = 0;
-		STATS_STR_MAP			statsmap;
 		bool				bret;
+		uint64_t			curr_usec_clock = get_usec_clock(), last_usec_clock = curr_usec_clock, last_dbreset_cusec = curr_usec_clock;
+		uint64_t			ntotalreq = 0, nlastreq = 0;
+		STATS_STR_MAP			statsmap;
 
-		statsmap.reserve(128);
+		const int			epollfd = trace_epoll_fd_[l2_thr_num], max_events = 128;
+		auto				& trace_map = trace_map_arr_[l2_thr_num];
+		auto				& slock = trace_mutex_arr_[l2_thr_num];
+		struct epoll_event		*pevarr, *pevcache, *pevretry;
+		STRING_HEAP			heapbuf(API_TRAN::MAX_SEND_SZ * 2.5);
+		uint8_t				*prcvbuf;
+		
+		statsmap.reserve(32);
 
 		statsmap["Exception Occurred"] = 0;
 		statsmap["Idle Timeout"] = 0;
 
+		if (epollfd <= 0) {
+			ERRORPRINTCOLOR(GY_COLOR_RED, "Trace Handler Thread %u with invalid epoll file descriptor. Exiting...\n", l2_thr_num);
+			exit(EXIT_FAILURE);
+		}	
+
+		pevarr 				= new epoll_event[max_events];
+		pevcache			= new epoll_event[max_events];
+		prcvbuf				= new uint8_t[API_TRAN::get_max_actual_send_size() + 8];
+		
+		GY_SCOPE_EXIT {
+			delete [] pevarr;
+			delete [] pevcache;
+			delete [] prcvbuf;
+		};
+
+		auto comp_epoll = [](const epoll_event & ev1, const epoll_event & ev2) noexcept -> bool
+		{
+			return ev2.data.fd < ev1.data.fd;
+		};	
+
+		auto close_epoll = [&](int & cfd, const std::shared_ptr<PARTHA_INFO> & shrp, bool is_map_del)
+		{
+			if (cfd > 0) {
+				epoll_ctl(epollfd, EPOLL_CTL_DEL, cfd, nullptr);
+				::close(cfd);
+			}
+
+			if (shrp) {
+				shrp->trace_req_sock_.reset();
+
+				shrp->ptrace_buf_.reset(nullptr);
+				shrp->trace_buf_len_ = 0;
+			}	
+
+			if (!is_map_del && cfd > 0) {
+				SCOPE_GY_MUTEX		smutex(slock);
+
+				trace_map.erase(cfd);
+			}	
+
+			cfd = -1;
+		};	
+
+		auto trace_recv = [&](int cfd, bool is_closed, const std::shared_ptr<PARTHA_INFO> & shrp) -> std::pair<uint8_t *, ssize_t>
+		{
+			uint8_t				*pbuf = prcvbuf;
+			size_t				nret = 0;
+			ssize_t				sret;
+			COMM_HEADER			hdr(COMM_MIN_TYPE, 0, COMM_HEADER::INV_HDR_MAGIC);
+			bool				is_tracebuf = false;
+
+			if (shrp->ptrace_buf_.get()) {
+
+				pbuf 		= shrp->ptrace_buf_.get();
+				nret 		= shrp->trace_buf_len_;
+				is_tracebuf 	= true;
+
+				if (nret > API_TRAN::get_max_actual_send_size()) {
+					statsmap["Trace Stats Invalid"]++; 
+					nret = 0;
+				}
+			}
+
+			if (nret < sizeof(COMM_HEADER)) {
+try1 :
+				sret = ::recv(cfd, pbuf + nret, sizeof(COMM_HEADER) - nret, 0);
+				if (sret <= 0) {
+					if (sret == -1 && errno == EINTR) {
+						goto try1;
+					}	
+
+					if (sret == -1 && errno == EAGAIN) {
+						return {nullptr, 0};
+					}
+
+					return {nullptr, -1L};
+				}
+
+				nret += sret;
+
+				if (nret < sizeof(COMM_HEADER)) {
+					if (false == is_tracebuf) {
+						if (!shrp->ptrace_buf_) {
+							shrp->ptrace_buf_.reset(new uint8_t[API_TRAN::get_max_actual_send_size()]);
+						}	
+
+						std::memcpy(shrp->ptrace_buf_.get(), pbuf, nret);
+					}	
+
+					shrp->trace_buf_len_ = nret;
+					
+					return {nullptr, 0};
+				}	
+			}
+			
+			COMM_HEADER			*phdr = (COMM_HEADER *)pbuf;
+			EVENT_NOTIFY			*pnotify = (EVENT_NOTIFY *)(phdr + 1);
+			REQ_TRACE_TRAN			*pone = (REQ_TRACE_TRAN *)(pnotify + 1);
+
+			if (false == phdr->validate(pbuf, comm::COMM_HEADER::PM_HDR_MAGIC)) {
+				statsmap["Invalid Message Error"]++; 
+				GY_THROW_EXCEPTION("Invalid Trace Message received from Partha host %s. Closing connection", shrp->hostname_);
+			}	
+
+			if (nret >= phdr->get_total_len()) {
+				statsmap["Trace Stats Error"]++; 
+				GY_THROW_EXCEPTION("Internal Error : Data Struct Trace Stats invalid for new msg received from Partha host %s. Closing connection", shrp->hostname_);
+			}	
+			
+			assert(phdr->get_total_len() < API_TRAN::get_max_actual_send_size());
+
+try2 :
+			sret = ::recv(cfd, pbuf + nret, phdr->get_total_len() - nret, 0);
+			if (sret <= 0) {
+				if (sret == -1 && errno == EINTR) {
+					goto try1;
+				}	
+
+				if (sret == -1 && errno == EAGAIN) {
+isagain :					
+					if (false == is_tracebuf) {
+						if (!shrp->ptrace_buf_) {
+							shrp->ptrace_buf_.reset(new uint8_t[API_TRAN::get_max_actual_send_size()]);
+						}	
+
+						std::memcpy(shrp->ptrace_buf_.get(), pbuf, nret);
+					}	
+
+					shrp->trace_buf_len_ = nret;
+					
+					return {nullptr, 0};
+				}
+
+				return {nullptr, -1L};
+			}
+
+			nret += sret;
+			
+			if (nret < phdr->get_total_len()) {
+				goto isagain;
+			}	
+
+			if (is_tracebuf) {
+				shrp->trace_buf_len_ = 0;	
+			}	
+			
+			if (false == pone->validate(phdr, pnotify)) {
+				statsmap["Invalid Trace Message"]++; 
+				GY_THROW_EXCEPTION("Invalid Trace Message received from Partha host %s. Closing connection", shrp->hostname_);
+			}
+			
+			return {pbuf, (ssize_t)nret};
+		};
+		
 		do {
 			try {
+				int			nevents, nretry_events = 0;
+				bool			bret;
+
 				gy_thread_rcu().gy_rcu_thread_offline();
 
+				nevents = epoll_wait(epollfd, pevarr, max_events, 10'000);
+				
+				if (nevents == -1) {
+					if (errno == EINTR) {
+						continue;
+					}	
+					PERRORPRINTCOLOR(GY_COLOR_RED, "poll on %s failed : Exiting...", param.descbuf_);
+					exit(EXIT_FAILURE);
+				}	
+
+				/*
+				 * We sort the event cache to ensure :
+				 * 
+				 * The set of operations on a specific socket fd are contiguous such as EPOLLIN and EPOLLHUP
+				 */     
+
+				std::memcpy(pevcache, pevarr, nevents * sizeof(epoll_event));
+
+				std::sort(pevcache,  pevcache + nevents, comp_epoll);
+
+				for (int i = 0; i < nevents; ++i) {
+					auto 				pcache = pevcache + i;
+					int				efd = pcache->data.fd;
+					uint32_t			cevents = 0;
+					std::shared_ptr<PARTHA_INFO>	parshr;
+					uint8_t				*pdata = nullptr;
+					ssize_t				sret = 0;
+					bool				map_del = false, conn_closed, peer_wr_closed;
+
+					cevents = pcache->events;
+
+					while (i + 1 < nevents) {
+						if (pevcache[i + 1].data.fd == efd) {
+							cevents |= pevcache[i + 1].events;
+							++i;
+						}	
+						else {
+							break;
+						}	
+					}	
+					
+					conn_closed 	= (cevents & (EPOLLERR | EPOLLHUP));
+					peer_wr_closed 	= (conn_closed || (cevents & EPOLLRDHUP));
+
+					try {
+						if (true) {
+							SCOPE_GY_MUTEX		smutex(slock);
+
+							auto			it = trace_map.find(efd);
+
+							if (it == trace_map.end()) {
+								ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Internal Error : Trace Map entry not found for fd %d : Closing conn...\n", efd);
+
+								close_epoll(efd, parshr, true /* is_map_del */);
+								continue;
+							}	
+
+							parshr = it->second.lock();
+
+							if (!parshr) {
+								ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Internal Error : Trace Map entry found for deleted partha instance : Closing conn %d...\n", efd);
+								trace_map.erase(it);
+								map_del = true;
+							}
+
+							if (conn_closed || peer_wr_closed) {
+								trace_map.erase(it);
+								map_del = true;
+							}	
+						}	
+
+						if ((cevents & EPOLLIN) && parshr) {
+							auto	pr = trace_recv(efd, conn_closed, parshr);
+
+							pdata 	= pr.first;
+							sret 	= pr.second;
+						}	
+						
+						if (sret < 0 || peer_wr_closed || (!parshr)) {
+							close_epoll(efd, parshr, map_del);
+
+							if (parshr) {
+								INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, "Trace Connection close seen from Partha host %s\n", parshr->hostname_);
+							}	
+
+							if (sret <= 0 || !parshr) {
+								continue;
+							}	
+						}	
+					}
+					GY_CATCH_EXPRESSION(
+						WARNPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, 
+							"Caught exception while handling Partha Trace conn for host %s : Closing connection : %s\n", 
+								bool(parshr) ? parshr->hostname_ : "", GY_GET_EXCEPT_STRING);
+
+						close_epoll(efd, parshr, map_del);
+
+						continue;
+					);
+
+					if (!pdata || sret == 0) {
+						continue;
+					}
+
+					try {
+						COMM_HEADER			*phdr = (COMM_HEADER *)pdata;
+						EVENT_NOTIFY			*pnotify = (EVENT_NOTIFY *)(phdr + 1);
+						REQ_TRACE_TRAN			*pone = (REQ_TRACE_TRAN *)(pnotify + 1);
+						
+						ntotalreq += handle_trace_requests(parshr, pone, pnotify->nevents_, dbpool, heapbuf, statsmap);
+					}
+					GY_CATCH_EXPRESSION(
+						DEBUGEXECN(1,
+							WARNPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, 
+								"Caught exception while DB handling of Partha Trace request for host %s : %s\n", parshr->hostname_, GY_GET_EXCEPT_STRING);
+						);
+
+						statsmap["Trace Req DB Exception"]++;
+					);
+
+					if (peer_wr_closed) {
+						close_epoll(efd, parshr, map_del);
+
+						INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, "Trace Connection close seen from Partha host %s\n", parshr->hostname_);
+					}	
+				}
+
+				curr_usec_clock = get_usec_clock();
+
+				if (curr_usec_clock - last_usec_clock >= MAX_CONN_DATA_TIMEOUT_USEC * 5) {
+					last_usec_clock = curr_usec_clock;
+
+					STRING_BUFFER<2048>	strbuf;
+
+					for (auto && it : statsmap) {
+						strbuf.appendfmt(" {\"%s\" : %ld},", it.first, it.second);
+					}	
+					strbuf.set_last_char(' ');
+
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN_ITALIC, "%s : Handled %lu Total Trace Requests, Interval Count %lu Requests : Other Stats : [ %.*s ]\n", 
+						param.descbuf_, ntotalreq, ntotalreq - nlastreq, strbuf.sizeint(), strbuf.buffer());
+
+					nlastreq = ntotalreq;
+
+					dbpool.check_or_reconnect();
+				}
+
+				// Reset the Postgres connection pool to free up backend memory
+				if (curr_usec_clock - last_dbreset_cusec > MAX_CONN_DATA_TIMEOUT_USEC) {
+					last_dbreset_cusec = curr_usec_clock;
+					dbpool.reset_idle_conns();
+				}	
 
 			}
 			GY_CATCH_EXCEPTION(
-				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught in %s while handling message : %s\n\n", param.descbuf_, GY_GET_EXCEPT_STRING);
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught in %s while handling Trace message : %s\n\n", param.descbuf_, GY_GET_EXCEPT_STRING);
 				statsmap["Exception Occurred"]++;
 			);
 
@@ -5378,6 +5686,13 @@ int MCONN_HANDLER::handle_l2_trace_req(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthr
 	);
 }
 
+uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, 
+							STR_WR_BUF & strbuf, STATS_STR_MAP & statsmap)
+{
+
+	
+	return 0;
+}	
 
 MA_SETTINGS_C * MCONN_HANDLER::get_settings() const noexcept
 {
@@ -6972,8 +7287,8 @@ bool MCONN_HANDLER::add_local_conn_task_ref(PARTHA_INFO *pcli_partha, uint64_t a
 	return newadd;
 }	
 
-// Returns {is_resolved, newconn, newtask}
-std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, SER_UN_CLI_INFO_MAP & serunmap, SER_UN_CLI_INFO_VEC_ARENA & serunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
+// Returns {ser_tusec_pstart, is_resolved, newconn, newtask}
+std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, SER_UN_CLI_INFO_MAP & serunmap, SER_UN_CLI_INFO_VEC_ARENA & serunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
 {
 	/*
 	 * We first check if the Server corresponding half connection is already present in the glob_tcp_conn_tbl_.
@@ -6987,7 +7302,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 	}	
 
 	std::shared_ptr<MTCP_LISTENER>	listenshr;
-	uint64_t			ser_cluster_hash = 0, ser_tusec_start = 0;
+	uint64_t			ser_cluster_hash = 0, ser_tusec_pstart = 0, ser_tusec_mstart = 0, ser_nat_conn_hash = 0;
 	uint32_t			ser_conn_hash = 0, ser_sock_inode = 0;
 	bool				bret, conn_closed, updunmap = false;
 
@@ -7008,7 +7323,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 		bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, plistenelem ? plistenelem->get_cref().get() : nullptr,
 						pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
 
-		return {false, false, bret};
+		return {false, false, false, bret};
 	}
 
 	PAIR_IP_PORT			ctuple(pone->nat_cli_, pone->nat_ser_);
@@ -7022,7 +7337,9 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 		 * once and then deleted.
 		 */
 		listenshr		= std::move(ptcp->ser_listen_shr_);
-		ser_tusec_start		= ptcp->tusec_start_;
+		ser_tusec_pstart	= ptcp->ser_tusec_pstart_;
+		ser_tusec_mstart	= ptcp->tusec_mstart_;
+		ser_nat_conn_hash	= ptcp->ser_nat_conn_hash_;
 		ser_conn_hash		= ptcp->ser_conn_hash_;
 		ser_sock_inode		= ptcp->ser_sock_inode_;
 		ser_cluster_hash	= ptcp->cli_ser_cluster_hash_;
@@ -7072,7 +7389,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 			ptcp->close_cli_bytes_rcvd_	= pone->bytes_rcvd_;
 		}
 
-		ptcp->tusec_start_		= tcurrusec;
+		ptcp->tusec_mstart_		= tcurrusec;
 
 		CONDEXEC(
 			DEBUGEXECN(10,
@@ -7096,6 +7413,9 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 
 	if (listenshr) {
 		auto				plistener = listenshr.get();
+		const auto			& ser_parthashr = plistener->parthashr_;
+		const bool			is_trace_active = (2 == plistener->api_cap_started_.load(mo_relaxed));
+		bool				traceadd = false;
 
 		bret = false;
 
@@ -7118,23 +7438,36 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 
 			bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, plistener, pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
 
-			if (plistener->parthashr_) {
-				auto 			[sit, ssuccess] = parsermap.try_emplace(plistener->parthashr_, parservecarena);
+			if (ser_parthashr) {
+				auto 			[sit, ssuccess] = parsermap.try_emplace(ser_parthashr, parservecarena);
 				auto 			& parservec = sit->second;
 
 				parservec.emplace_back(prawpartha->machine_id_, pone->cli_task_aggr_id_, gmadhava_id_, pone->cli_related_listen_id_, 
 							pone->cli_comm_, corigtup.ser_, ser_conn_hash, ser_sock_inode);
 			}
 		}
-		else if (updunmap && plistener->parthashr_) {
-			auto 			[sit, ssuccess] = serunmap.try_emplace(plistener->parthashr_, serunvecarena);
+		else if (updunmap && ser_parthashr) {
+			auto 			[sit, ssuccess] = serunmap.try_emplace(ser_parthashr, serunvecarena);
 			auto 			& serunvec = sit->second;
 
-			serunvec.emplace_back(ser_tusec_start/GY_USEC_PER_SEC, plistener->glob_id_, plistener->comm_, pone->cli_task_aggr_id_, pone->cli_related_listen_id_,
+			serunvec.emplace_back(ser_tusec_mstart/GY_USEC_PER_SEC, plistener->glob_id_, plistener->comm_, pone->cli_task_aggr_id_, pone->cli_related_listen_id_,
 						pone->cli_comm_, prawpartha->machine_id_, pone->bytes_sent_, pone->bytes_rcvd_, gmadhava_id_);
 		}	
 
-		return {true, false, bret};
+		if (is_trace_active && ser_parthashr && ser_nat_conn_hash) {
+			SCOPE_GY_MUTEX			sconn(ser_parthashr->trace_conn_mutex_);
+			time_t				tc = ser_tusec_pstart/GY_USEC_PER_SEC;
+
+			if (ser_parthashr->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+				ser_parthashr->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
+						ser_nat_conn_hash, pone->cli_task_aggr_id_, prawpartha->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_);
+
+				ser_parthashr->tlast_trace_conn_.store(tc, mo_relaxed);
+				traceadd = true;
+			}	
+		}
+
+		return {traceadd, true, false, bret};
 	}	
 	else {
 		if (conn_closed) {
@@ -7144,11 +7477,12 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_p
 		// Add the entry to the local task list
 		bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, nullptr, pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
 
-		return {false, true, bret};
+		return {false, false, true, bret};
 	}	
 }	
 
-std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, CLI_UN_SERV_INFO_MAP & cliunmap, CLI_UN_SERV_INFO_VEC_ARENA & cliunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
+// Returns {trace_conn_added, is_resolved, newconn, newtask}
+std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, CLI_UN_SERV_INFO_MAP & cliunmap, CLI_UN_SERV_INFO_VEC_ARENA & cliunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
 {
 	PARTHA_INFO			*prawpartha = partha_shr.get();
 
@@ -7172,6 +7506,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_p
 
 
 	auto				plistener = plistenelem->get_cref().get();
+	const bool			is_trace_active = (plistener && (2 == plistener->api_cap_started_.load(mo_relaxed)));
 	PAIR_IP_PORT			stuple(pone->cli_, pone->ser_), corigtup;
 	const uint32_t			shash = stuple.get_hash();
 
@@ -7190,7 +7525,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_p
 		 * and delete this conn
 		 */
 		corigtup		= {ptcp->cli_, ptcp->ser_}; 
-		cli_tusec_start		= ptcp->tusec_start_;
+		cli_tusec_start		= ptcp->tusec_mstart_;
 		cli_shr_host		= std::move(ptcp->cli_shr_host_);
 		cli_task_aggr_id 	= ptcp->cli_task_aggr_id_;
 		cli_related_listen_id	= ptcp->cli_related_listen_id_;
@@ -7230,21 +7565,23 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_p
 		ptcp = (MTCP_CONN *)pthrpoolarr->safe_malloc(sizeof(MTCP_CONN), free_fp, act_size, false /* try_other_pools */, true /* use_malloc_hdr */);
 		new (ptcp) MTCP_CONN();
 
-		ptcp->cli_		= pone->cli_;
-		ptcp->ser_		= pone->ser_;
+		ptcp->cli_			= pone->cli_;
+		ptcp->ser_			= pone->ser_;
 
 		// Set the cli_nat_cli_ and cli_nat_ser_ as these are the keys of the elem
-		ptcp->cli_nat_cli_	= pone->cli_;
-		ptcp->cli_nat_ser_	= pone->ser_;
+		ptcp->cli_nat_cli_		= pone->cli_;
+		ptcp->cli_nat_ser_		= pone->ser_;
 
-		ptcp->ser_nat_cli_	= pone->nat_cli_;
-		ptcp->ser_nat_ser_	= pone->nat_ser_;
+		ptcp->ser_nat_cli_		= pone->nat_cli_;
+		ptcp->ser_nat_ser_		= pone->nat_ser_;
 
-		ptcp->ser_glob_id_	= pone->ser_glob_id_;
-		ptcp->ser_listen_shr_	= plistenelem->get_cref();
-		ptcp->ser_pid_		= pone->ser_pid_;
-		ptcp->ser_conn_hash_	= pone->ser_conn_hash_;
-		ptcp->ser_sock_inode_	= pone->ser_sock_inode_;
+		ptcp->ser_glob_id_		= pone->ser_glob_id_;
+		ptcp->ser_listen_shr_		= plistenelem->get_cref();
+		ptcp->ser_tusec_pstart_		= pone->tusec_start_;
+		ptcp->ser_pid_			= pone->ser_pid_;
+		ptcp->ser_nat_conn_hash_	= is_trace_active ? API_TRAN::get_connid_hash(pone->nat_cli_, pone->nat_ser_, ptcp->ser_glob_id_) : 0;
+		ptcp->ser_conn_hash_		= pone->ser_conn_hash_;
+		ptcp->ser_sock_inode_		= pone->ser_sock_inode_;
 		
 		GY_STRNCPY(ptcp->ser_comm_, pone->ser_comm_, sizeof(ptcp->ser_comm_));
 
@@ -7255,7 +7592,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_p
 			ptcp->close_cli_bytes_rcvd_	= pone->bytes_rcvd_;
 		}
 
-		ptcp->tusec_start_		= tcurrusec;
+		ptcp->tusec_mstart_		= tcurrusec;
 
 		CONDEXEC(
 			DEBUGEXECN(10,
@@ -7279,6 +7616,7 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_p
 
 	if (cli_shr_host && cli_task_aggr_id && plistener) {
 		auto			pclihost = cli_shr_host.get();	
+		bool			traceadd = false;
 
 		bret = false;
 
@@ -7312,10 +7650,24 @@ std::tuple<bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::shared_p
 						gmadhava_id_);
 		}	
 
-		return {true, false, bret};
+		if (is_trace_active) {
+			SCOPE_GY_MUTEX			sconn(prawpartha->trace_conn_mutex_);
+			time_t				tc = pone->tusec_start_/GY_USEC_PER_SEC;
+
+			if (prawpartha->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+				prawpartha->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
+						API_TRAN::get_connid_hash(pone->nat_cli_, pone->nat_ser_, plistener->glob_id_), cli_task_aggr_id, pone->cli_ser_machine_id_,
+						pone->cli_madhava_id_, plistener->comm_, cli_comm);
+
+				prawpartha->tlast_trace_conn_.store(tc, mo_relaxed);
+				traceadd = true;
+			}	
+		}
+
+		return {traceadd, true, false, bret};
 	}	
 
-	return {false, true, false};
+	return {false, false, true, false};
 }	
 
 bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, int nconns, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr)
@@ -7372,7 +7724,7 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 
 	const uint64_t			tusec_start = get_usec_time(), tsec_start = tusec_start/GY_USEC_PER_SEC, local_madid = gmadhava_id_;
 	int				nnew = 0, nclosed = 0, nclosed_no_not = 0, ncloseadded = 0, nconnadded = 0, ntaskadded = 0, nremmadhav = 0, nparcliinfo = 0, nparserinfo = 0;
-	int				ncliuninfo = 0, nseruninfo = 0;
+	int				ncliuninfo = 0, nseruninfo = 0, ntraceconns = 0;
 	const bool			multi_madhava = multiple_madhava_active();
 	bool				conn_closed, tcupdated = false;
 	auto				& cunknown = prawpartha->get_curr_unknown_locked(tsec_start, true /* reset_old */);
@@ -7456,9 +7808,11 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 					if (pone->is_tcp_connect_event_) {
 						if (cunknown.cliunsermap_.bytes_left() > 2 * sizeof(CONN_PEER_UNKNOWN)) {
 
-							auto [is_resolved, newconn, newtask] = add_tcp_conn_cli(partha_shr, pone, tusec_start, 
+							auto [trace_conn_added, is_resolved, newconn, newtask] = add_tcp_conn_cli(partha_shr, pone, tusec_start, 
 											parclimap, parclivecarena, parsermap, parservecarena, serunmap, serunvecarena, pthrpoolarr);
 							
+							ntraceconns += int(trace_conn_added);
+
 							connpeer = (is_resolved || !newconn);
 
 							if (newconn) {
@@ -7482,8 +7836,10 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 					}	
 					else {
 						if (cunknown.serunclimap_.bytes_left() > 2 * sizeof(CONN_PEER_UNKNOWN)) {
-							auto [is_resolved, newconn, newtask] = add_tcp_conn_ser(partha_shr, pone, tusec_start, 
+							auto [trace_conn_added, is_resolved, newconn, newtask] = add_tcp_conn_ser(partha_shr, pone, tusec_start, 
 											parclimap, parclivecarena, parsermap, parservecarena, cliunmap, cliunvecarena, pthrpoolarr);
+
+							ntraceconns += int(trace_conn_added);
 
 							connpeer = (is_resolved || !newconn);
 
@@ -7556,18 +7912,21 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 			nnew++;
 
 			if (pone->is_tcp_connect_event_) {
-				auto [is_resolved, newconn, newtask] = add_tcp_conn_cli(partha_shr, pone, tusec_start, parclimap, parclivecarena, 
-										parsermap, parservecarena, serunmap, serunvecarena, pthrpoolarr);
+				auto [trace_conn_added, is_resolved, newconn, newtask] = add_tcp_conn_cli(partha_shr, pone, tusec_start, parclimap, parclivecarena, 
+												parsermap, parservecarena, serunmap, serunvecarena, pthrpoolarr);
 
 				nconnadded += int(newconn);
 				ntaskadded += int(newtask);
+				ntraceconns += int(trace_conn_added);
+
 			}	
 			else {
-				auto [is_resolved, newconn, newtask] = add_tcp_conn_ser(partha_shr, pone, tusec_start, parclimap, parclivecarena, 
-										parsermap, parservecarena, cliunmap, cliunvecarena, pthrpoolarr);
+				auto [trace_conn_added, is_resolved, newconn, newtask] = add_tcp_conn_ser(partha_shr, pone, tusec_start, parclimap, parclivecarena, 
+												parsermap, parservecarena, cliunmap, cliunvecarena, pthrpoolarr);
 
 				nconnadded += int(newconn);
 				ntaskadded += int(newtask);
+				ntraceconns += int(trace_conn_added);
 			}	
 		}	
 	}	
@@ -7664,9 +8023,9 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 
 	DEBUGEXECN(1, 
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_CYAN, "Partha Host \'%s\' has seen %d new TCP Conns, %d closed, %d closed without notify, %d closed conns added, "
-			"%d half conns added, %d tasks added, %d Client close conns updated, %d Server close conns updated, %d remote madhava informs, "
+			"%d half conns added, %d tasks added, %d Client close conns updated, %d Server close conns updated, %d Trace conns updated, %d remote madhava informs, "
 			"%d Partha Cli Conn Infos sent, %d Partha Ser Conn Infos sent, %lu Shyama conn close sent\n", 
-			prawpartha->hostname_, nnew, nclosed, nclosed_no_not, ncloseadded, nconnadded, ntaskadded, ncliuninfo, nseruninfo,
+			prawpartha->hostname_, nnew, nclosed, nclosed_no_not, ncloseadded, nconnadded, ntaskadded, ncliuninfo, nseruninfo, ntraceconns,
 			nremmadhav, nparcliinfo, nparserinfo, msveccleanup.size());
 	);
 
@@ -7898,7 +8257,7 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 	NAT_TCP_NOTIFY			*porigone = pone;
 
 	const uint64_t			tusec_start = get_usec_time();
-	uint32_t			nshyama = 0, nparcliconn = 0, nparserconn = 0, ncliuninfo = 0, nseruninfo = 0;
+	uint32_t			nshyama = 0, nparcliconn = 0, nparserconn = 0, ncliuninfo = 0, nseruninfo = 0, ntraceconns = 0;
 	bool				brets, bretc;
 	std::shared_ptr <PARTHA_INFO>	cli_shr_host;
 	std::shared_ptr<MTCP_LISTENER>	listenshr;
@@ -7915,11 +8274,12 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 	for (int i = 0; i < nconns; ++i, ++pone) {
 		const uint32_t			chash = pone->orig_tup_.get_hash(), shash = pone->nat_tup_.get_hash();
 
-		uint64_t			cli_task_aggr_id = 0, cli_related_listen_id = 0, cli_cluster_hash = 0, ser_cluster_hash = 0;
+		uint64_t			cli_task_aggr_id = 0, cli_related_listen_id = 0, cli_cluster_hash = 0, ser_cluster_hash = 0, ser_nat_conn_hash = 0;
 		uint32_t			cli_cmdline_len = 0;
 		uint32_t			ser_conn_hash = 0, ser_sock_inode = 0;
 		MTCP_CONN			*pcliconn = nullptr;
 		uint64_t			tstart_usec_cli = 0, tstart_usec_ser = 0, cli_bytes_sent = 0, cli_bytes_rcvd = 0, ser_bytes_sent = 0, ser_bytes_rcvd = 0;
+		uint64_t			ser_tusec_pstart = 0;
 		char				cli_comm[TASK_COMM_LEN], cli_cmdline[comm::MAX_PROC_CMDLINE_LEN];
 		bool				cli_closed = false, ser_closed = false, conn_closed;
 
@@ -7950,7 +8310,7 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 			pcliconn 		= ptcp;
 
 			cli_closed 		= ptcp->is_conn_closed();
-			tstart_usec_cli		= ptcp->tusec_start_;
+			tstart_usec_cli		= ptcp->tusec_mstart_;
 			cli_bytes_sent		= ptcp->close_cli_bytes_sent_;
 			cli_bytes_rcvd		= ptcp->close_cli_bytes_rcvd_;
 
@@ -7976,12 +8336,14 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 		auto lamtcps = [&](MTCP_CONN *ptcp, void *arg1, void *arg2) -> CB_RET_E
 		{	
 			listenshr		= std::move(ptcp->ser_listen_shr_);
+			ser_tusec_pstart	= ptcp->ser_tusec_pstart_;
+			ser_nat_conn_hash	= ptcp->ser_nat_conn_hash_;
 			ser_conn_hash		= ptcp->ser_conn_hash_;
 			ser_sock_inode		= ptcp->ser_sock_inode_;
 			ser_cluster_hash	= ptcp->cli_ser_cluster_hash_;
 
 			ser_closed 		= ptcp->is_conn_closed();
-			tstart_usec_ser		= ptcp->tusec_start_;
+			tstart_usec_ser		= ptcp->tusec_mstart_;
 			ser_bytes_sent		= ptcp->close_cli_bytes_sent_;
 			ser_bytes_rcvd		= ptcp->close_cli_bytes_rcvd_;
 
@@ -7998,7 +8360,9 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 			conn_closed = cli_closed || ser_closed;
 
 			auto			plistener = listenshr.get();
+			const auto		& ser_parthashr = plistener->parthashr_;
 			auto			pclihost = cli_shr_host.get();
+			const bool		is_trace_active = (2 == plistener->api_cap_started_.load(mo_relaxed));
 
 			if (!conn_closed) {
 				auto 			[it, success] = parclimap.try_emplace(std::move(cli_shr_host), parclivecarena);
@@ -8032,6 +8396,19 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 								cli_comm, cli_shr_host->machine_id_, ser_bytes_sent, ser_bytes_rcvd, gmadhava_id_);
 				}	
 			}	
+
+			if (is_trace_active && ser_nat_conn_hash) {
+				SCOPE_GY_MUTEX			sconn(ser_parthashr->trace_conn_mutex_);
+				time_t				tc = ser_tusec_pstart/GY_USEC_PER_SEC;
+
+				if (ser_parthashr->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+					ser_parthashr->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
+							ser_nat_conn_hash, cli_task_aggr_id, pclihost->machine_id_, gmadhava_id_, plistener->comm_, cli_comm);
+
+					ser_parthashr->tlast_trace_conn_.store(tc, mo_relaxed);
+					ntraceconns++;
+				}	
+			}
 
 			CONDEXEC(
 				DEBUGEXECN(11,
@@ -8158,10 +8535,11 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 		);
 	);
 
-	if ((nparcliconn + nparserconn + ncliuninfo + nseruninfo) || print1) {
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Received %d NAT Info from %s :  %d Client close conns updated, %d Server close conns updated, "
+	if ((nparcliconn + nparserconn + ncliuninfo + nseruninfo + ntraceconns) || print1) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Received %d NAT Info from %s :  %d Client close conns updated, %d Server close conns updated, %d Trace conns updated, "
 			"Sent %u Partha TCP Cli Conn Info and %u TCP Ser Conn Info messages and remaining %u NAT Info to Shyama\n",
-			nconns, dbarr.shrconn_ ? dbarr.shrconn_->print_peer(STRING_BUFFER<128>().get_str_buf()) : "", ncliuninfo, nseruninfo, nparcliconn, nparserconn, nshyama);
+			nconns, dbarr.shrconn_ ? dbarr.shrconn_->print_peer(STRING_BUFFER<128>().get_str_buf()) : "", ncliuninfo, nseruninfo, ntraceconns,
+			nparcliconn, nparserconn, nshyama);
 	}	
 
 	return true;
@@ -8741,7 +9119,7 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 
 	const uint64_t			tusec_start = get_usec_time();
 	bool				bret, is_new;
-	int				nmadmissed = 0, ninvpartha = 0, ninvlisten = 0, ninfo = 0, nseruninfo = 0;
+	int				nmadmissed = 0, ninvpartha = 0, ninvlisten = 0, ninfo = 0, nseruninfo = 0, ntraceconns = 0;
 	uint64_t			last_madid = 0;
 	MTCP_LISTENER			*plistener;
 	MADHAVA_INFO			*premotemad = nullptr;	
@@ -8808,6 +9186,9 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 			continue;
 		}	
 
+		const bool			is_trace_active = (2 == plistener->api_cap_started_.load(mo_relaxed));
+		const auto			& ser_parthashr = plistener->parthashr_;
+
 		if (!conn_closed) {	
 			auto 			[it, success] = parsermap.try_emplace(pserhost->shared_from_this(), parservecarena);
 			auto 			& parservec = it->second;
@@ -8826,6 +9207,19 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 			serunvec.emplace_back(*pone);
 
 		}	
+	
+		if (is_trace_active && pone->ser_nat_conn_hash_) {
+			SCOPE_GY_MUTEX			sconn(pserhost->trace_conn_mutex_);
+			time_t				tc = pone->tusec_pstart_/GY_USEC_PER_SEC;
+
+			if (pserhost->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+				pserhost->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
+						pone->ser_nat_conn_hash_, pone->cli_task_aggr_id_, pserhost->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_);
+
+				pserhost->tlast_trace_conn_.store(tc, mo_relaxed);
+				ntraceconns++;
+			}	
+		}
 	
 		DEBUGEXECN(11,
 			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_CYAN, 
@@ -8856,8 +9250,8 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 		send_mp_ser_tcp_info(parshr.get(), parservec.data(), parservec.size(), pthrpoolarr);
 	}	
 
-	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Shyama Server TCP Info : #Conn Info sent %d, #Closed Conns %d, #Valid Conn Info %d, #Madhava Errors %d, #Partha Errors %d\n",
-		nconns, nseruninfo, ninfo, nmadmissed, ninvpartha);
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "Shyama Server TCP Info : #Conn Info sent %d, #Closed Conns %d, #Valid Conn Info %d, #Trace Conns %d, #Madhava Errors %d, #Partha Errors %d\n",
+		nconns, nseruninfo, ninfo, ntraceconns, nmadmissed, ninvpartha);
 }
 
 
@@ -8892,7 +9286,7 @@ void MCONN_HANDLER::cleanup_tcp_conn_table() noexcept
 
 		auto twalk = [&, tcutoffusec](MTCP_CONN *ptcp, void *arg) -> CB_RET_E
 		{
-			if (ptcp->tusec_start_ < tcutoffusec) {
+			if (ptcp->tusec_mstart_ < tcutoffusec) {
 
 				try {
 					if (pconn1) {
@@ -13559,6 +13953,8 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 		}
 	};	
 
+	GY_CC_BARRIER();
+
 	// Now schedule the response
 
 	uint8_t				*palloc;
@@ -13603,7 +13999,8 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 
 	pconn1->schedule_ext_send(EPOLL_IOVEC_ARR(iov, GY_ARRAY_SIZE(iov), free_fp_arr, false));
 	
-	L1_SEND_DATA			l1data(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), dbarr.comm_magic_, PM_CONNECT_RESP, is_req_trace /* close_conn_on_send */);
+	L1_SEND_DATA			l1data(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), dbarr.comm_magic_, PM_CONNECT_RESP, 
+							is_req_trace /* close_conn_on_send : send close for trace conns as dup already done */);
 	int				ntries = 0;
 
 	do { 
@@ -13622,11 +14019,41 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 	(void)::write(dbarr.pl1_src_->signal_fd_, &n, sizeof(int64_t));
 	
 	if (is_req_trace && tracefd > 0) {
-		uint64_t			traceid = (machid.get_second() % MAX_L2_TRACE_THREADS);
-		SCOPE_GY_MUTEX			scope(trace_mutex_arr_[traceid]);
-
+		int				ret;
+		uint32_t			tnum = (machid.get_second() % MAX_L2_TRACE_THREADS);
+		SCOPE_GY_MUTEX			scope(trace_mutex_arr_[tnum]);
 		
-	}	
+		if (trace_epoll_fd_[tnum] > 0) {
+			struct epoll_event	ev {};
+			
+			set_sock_nonblocking(tracefd, 1);
+			set_sock_keepalive(tracefd);
+
+			auto 			[it, success] = trace_map_arr_[tnum].try_emplace(tracefd, pstatshr.get_cref());
+
+			if (!success) {
+				it->second 	= pstatshr.get_cref();
+			}	
+
+			pinfo->trace_req_sock_.set_fd(tracefd);
+
+			ev.data.fd		= tracefd;
+			ev.events 		= EPOLLIN | EPOLLHUP;	// Level Triggered
+			
+			ret = epoll_ctl(trace_epoll_fd_[tnum], EPOLL_CTL_ADD, tracefd, &ev);
+			if (ret != 0) {
+				PERRORPRINT_OFFLOAD("Failed to add Trace socket to epoll for Partha Register Machine ID %016lx%016lx hostname %s", 
+						preg->machine_id_hi_, preg->machine_id_lo_, preg->hostname_);
+
+				trace_map_arr_[tnum].erase(it);
+				pinfo->trace_req_sock_.reset();
+
+				return 1;
+			}
+
+			tracefd = -1;	// to prevent close
+		}
+	}
 
 	if (is_new) {
 		statsmap["New Partha Registered"]++;
@@ -13659,7 +14086,7 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 		INFOPRINT_OFFLOAD("Registered Connection from existing Partha Host %s with Machine ID %016lx%016lx from Remote IP %s : "
 			"Current # connections from this Partha host is %lu\n", 
 			preg->hostname_, preg->machine_id_hi_, preg->machine_id_lo_, pconn1->print_peer(STRING_BUFFER<128>().get_str_buf()), 
-			pinfo->get_num_conns());
+			pinfo->get_num_conns() + pinfo->trace_req_sock_.isvalid());
 	}	
 
 	DEBUGEXECN(1, 

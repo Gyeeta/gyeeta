@@ -1464,6 +1464,10 @@ bool REQ_TRACE_TRAN::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnoti
 		return false;
 	}
 
+	if (phdr->get_total_len() >= get_max_actual_send_size()) {
+		return false;
+	}
+
 	totallen -= fixed_sz;
 
 	for (i = 0; i < nelems && totallen >= (ssize_t)sizeof(REQ_TRACE_TRAN); ++i) {

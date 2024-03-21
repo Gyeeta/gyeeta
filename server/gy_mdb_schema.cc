@@ -1109,7 +1109,7 @@ begin
 		execute format($fmt$ create or replace view %s.exttracereqtbl as 
 				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
 					from %s.tracereqtbl tbl left join %s.traceconntbl l on tbl.connid = l.connid and 
-					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '10 sec'::interval
+					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '20 sec'::interval
 			$fmt$, schname, schname, schname);		
 	end if;	
 	
@@ -1118,7 +1118,7 @@ begin
 		execute format($fmt$ create or replace view %s.exttracereqtbl_%s as 
 				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
 					from %s.tracereqtbl_%s tbl left join %s.traceconntbl_%s l on tbl.connid = l.connid and 
-					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '10 sec'::interval
+					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '20 sec'::interval
 			$fmt$, schname, tbltoday, schname, tbltoday, schname, tbltoday);		
 	end if;	
 
@@ -1128,7 +1128,7 @@ begin
 		execute format($fmt$ create or replace view %s.exttracereqtbl_%s as 
 				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
 					from %s.tracereqtbl_%s tbl left join %s.traceconntbl_%s l on tbl.connid = l.connid and 
-					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '10 sec'::interval
+					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '20 sec'::interval
 			$fmt$, schname, tbltom, schname, tbltom, schname, tbltom);		
 	end if;	
 

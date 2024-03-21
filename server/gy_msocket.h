@@ -8,6 +8,7 @@
 #include			"gy_pool_alloc.h"
 #include			"gy_stack_container.h"
 #include			"gy_statistics.h"
+#include			"gy_proto_common.h"
 
 #include			"folly/concurrency/AtomicSharedPtr.h" 
 #include			"folly/MicroLock.h"
@@ -306,7 +307,7 @@ struct CLI_UN_SERV_INFO
 	}
 
 	CLI_UN_SERV_INFO(const comm::SHYAMA_CLI_TCP_INFO & obj) noexcept
-		: tstart_(obj.tusec_start_/GY_USEC_PER_SEC), cli_task_aggr_id_(obj.cli_task_aggr_id_), cli_related_listen_id_(obj.cli_related_listen_id_), ser_glob_id_(obj.ser_glob_id_), 
+		: tstart_(obj.tusec_mstart_/GY_USEC_PER_SEC), cli_task_aggr_id_(obj.cli_task_aggr_id_), cli_related_listen_id_(obj.cli_related_listen_id_), ser_glob_id_(obj.ser_glob_id_), 
 		ser_related_listen_id_(obj.ser_related_listen_id_), ser_partha_machine_id_(obj.ser_partha_machine_id_), close_cli_bytes_sent_(obj.close_cli_bytes_sent_), 
 		close_cli_bytes_rcvd_(obj.close_cli_bytes_rcvd_), ser_madhava_id_(obj.ser_madhava_id_)
 	{
@@ -339,7 +340,7 @@ struct SER_UN_CLI_INFO
 	}
 
 	SER_UN_CLI_INFO(const comm::SHYAMA_SER_TCP_INFO & obj) noexcept
-		: tstart_(obj.tusec_start_/GY_USEC_PER_SEC), ser_glob_id_(obj.ser_glob_id_), cli_task_aggr_id_(obj.cli_task_aggr_id_), cli_related_listen_id_(obj.cli_related_listen_id_),
+		: tstart_(obj.tusec_mstart_/GY_USEC_PER_SEC), ser_glob_id_(obj.ser_glob_id_), cli_task_aggr_id_(obj.cli_task_aggr_id_), cli_related_listen_id_(obj.cli_related_listen_id_),
 		cli_partha_machine_id_(obj.cli_partha_machine_id_), close_cli_bytes_sent_(obj.close_cli_bytes_sent_), close_cli_bytes_rcvd_(obj.close_cli_bytes_rcvd_), 
 		cli_madhava_id_(obj.cli_madhava_id_)
 	{
@@ -1118,6 +1119,8 @@ public :
 
 		uint64_t				ser_glob_id_			{0};
 		std::shared_ptr <MTCP_LISTENER>		ser_listen_shr_;
+		uint64_t				ser_tusec_pstart_		{0};
+		uint64_t				ser_nat_conn_hash_		{0};
 		uint32_t				ser_conn_hash_			{0};
 		uint32_t				ser_sock_inode_			{0};
 		char					ser_comm_[TASK_COMM_LEN]	{};
@@ -1125,7 +1128,7 @@ public :
 		uint64_t				close_cli_bytes_sent_		{0};		// Will be non-zero only for closed conns
 		uint64_t				close_cli_bytes_rcvd_		{0};
 
-		uint64_t				tusec_start_			{0};
+		uint64_t				tusec_mstart_			{0};
 
 		MTCP_CONN() 						= default;
 	
@@ -1159,7 +1162,7 @@ public :
 
 			pnot->close_cli_bytes_sent_	= close_cli_bytes_sent_;
 			pnot->close_cli_bytes_rcvd_	= close_cli_bytes_rcvd_;
-			pnot->tusec_start_		= tusec_start_;
+			pnot->tusec_mstart_		= tusec_mstart_;
 
 			if (false == is_server_updated()) {
 				pnot->nat_cli_			= cli_nat_cli_;
@@ -1168,7 +1171,9 @@ public :
 				pnot->cli_task_aggr_id_		= cli_task_aggr_id_;
 				pnot->cli_related_listen_id_	= cli_related_listen_id_;
 				pnot->ser_glob_id_		= 0;
+				pnot->ser_tusec_pstart_		= 0;
 				pnot->ser_related_listen_id_	= 0;
+				pnot->ser_nat_conn_hash_	= 0;
 				pnot->ser_conn_hash_		= 0;
 				pnot->ser_sock_inode_		= 0;
 
@@ -1191,6 +1196,8 @@ public :
 				pnot->cli_related_listen_id_	= 0;
 
 				pnot->ser_glob_id_		= ser_glob_id_;
+				pnot->ser_tusec_pstart_		= ser_tusec_pstart_;
+				pnot->ser_nat_conn_hash_	= ser_nat_conn_hash_;
 				pnot->ser_conn_hash_		= ser_conn_hash_;
 				pnot->ser_sock_inode_		= ser_sock_inode_;
 
@@ -1281,14 +1288,18 @@ public :
 		std::optional<MWEAK_AGGR_TASK_TABLE>		cli_aggr_task_tbl_;
 		std::optional<WeakRemoteMadhavaTbl>		remote_madhava_tbl_;		
 
-		MRELATED_LISTENER_HASH_TABLE			depending_related_tbl_		{8, 8, 1024, true, false};	// Valid both for local and remote MTCP_LISTENER  
+		MRELATED_LISTENER_HASH_TABLE			depending_related_tbl_			{8, 8, 1024, true, false};	// Valid both for local and remote MTCP_LISTENER  
 		
-		uint8_t						comm_len_			{0};
-		uint8_t						cmdline_len_			{0};
-		uint8_t						domain_string_len_		{0};
-		bool						is_remote_madhava_		{false};
-		bool						is_any_ip_			{false};
-		bool						is_load_balanced_		{false};	// Possible Load Balanced as per Dependent Listener
+		gy_atomic<uint8_t>				api_cap_started_			{0};		// 0 => false, 1 => started but proto indeterminate 2 => actual start
+		gy_atomic<bool>					api_is_ssl_				{false};
+		gy_atomic<PROTO_TYPES>				api_proto_				{PROTO_UNINIT};
+		
+		uint8_t						comm_len_				{0};
+		uint8_t						cmdline_len_				{0};
+		uint8_t						domain_string_len_			{0};
+		bool						is_remote_madhava_			{false};
+		bool						is_any_ip_				{false};
+		bool						is_load_balanced_			{false};	// Possible Load Balanced as per Dependent Listener
 
 		MTCP_LISTENER()
 		{

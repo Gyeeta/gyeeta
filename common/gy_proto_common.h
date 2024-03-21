@@ -89,59 +89,53 @@ struct PARSE_FIELD_LEN
 
 struct API_TRAN
 {
-	uint64_t				treq_usec_	{0};		/* Time of Request Start */	
-	uint64_t				tres_usec_	{0};		/* Time of Response Start */	
-	uint64_t				tupd_usec_	{0};		/* last in/out data timestamp for processing */
+	uint64_t				treq_usec_		{0};		/* Time of Request Start */	
+	uint64_t				tres_usec_		{0};		/* Time of Response Start */	
+	uint64_t				tupd_usec_		{0};		/* last in/out data timestamp for processing */
 
-	uint64_t				reqlen_		{0};		/* Total Bytes In for Request */
-	uint64_t				reslen_		{0};		/* Total Bytes Out for Request */
-	uint64_t				reqnum_		{0};		/* Session Request Counter from 1 onwards */
-	uint64_t				response_usec_	{0};		/* Response Time in usec */
-	uint64_t				reaction_usec_	{0};		/* Reaction Time in usec */
-	uint64_t				tconnect_usec_	{0};		/* Session Connect Time */
+	uint64_t				reqlen_			{0};		/* Total Bytes In for Request */
+	uint64_t				reslen_			{0};		/* Total Bytes Out for Request */
+	uint64_t				reqnum_			{0};		/* Session Request Counter from 1 onwards */
+	uint64_t				response_usec_		{0};		/* Response Time in usec */
+	uint64_t				reaction_usec_		{0};		/* Reaction Time in usec */
+	uint64_t				tconnect_usec_		{0};		/* Session Connect Time */
 
 	GY_IP_ADDR				cliip_;
 	GY_IP_ADDR				serip_;
-	uint64_t				glob_id_	{0};
-	uint64_t				conn_id_	{0};		/* Connection Identifier */
+	uint64_t				glob_id_		{0};
+	uint64_t				conn_id_		{0};		/* Connection Identifier */
 	char					comm_[TASK_COMM_LEN]	{};
 	
-	int					errorcode_	{0};
-	uint32_t				app_sleep_ms_	{0};		/* Delay between a request and preceding response */
-	uint32_t				tran_type_	{0};
+	int					errorcode_		{0};
+	uint32_t				app_sleep_ms_		{0};		/* Delay between a request and preceding response */
+	uint32_t				tran_type_		{0};
 	
-	PROTO_TYPES				proto_		{PROTO_UNINIT};
-	uint16_t				cliport_	{0};
-	uint16_t				serport_	{0};
+	PROTO_TYPES				proto_			{PROTO_UNINIT};
+	uint16_t				cliport_		{0};
+	uint16_t				serport_		{0};
 
 	// Succeeding Payload info
-	uint16_t				request_len_	{0};		/* Request Length (includes '\0' byte) : Directly follows after this struct */
+	uint16_t				request_len_		{0};		/* Request Length (includes '\0' byte) : Directly follows after this struct */
 
 	// Length of extra data following the Reqstring : 1 byte (next_fields_) + next_fields_ * sizeof(PARSE_FIELD_LENs) + data 
-	uint16_t				lenext_		{0};		
+	uint16_t				lenext_			{0};		
 
-	uint8_t					padlen_		{0};		/* Pad to 8 bytes */
+	uint8_t					padlen_			{0};		/* Pad to 8 bytes */
 
 	/*char					request_[request_len_] follows;*/
 	/*uint8_t				ext_[lenext_] follows;*/
 	/*char					padding_[padding_len_]; follows to make the entire 8 byte aligned */
 
-	static constexpr size_t			MAX_NUM_REQS 	{256};		// Send in batches
-	static constexpr size_t			MAX_SEND_SZ 	{GY_UP_MB(1)};	// Approx Max sz to send to Madhava per call
+	static constexpr size_t			MAX_NUM_REQS 		{256};		// Send in batches
+	static constexpr size_t			MAX_SEND_SZ 		{512 * 1024};	// Approx Max sz to send to Madhava per call
 
 	API_TRAN() noexcept			= default;
 
 	API_TRAN(uint64_t tlastpkt_usec, uint64_t tconnect_usec, const IP_PORT & cli_ipport, const IP_PORT & ser_ipport, uint64_t glob_id, PROTO_TYPES proto, const char *comm) noexcept
 		: treq_usec_(tlastpkt_usec), tupd_usec_(treq_usec_), tconnect_usec_(tconnect_usec),
-		cliip_(cli_ipport.ipaddr_), serip_(ser_ipport.ipaddr_), glob_id_(glob_id), proto_(proto), cliport_(cli_ipport.port_), serport_(ser_ipport.port_)
+		cliip_(cli_ipport.ipaddr_), serip_(ser_ipport.ipaddr_), glob_id_(glob_id), conn_id_(get_connid_hash(cli_ipport, ser_ipport, glob_id)),
+		proto_(proto), cliport_(cli_ipport.port_), serport_(ser_ipport.port_)
 	{
-		BIN_BUFFER<2 * sizeof(GY_IP_ADDR) + 2 * sizeof(uint16_t) + sizeof(uint64_t)>	hbuf;
-
-		// Down-align the connect time to 60 sec
-		hbuf << cli_ipport.ipaddr_ << ser_ipport.ipaddr_ << cli_ipport.port_ << ser_ipport.port_ << (uint64_t)gy_align_down(tconnect_usec/GY_USEC_PER_SEC, 60);
-
-		conn_id_ = gy_cityhash64((const char *)hbuf.buffer(), hbuf.size());
-
 		if (comm) {
 			GY_STRNCPY(comm_, comm, sizeof(comm_));
 		}	
@@ -176,15 +170,30 @@ struct API_TRAN
 		return padlen_;
 	}	
 
+	// Currently we skip connect time in hash as the timestamp of packet will differ from the timestamp reported by ebpf
+	static uint64_t get_connid_hash(const IP_PORT & cli_ipport, const IP_PORT & ser_ipport, uint64_t glob_id) noexcept
+	{
+		BIN_BUFFER<2 * sizeof(GY_IP_ADDR) + 2 * sizeof(uint16_t) + sizeof(uint64_t)>	hbuf;
+
+		hbuf << cli_ipport.ipaddr_ << ser_ipport.ipaddr_ << cli_ipport.port_ << ser_ipport.port_ << glob_id;
+
+		return gy_cityhash64((const char *)hbuf.buffer(), hbuf.size());
+	}
+
 	static inline uint32_t get_max_elem_size(uint32_t api_max_len) noexcept
 	{
 		return sizeof(API_TRAN) + api_max_len + MAX_PARSE_EXT_LEN + 32;
 	}	
 
+	static constexpr size_t get_max_actual_send_size() noexcept
+	{
+		// 1 struct over MAX_SEND_SZ along with comm headers
+		return MAX_SEND_SZ + MAX_PARSE_API_LEN + MAX_PARSE_EXT_LEN + sizeof(API_TRAN) + 512;
+	}	
+
+	/* Reset request specific fields : Will not change session related fields */
 	void reset() noexcept
 	{
-		/* Reset specific fields only */
-
 		tres_usec_			= 0;
 		tupd_usec_			= 0;
 		reqlen_				= 0;
@@ -384,7 +393,7 @@ struct PARSE_EXT_FIELDS
 };	
 
 // Returns the Request string view and populates the PARSE_EXT_FIELDS
-static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_EXT_FIELDS & fields) noexcept
+static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_EXT_FIELDS & extfields) noexcept
 {
 	const char			*preq = (const char *)(ptran + 1);
 
@@ -392,7 +401,7 @@ static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_EXT_FIELDS & f
 		return {};
 	}
 
-	fields.get_fields((uint8_t *)ptran + sizeof(*ptran) + ptran->request_len_, ptran->lenext_);
+	extfields.get_fields((uint8_t *)ptran + sizeof(*ptran) + ptran->request_len_, ptran->lenext_);
 
 	return {preq, (size_t)ptran->request_len_ - 1};
 }	
