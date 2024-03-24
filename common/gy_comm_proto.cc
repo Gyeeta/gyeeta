@@ -681,7 +681,7 @@ bool TASK_TOP_PROCS::validate(const COMM_HEADER *phdr) noexcept
 		return false;
 	}
 
-	return (phdr->get_act_len() == fixed_sz + nprocs_ * sizeof(TOP_TASK) + npg_procs_ * sizeof(TOP_PG_TASK) + nrss_procs_ * sizeof(TOP_TASK) + nfork_procs_ * sizeof(TOP_FORK_TASK));
+	return (phdr->get_act_len() == fixed_sz - sizeof(*this) + get_elem_size());
 }	
 
 bool NEW_LISTENER::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) const noexcept
@@ -775,6 +775,24 @@ bool LISTENER_INFO_REQ::validate(const COMM_HEADER *phdr) const noexcept
 	return (i == nelems);
 }	
 
+uint32_t LISTENER_INFO_REQ::get_elem_size() const noexcept
+{
+	const uint32_t			nelems = ntcp_listeners_;
+	NEW_LISTENER			*pone = (NEW_LISTENER *)(this + 1);
+	ssize_t				elem_sz;
+	uint32_t			i, totallen = sizeof(*this);
+
+	for (i = 0; i < nelems; ++i) {
+		elem_sz = pone->get_elem_size();
+
+		totallen += elem_sz;
+
+		pone = (NEW_LISTENER *)((uint8_t *)pone + elem_sz);
+	}
+	
+	return totallen;
+}	
+
 bool LISTENER_DAY_STATS::validate(LISTENER_DAY_STATS *pone, uint32_t nelems, ssize_t totallen) noexcept
 {
 	return ((unsigned)nelems <= MAX_NUM_LISTENERS && (size_t)totallen >= nelems * sizeof(LISTENER_DAY_STATS));
@@ -812,6 +830,11 @@ bool LISTENERS_INFO_STATS_RESP::validate(const COMM_HEADER *phdr, const QUERY_RE
 	return LISTENER_DAY_STATS::validate(pone, nelems, resplen);
 }	
 
+
+uint32_t LISTENERS_INFO_STATS_RESP::get_elem_size() const noexcept
+{
+	return sizeof(*this) + ntcp_listeners_ * sizeof(LISTENER_DAY_STATS);
+}
 
 bool TCP_CONN_NOTIFY::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 {

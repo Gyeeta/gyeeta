@@ -298,6 +298,7 @@ public :
 	std::optional<MPSC_EPOLL_QUEUE>	wr_pipeline_;				// Bounded MPSC Queue of data to be sent. Scheduling allowed by multiple threads. send() only 1 thread
 	uint32_t			max_sched_elems_		{4096};	// Max Distinct Messages allowed to be scheduled at one go (not bytes)
 	std::atomic<bool>		is_conn_closed_			{false};
+	bool				no_grace_close_			{false};
 
 	static constexpr uint32_t	MAX_PIPELINE_SCHED		{32 * 1024};
 
@@ -429,7 +430,12 @@ public :
 
 			ret = epoll_ctl(epollfd_, EPOLL_CTL_DEL, sockfd_, nullptr);
 			
-			gy_close_socket(sockfd_);
+			if (no_grace_close_ == false) {
+				gy_close_socket(sockfd_);
+			}
+			else {
+				::close(sockfd_);
+			}	
 
 			sockfd_ = -1;
 		}
@@ -450,6 +456,11 @@ public :
 	void * get_epoll_data() const noexcept
 	{
 		return epoll_data_;
+	}	
+
+	void set_no_grace_close() noexcept
+	{
+		no_grace_close_ = true; 
 	}	
 
 	void set_wr_pipeline() 

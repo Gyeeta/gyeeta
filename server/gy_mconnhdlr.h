@@ -459,10 +459,14 @@ public :
 
 		L1_SEND_DATA() noexcept					= default;
 
-		L1_SEND_DATA(const L1_PARAMS *pl1_src, std::weak_ptr<MCONNTRACK> && weakconn, MCONNTRACK *pconn, comm::COMM_HEADER::HDR_MAGIC_E comm_magic, comm::COMM_TYPE_E output_data_type, bool close_conn_on_send = false, uint64_t resp_usec = 0) noexcept
+		L1_SEND_DATA(const L1_PARAMS *pl1_src, std::weak_ptr<MCONNTRACK> && weakconn, MCONNTRACK *pconn, comm::COMM_HEADER::HDR_MAGIC_E comm_magic, comm::COMM_TYPE_E output_data_type, bool close_conn_on_send = false, uint64_t resp_usec = 0, bool no_grace_close = false) noexcept
 			: pl1_src_(pl1_src), weakconn_(std::move(weakconn)), pconn_(pconn), resp_usec_(resp_usec), 
 			output_data_type_(output_data_type), comm_magic_(comm_magic), close_conn_on_send_(close_conn_on_send)
-		{}
+		{
+			if (no_grace_close && pconn) {
+				pconn->set_no_grace_close();
+			}	
+		}
 	
 		L1_SEND_DATA(ASYNC_SOCK_CB && async_cb, const L1_PARAMS *pl1_src, std::weak_ptr<MCONNTRACK> && weakconn, MCONNTRACK *pconn, comm::COMM_HEADER::HDR_MAGIC_E comm_magic) noexcept
 			: pl1_src_(pl1_src), weakconn_(std::move(weakconn)), pconn_(pconn), async_cb_(std::move(async_cb)), output_data_type_(comm::COMM_QUERY_CMD), comm_magic_(comm_magic)
@@ -820,11 +824,12 @@ public :
 		uint64_t			cli_madhavaid_			{0};
 		char				ser_comm_[TASK_COMM_LEN];
 		char				cli_comm_[TASK_COMM_LEN];
+		bool				cli_listener_proc_		{false};
 
 		PARTHA_TRACE_CONN(time_t tconn, uint64_t glob_id, uint64_t ser_connid, uint64_t cli_aggr_task_id, const GY_MACHINE_ID & cli_partha_machine_id, \
-					uint64_t cli_madhavaid, const char *ser_comm, const char *cli_comm) noexcept
+					uint64_t cli_madhavaid, const char *ser_comm, const char *cli_comm, bool cli_listener_proc) noexcept
 				: tconn_(tconn), glob_id_(glob_id), ser_connid_(ser_connid), cli_aggr_task_id_(cli_aggr_task_id), 
-				cli_partha_machine_id_(cli_partha_machine_id), cli_madhavaid_(cli_madhavaid)
+				cli_partha_machine_id_(cli_partha_machine_id), cli_madhavaid_(cli_madhavaid), cli_listener_proc_(cli_listener_proc)
 		{
 			GY_STRNCPY(ser_comm_, ser_comm, sizeof(ser_comm_));
 			GY_STRNCPY(cli_comm_, cli_comm, sizeof(cli_comm_));
@@ -1870,7 +1875,7 @@ public :
 	std::pair<int, int> insert_active_conns(PARTHA_INFO *prawpartha, time_t tcur, const comm::ACTIVE_CONN_STATS * pconn, int nconn, uint8_t *pendptr, PGConnPool & dbpool); 
 	std::pair<int, int> insert_close_conn_records(PARTHA_INFO *prawpartha, time_t currtsec, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 
-	uint32_t handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, \
+	uint32_t handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, \
 			STR_WR_BUF & strbuf, STATS_STR_MAP & statsmap);
 
 	bool	handle_node_query(const std::shared_ptr<MCONNTRACK> & connshr, const comm::QUERY_CMD *pquery, char *pjson, char *pendptr, \

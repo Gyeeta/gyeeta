@@ -5337,7 +5337,7 @@ int MCONN_HANDLER::handle_l2_trace_req(L2_PARAMS & param, PGConnPool & dbpool)
 {
 	try {
 		MPMCQ_COMM			* const pl2pool = param.pmpmc_;
-		const uint32_t			l2_thr_num = param.thr_num_  % MAX_L2_TRACE_POOLS;
+		const uint32_t			l2_thr_num = param.thr_num_  % MAX_L2_TRACE_THREADS;
 		const pid_t			tid = gy_gettid();
 		bool				bret;
 		uint64_t			curr_usec_clock = get_usec_clock(), last_usec_clock = curr_usec_clock, last_dbreset_cusec = curr_usec_clock;
@@ -5384,10 +5384,12 @@ int MCONN_HANDLER::handle_l2_trace_req(L2_PARAMS & param, PGConnPool & dbpool)
 			}
 
 			if (shrp) {
-				shrp->trace_req_sock_.reset();
+				if (shrp->trace_req_sock_.getfd() == cfd) {
+					shrp->trace_req_sock_.reset();
 
-				shrp->ptrace_buf_.reset(nullptr);
-				shrp->trace_buf_len_ = 0;
+					shrp->ptrace_buf_.reset(nullptr);
+					shrp->trace_buf_len_ = 0;
+				}
 			}	
 
 			if (!is_map_del && cfd > 0) {
@@ -5686,11 +5688,334 @@ isagain :
 	);
 }
 
-uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, const comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, 
-							STR_WR_BUF & strbuf, STATS_STR_MAP & statsmap)
+uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, 
+							STR_WR_BUF & qbuf, STATS_STR_MAP & statsmap)
 {
+	PARTHA_INFO			*prawpartha = partha_shr.get();
 
+	if (!prawpartha) {
+		return 0;
+	}	
+
+	assert(gy_get_thread_local().get_thread_stack_freespace() > 200 * 1024);
+
+	auto				schemabuf = prawpartha->get_db_schema();
+	auto				*pone = ptran;
+	const uint64_t			curnsect = get_nsec_time();
+	const time_t			tcurr = curnsect/GY_NSEC_PER_SEC, tday = get_day_start(tcurr), ttomm = get_ndays_start(tcurr, 1), tyest = get_ndays_start(tcurr, -1);
+	const uint64_t			tdayus = tday * GY_USEC_PER_SEC, ttommus = ttomm * GY_USEC_PER_SEC, tyestus = tyest * GY_USEC_PER_SEC;
+	int				ntracereq = 0, ntraceconn = 0;
+	bool				bret, conndone = false;
 	
+	auto writeconn = [&](std::vector<PARTHA_TRACE_CONN> & vec)
+	{
+		auto writeconnday = [&](PARTHA_TRACE_CONN *parr[], int narr, const char *pschema, const char *pdatetbl) -> int
+		{
+			int				ret = 0;
+
+			if (qbuf.bytes_left() < 1024) {
+				return 0;
+			}	
+
+			qbuf.appendfmt("insert into %s.traceconntbl%s values ", pschema, pdatetbl);
+
+			for (int i = 0; i < narr; ++i, ++ret) {
+				PARTHA_TRACE_CONN		*pdata = parr[i];
+
+				if (qbuf.bytes_left() < sizeof(*pdata) * 2.5) {
+					break;
+				}	
+
+				qbuf.appendfmt("(to_timestamp(%ld),\'%016lx\',\'%s\',\'%016lx\',\'%016lx\',\'%s\',\'%016lx%016lx\',\'%016lx\',\'%c\'),", 
+					pdata->tconn_, pdata->glob_id_, pdata->ser_comm_, pdata->ser_connid_, pdata->cli_aggr_task_id_, pdata->cli_comm_, 
+					pdata->cli_partha_machine_id_.get_first(), pdata->cli_partha_machine_id_.get_second(), pdata->cli_madhavaid_, 
+					pgintbool[pdata->cli_listener_proc_ & 0x1]);
+			}	
+
+			qbuf.set_last_char(';');
+			
+			return ret;
+
+
+		};	
+
+		PARTHA_TRACE_CONN		*parr[MAX_TRACE_CONN_VEC];
+		int				narr = 0, nyest = 0, ntom = 0, nelems = std::min<int>(vec.size(), MAX_TRACE_CONN_VEC);
+
+		for (int i = 0; i < nelems; ++i) {
+			if (vec[i].tconn_ < tday) {
+				nyest++;
+			}
+			else if (vec[i].tconn_ < ttomm) {
+				parr[narr++] = std::addressof(vec[i]);
+			}	
+			else {
+				ntom++;
+			}	
+		}
+
+		if (narr > 0) {
+			const auto			datetbl = get_db_day_partition(tday);
+
+			ntraceconn += writeconnday(parr, narr, schemabuf.get(), datetbl.get());
+		}	
+
+		if (nyest > 0) {
+			narr = 0;
+
+			for (int i = 0; i < nelems; ++i) {
+				if (vec[i].tconn_ < tday && vec[i].tconn_ >= tyest) {
+					parr[narr++] = std::addressof(vec[i]);
+				}
+			}
+
+			if (narr > 0) {
+				const auto			datetbl = get_db_day_partition(tyest);
+
+				ntraceconn += writeconnday(parr, narr, schemabuf.get(), datetbl.get());
+			}	
+		}
+
+		if (ntom > 0) {
+			narr = 0;
+
+			for (int i = 0; i < nelems; ++i) {
+				if (vec[i].tconn_ >= ttomm) {
+					parr[narr++] = std::addressof(vec[i]);
+				}
+			}
+
+			if (narr > 0) {
+				const auto			datetbl = get_db_day_partition(ttomm);
+
+				ntraceconn += writeconnday(parr, narr, schemabuf.get(), datetbl.get());
+			}	
+		}
+	};	
+
+	if (nitems > 0) {
+		REQ_TRACE_TRAN			*pyest[REQ_TRACE_TRAN::MAX_NUM_REQS], *ptoday[REQ_TRACE_TRAN::MAX_NUM_REQS], *ptomm[REQ_TRACE_TRAN::MAX_NUM_REQS];
+		int				nyest = 0, ntoday = 0, ntomm = 0;
+
+		for (int i = 0; i < nitems; ++i) {
+			ssize_t 		elem_sz = pone->get_elem_size();
+
+			if (pone->treq_usec_ < tdayus) {
+				pyest[nyest++] = pone;
+			}
+			else if (pone->treq_usec_ < ttommus) {
+				ptoday[ntoday++] = pone;
+			}	
+			else {
+				ptomm[ntomm++] = pone;
+			}	
+
+			pone = (REQ_TRACE_TRAN *)((uint8_t *)pone + elem_sz);
+		}
+
+		auto writetracereq = [&](REQ_TRACE_TRAN *parr[], int narr, const char *pschema, const char *pdatetbl) -> int
+		{
+			int				ret = 0;
+
+			if (qbuf.bytes_left() < 1024) {
+				return 0;
+			}	
+
+			qbuf.appendfmt("insert into %s.tracereqtbl%s values ", pschema, pdatetbl);
+
+			for (int i = 0; i < narr; ++i, ++ret) {
+				REQ_TRACE_TRAN			*pdata = parr[i];
+				PARSE_EXT_FIELDS		fields;
+				auto				sv = get_api_tran(pdata, fields);
+
+				if (qbuf.bytes_left() < pdata->get_elem_size() + 128) {
+					break;
+				}	
+
+				qbuf.appendfmt("(to_timestamp(%ld.%06lu),$GYe%lu$%s$GYe%lu$,%lu,%lu,%lu,%d,$GYe$%s$GYe$,%d,$GYe$%s$GYe$,$GYe$%s$GYe$,$GYe$%s$GYe$,"
+							"\'%016lx\',\'%s\',\'%016lx\',\'%s\',\'%016lx\',%ld,to_timestamp(%ld),\'%s\',%hu,%d,%ld,%ld),",
+							pdata->treq_usec_ / GY_USEC_PER_SEC, pdata->treq_usec_ % GY_USEC_PER_SEC, curnsect, sv.data(), curnsect,
+							pdata->response_usec_, pdata->reqlen_, pdata->reslen_, pdata->errorcode_, fields.errtxt_.data(), fields.statuscode_,
+							fields.appname_.data(), fields.username_.data(), fields.dbname_.data(), pdata->glob_id_, pdata->comm_,
+							pdata->get_connid_hash(IP_PORT(pdata->cliip_, pdata->cliport_), IP_PORT(pdata->serip_, pdata->serport_), pdata->glob_id_),
+							proto_to_string(pdata->proto_), 0L /* TODO Uniqid not currently computed */, pdata->reqnum_, 
+							pdata->tconnect_usec_ / GY_USEC_PER_SEC, pdata->cliip_.printaddr().get(), pdata->cliport_, fields.sessid_,
+							fields.dyn_prep_reqnum_, fields.dyn_prep_time_t_);
+
+			}	
+
+			qbuf.set_last_char(';');
+			
+			return ret;
+		};	
+
+		auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 10'000 /* max_msec_wait */, false /* reset_on_timeout */);
+		
+		if (!pconn) {
+			db_stats_.nconns_failed_.fetch_add_relaxed(1);
+			db_stats_.ntracereq_failed_.fetch_add_relaxed(1);
+			
+			DEBUGEXECN(5,
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get DB Conn for Partha %s Trace Request inserts\n", prawpartha->hostname_);
+			);
+			return 0;
+		}	
+
+		if (nyest > 0) {
+			const auto			datetbl = get_db_day_partition(tyest);
+
+			ntracereq += writetracereq(pyest, nyest, schemabuf.get(), datetbl.get());
+		}	
+
+		if (ntoday > 0) {
+			const auto			datetbl = get_db_day_partition(tday);
+
+			ntracereq += writetracereq(ptoday, ntoday, schemabuf.get(), datetbl.get());
+		}	
+
+		if (ntomm > 0) {
+			const auto			datetbl = get_db_day_partition(ttomm);
+
+			ntracereq += writetracereq(ptomm, ntomm, schemabuf.get(), datetbl.get());
+		}	
+
+		if (qbuf.bytes_left() > 200 * 1024 && prawpartha->tlast_trace_conn_.load(mo_acquire) + 200 > tcurr) {
+			SCOPE_GY_MUTEX			slock(prawpartha->trace_conn_mutex_);
+
+			if (prawpartha->trace_conn_vec_.size() > 0) {
+				if (prawpartha->trace_conn_vec_.size() * 2.5 > qbuf.bytes_left()) {
+					goto d1;
+				}	
+			}
+			else {
+				goto d1;
+			}	
+
+			/*
+			 * Add Trace conn queries also...
+			 */
+			std::vector<PARTHA_TRACE_CONN>	vec = std::move(prawpartha->trace_conn_vec_);
+			
+			prawpartha->tlast_trace_conn_.store(0, mo_relaxed);
+
+			slock.unlock();
+
+			qbuf << "\n\n"sv;
+
+			writeconn(vec);
+
+			conndone = true;
+		}
+
+d1 :
+		bret = PQsendQueryOptim(pconn->get(), qbuf.buffer(), qbuf.size());
+		
+		if (bret == false) {
+			db_stats_.ntracereq_failed_.fetch_add_relaxed(1);
+
+			DEBUGEXECN(5,
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to schedule DB query to add Partha %s Trace Requests due to %s\n", 
+						prawpartha->hostname_, PQerrorMessage(pconn->get()));
+			);
+
+			goto done1;
+		}	
+
+		pconn->set_resp_cb(
+			[this](GyPGConn & conn, GyPGresult gyres, bool is_completed) -> bool
+			{
+				if (is_completed) {
+					if (conn.is_within_tran()) {
+						conn.pqexec_blocking("Rollback Work;");
+					}						
+					conn.make_available();
+					return true;
+				}	
+				
+				if (true == gyres.is_error()) {
+					db_stats_.ntracereq_failed_.fetch_add_relaxed(1);
+
+					DEBUGEXECN(5,
+						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to insert Partha Trace Requests into DB due to %s\n", gyres.get_error_msg());
+					);
+
+					return false;
+				}	
+
+				return true;
+			}
+		);
+	}
+	
+	if (!conndone) {
+		qbuf.reset();
+
+		SCOPE_GY_MUTEX			slock(prawpartha->trace_conn_mutex_);
+
+		std::vector<PARTHA_TRACE_CONN>	vec = std::move(prawpartha->trace_conn_vec_);
+		
+		prawpartha->tlast_trace_conn_.store(0, mo_relaxed);
+		slock.unlock();
+
+		writeconn(vec);
+
+		auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 10'000 /* max_msec_wait */, false /* reset_on_timeout */);
+		
+		if (!pconn) {
+			db_stats_.nconns_failed_.fetch_add_relaxed(1);
+			db_stats_.ntraceconn_failed_.fetch_add_relaxed(1);
+			
+			DEBUGEXECN(5,
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get DB Conn for Partha %s Trace Connection inserts\n", prawpartha->hostname_);
+			);
+			return 0;
+		}	
+
+		bret = PQsendQueryOptim(pconn->get(), qbuf.buffer(), qbuf.size());
+		
+		if (bret == false) {
+			db_stats_.ntraceconn_failed_.fetch_add_relaxed(1);
+
+			DEBUGEXECN(5,
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to schedule DB query to add Partha %s Trace Conn Requests due to %s\n", 
+						prawpartha->hostname_, PQerrorMessage(pconn->get()));
+			);
+
+			goto done1;
+		}	
+
+		pconn->set_resp_cb(
+			[this](GyPGConn & conn, GyPGresult gyres, bool is_completed) -> bool
+			{
+				if (is_completed) {
+					if (conn.is_within_tran()) {
+						conn.pqexec_blocking("Rollback Work;");
+					}						
+					conn.make_available();
+					return true;
+				}	
+				
+				if (true == gyres.is_error()) {
+					db_stats_.ntraceconn_failed_.fetch_add_relaxed(1);
+
+					DEBUGEXECN(5,
+						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to insert Partha Trace Conn Requests into DB due to %s\n", gyres.get_error_msg());
+					);
+
+					return false;
+				}	
+
+				return true;
+			}
+		);
+	}	
+
+done1 :
+	
+	DEBUGEXECN(5, INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Inserted %d Trace Requests and %d Trace Connections from Partha Host %s\n", 
+			ntracereq, ntraceconn, prawpartha->hostname_);
+	);
+
 	return 0;
 }	
 
@@ -6416,6 +6741,16 @@ bool MCONN_HANDLER::handle_partha_active_conns(const std::shared_ptr<PARTHA_INFO
 	}
 
 	prawpartha->tlast_active_insert_ = tcur;
+
+	// Clear Trace Conns vector if no requests seen lately
+	if (auto tt = prawpartha->tlast_trace_conn_.load(mo_acquire); tt > 0 && tt + 200 < time(nullptr)) {
+		SCOPE_GY_MUTEX			slock(prawpartha->trace_conn_mutex_);
+
+		prawpartha->trace_conn_vec_.clear();
+		prawpartha->trace_conn_vec_.shrink_to_fit();
+
+		prawpartha->tlast_trace_conn_.store(0, mo_relaxed);
+	}	
 
 	DEBUGEXECN(12,
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "%s : Received Active Conn Stats for %d Listeners and %d Client Records : Updated %d Close Listener and %d Close Client connections to DB\n",
@@ -7459,8 +7794,11 @@ std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::sh
 			time_t				tc = ser_tusec_pstart/GY_USEC_PER_SEC;
 
 			if (ser_parthashr->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+				ser_parthashr->trace_conn_vec_.reserve(16);
+
 				ser_parthashr->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
-						ser_nat_conn_hash, pone->cli_task_aggr_id_, prawpartha->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_);
+						ser_nat_conn_hash, pone->cli_task_aggr_id_, prawpartha->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_,
+						!!pone->cli_related_listen_id_);
 
 				ser_parthashr->tlast_trace_conn_.store(tc, mo_relaxed);
 				traceadd = true;
@@ -7655,9 +7993,11 @@ std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::sh
 			time_t				tc = pone->tusec_start_/GY_USEC_PER_SEC;
 
 			if (prawpartha->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+				prawpartha->trace_conn_vec_.reserve(16);
+
 				prawpartha->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
 						API_TRAN::get_connid_hash(pone->nat_cli_, pone->nat_ser_, plistener->glob_id_), cli_task_aggr_id, pone->cli_ser_machine_id_,
-						pone->cli_madhava_id_, plistener->comm_, cli_comm);
+						pone->cli_madhava_id_, plistener->comm_, cli_comm, !!pone->cli_related_listen_id_);
 
 				prawpartha->tlast_trace_conn_.store(tc, mo_relaxed);
 				traceadd = true;
@@ -8402,8 +8742,10 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 				time_t				tc = ser_tusec_pstart/GY_USEC_PER_SEC;
 
 				if (ser_parthashr->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+					ser_parthashr->trace_conn_vec_.reserve(16);
+
 					ser_parthashr->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
-							ser_nat_conn_hash, cli_task_aggr_id, pclihost->machine_id_, gmadhava_id_, plistener->comm_, cli_comm);
+							ser_nat_conn_hash, cli_task_aggr_id, pclihost->machine_id_, gmadhava_id_, plistener->comm_, cli_comm, !!cli_related_listen_id);
 
 					ser_parthashr->tlast_trace_conn_.store(tc, mo_relaxed);
 					ntraceconns++;
@@ -9213,8 +9555,11 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 			time_t				tc = pone->tusec_pstart_/GY_USEC_PER_SEC;
 
 			if (pserhost->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+				pserhost->trace_conn_vec_.reserve(16);
+
 				pserhost->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
-						pone->ser_nat_conn_hash_, pone->cli_task_aggr_id_, pserhost->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_);
+						pone->ser_nat_conn_hash_, pone->cli_task_aggr_id_, pserhost->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_,
+						!!pone->cli_related_listen_id_);
 
 				pserhost->tlast_trace_conn_.store(tc, mo_relaxed);
 				ntraceconns++;
@@ -13999,8 +14344,13 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 
 	pconn1->schedule_ext_send(EPOLL_IOVEC_ARR(iov, GY_ARRAY_SIZE(iov), free_fp_arr, false));
 	
+	/*
+	 * For Trace connections, special handling needed :
+	 * We use a duplicate socket for further communication and send the reg resp and close this conn
+	 * to clear up the L1 data. Set no_grace_close as we need just a close and no shutdown syscall...
+	 */
 	L1_SEND_DATA			l1data(dbarr.pl1_src_, dbarr.shrconn_, dbarr.shrconn_.get(), dbarr.comm_magic_, PM_CONNECT_RESP, 
-							is_req_trace /* close_conn_on_send : send close for trace conns as dup already done */);
+							is_req_trace, 0ul, is_req_trace /* no_grace_close */);
 	int				ntries = 0;
 
 	do { 
@@ -14019,7 +14369,7 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 	(void)::write(dbarr.pl1_src_->signal_fd_, &n, sizeof(int64_t));
 	
 	if (is_req_trace && tracefd > 0) {
-		int				ret;
+		int				ret, oldfd;
 		uint32_t			tnum = (machid.get_second() % MAX_L2_TRACE_THREADS);
 		SCOPE_GY_MUTEX			scope(trace_mutex_arr_[tnum]);
 		
@@ -14034,6 +14384,19 @@ int MCONN_HANDLER::handle_misc_partha_reg(PM_CONNECT_CMD_S *preg, const DB_WRITE
 			if (!success) {
 				it->second 	= pstatshr.get_cref();
 			}	
+
+			oldfd = pinfo->trace_req_sock_.getfd();
+
+			if (oldfd > 0) {
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_LIGHT_RED, "New Trace Socket of Partha host %s seen while previous already valid. Closing earlier one...\n",
+						preg->hostname_);
+
+				trace_map_arr_[tnum].erase(oldfd);
+
+				shutdown(oldfd, SHUT_RDWR);
+
+				pinfo->trace_req_sock_.reset();
+			}
 
 			pinfo->trace_req_sock_.set_fd(tracefd);
 

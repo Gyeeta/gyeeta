@@ -892,7 +892,6 @@ begin
 
 	execute format('alter table if exists %s.traceuniqtbl alter column glob_id SET STORAGE plain', schname);
 	execute format('alter table if exists %s.traceuniqtbl alter column comm SET STORAGE plain', schname);
-	execute format('alter table if exists %s.traceuniqtbl alter column connid SET STORAGE plain', schname);
 	execute format('alter table if exists %s.traceuniqtbl alter column proto SET STORAGE plain', schname);
 	execute format('alter table if exists %s.traceuniqtbl alter column uniqid SET STORAGE plain', schname);
 	

@@ -264,17 +264,17 @@ static size_t copy_tran_data(uint8_t *pdest, uint32_t maxsz, API_TRAN & tran, co
 
 struct PARSE_EXT_FIELDS
 {
-	std::string_view		appname_;
-	std::string_view		username_;
-	std::string_view		dbname_;
-	std::string_view		errtxt_;
+	std::string_view		appname_		{"", 0};
+	std::string_view		username_		{"", 0};
+	std::string_view		dbname_			{"", 0};
+	std::string_view		errtxt_			{"", 0};
 	uint16_t			errclass_		{0};
 	uint32_t			sessid_			{0};
 	uint64_t			dyn_prep_reqnum_	{0};
 	time_t				dyn_prep_time_t_	{0};
 	uint32_t			hostpid_		{0};
 	uint32_t			nrows_			{0};
-	std::string_view		cursorname_;
+	std::string_view		cursorname_		{"", 0};
 	int				statuscode_		{0};
 
 	PARSE_EXT_FIELDS() noexcept	= default;

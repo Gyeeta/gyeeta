@@ -18,7 +18,7 @@ static constexpr const char	*db_glob_partition_tbls[] = {
 static constexpr const char	*db_partha_partition_tbls[] = {
 	"hoststatetbl", "listenstatetbl", "cpumemstatetbl", "aggrtaskstatetbl", "topcputbl", "toppgcputbl", 
 	"toprsstbl", "topforktbl", "activeconntbl", "deplistenissuetbl", "tasktbl", "listensummtbl", "listentaskmaptbl", "remoteconntbl",
-	"aggrtaskinfotbl", "listeninfotbl", "tracereqtbl", "traceconntbl", "traceuniqreqtbl",
+	"aggrtaskinfotbl", "listeninfotbl", "tracereqtbl", "traceconntbl", "traceuniqtbl",
 };	
 
 class DBFailStats

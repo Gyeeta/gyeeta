@@ -596,6 +596,11 @@ struct alignas(8) PS_REGISTER_REQ_S
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(*this));
 	}	
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate_fields(uint32_t min_partha_version, uint32_t shyama_version, char (&ebuf)[COMM_MAX_ERROR_LEN], ERR_CODES_E & errcode) noexcept;
 };	
 
@@ -623,6 +628,12 @@ struct alignas(8) PS_REGISTER_RESP_S
 
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(*this));
 	}	
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 };	
 
 struct alignas(8) PM_CONNECT_CMD_S
@@ -654,6 +665,11 @@ struct alignas(8) PM_CONNECT_CMD_S
 	uint64_t			flags_;
 	uint8_t				extra_bytes_[512];				
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(*this));
@@ -682,6 +698,11 @@ struct alignas(8) PM_CONNECT_RESP_S
 	uint64_t			clock_sec_;
 	uint64_t			flags_;
 	uint8_t				extra_bytes_[512];
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) noexcept
 	{
@@ -713,6 +734,11 @@ struct alignas(8) MS_REGISTER_REQ_S
 	uint32_t			max_partha_nodes_;
 	uint32_t 			last_partha_nodes_;
 	uint8_t				extra_bytes_[800];				
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
@@ -747,6 +773,11 @@ struct alignas(8) MS_REGISTER_RESP_S
 	uint64_t			flags_;
 	uint8_t				extra_bytes_[512];
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) noexcept
 	{
 		error_string_[sizeof(error_string_) - 1] = 0;
@@ -777,6 +808,11 @@ struct alignas(8) MM_CONNECT_CMD_S
 	uint32_t 			curr_partha_nodes_;
 	uint8_t				extra_bytes_[512];				
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(*this));
@@ -797,6 +833,11 @@ struct alignas(8) MM_CONNECT_RESP_S
 	uint64_t			clock_sec_;
 	uint64_t			flags_;
 	uint8_t				extra_bytes_[512];
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) noexcept
 	{
@@ -820,6 +861,11 @@ struct alignas(8) NS_REGISTER_REQ_S
 	char				node_hostname_[MAX_DOMAINNAME_SIZE];
 	uint8_t				extra_bytes_[128];
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(*this));
@@ -835,6 +881,11 @@ struct alignas(8) NS_REGISTER_RESP_S
 	char				shyama_id_[32];
 	char				error_string_[COMM_MAX_ERROR_LEN];
 	uint8_t				extra_bytes_[128];
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
@@ -853,6 +904,11 @@ struct alignas(8) NM_CONNECT_CMD_S
 	char				node_hostname_[MAX_DOMAINNAME_SIZE];
 	uint8_t				extra_bytes_[128];
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(*this));
@@ -868,6 +924,11 @@ struct alignas(8) NM_CONNECT_RESP_S
 	char				madhava_id_[32];
 	char				error_string_[COMM_MAX_ERROR_LEN];
 	uint8_t				extra_bytes_[128];
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
@@ -889,6 +950,11 @@ struct alignas(8) SM_PARTHA_IDENT_NOTIFY
 	int				is_new_host_;
 	char				hostname_[MAX_DOMAINNAME_SIZE];
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(SM_PARTHA_IDENT_NOTIFY));
@@ -899,6 +965,11 @@ struct alignas(8) SM_PARTHA_IDENT_NOTIFY
 struct alignas(8) PARTHA_STATUS
 {
 	bool				is_ok_;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
@@ -912,6 +983,11 @@ struct alignas(8) MADHAVA_PARTHA_STATUS
 	uint64_t			npartha_nodes_;
 	bool				is_active_madhava_id_;
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(*this));
@@ -923,6 +999,11 @@ struct alignas(8) MADHAVA_SHYAMA_STATUS
 	uint64_t			madhava_id_;
 	uint64_t			npartha_nodes_;
 	uint64_t			approx_partha_conns_;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
@@ -936,6 +1017,11 @@ struct alignas(8) SHYAMA_MADHAVA_STATUS
 	uint64_t			nmadhava_partha_;
 	uint64_t			active_madhava_id_;
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(*this));
@@ -947,6 +1033,11 @@ struct alignas(8) MADHAVA_MADHAVA_STATUS
 	uint64_t			madhava_id_;
 	uint64_t			npartha_nodes_;
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
 		return (phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(*this));
@@ -956,6 +1047,11 @@ struct alignas(8) MADHAVA_MADHAVA_STATUS
 struct alignas(8) ERROR_STRING_RESP
 {
 	char				error_string_[COMM_MAX_ERROR_LEN];
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr, const QUERY_RESPONSE *presp) const noexcept
 	{
@@ -976,6 +1072,12 @@ struct alignas(8) PARTHA_MADHAVA_REQ
 	/*char				extra_tags_[extra_tags_len_]; '\0' terminated */
 	
 	bool validate(const COMM_HEADER *phdr) const noexcept;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 };	
 
 struct alignas(8) PARTHA_MADHAVA_RESP
@@ -985,11 +1087,22 @@ struct alignas(8) PARTHA_MADHAVA_RESP
 	uint16_t			madhava_svc_port_;
 
 	bool validate(const COMM_HEADER *phdr, const QUERY_RESPONSE *presp) const noexcept;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 };	
 
 struct alignas(8) NUM_PARTHA_REQ
 {
 	bool				send_state_;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
@@ -1007,6 +1120,11 @@ struct alignas(8) NUM_PARTHA_RESP
 	uint64_t			nbad_;
 	uint64_t			nsevere_;
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	bool validate(const COMM_HEADER *phdr, const QUERY_RESPONSE *presp) const noexcept
 	{
 		return ((phdr->get_act_len() == sizeof(COMM_HEADER) + sizeof(QUERY_RESPONSE) + sizeof(*this)) && (presp->resp_len_ == sizeof(*this)));
@@ -1020,6 +1138,11 @@ struct alignas(8) MADHAVA_LIST
 	uint32_t			madhava_version_;
 	char				madhava_svc_hostname_[MAX_DOMAINNAME_SIZE];
 	uint16_t			madhava_svc_port_;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -1041,6 +1164,11 @@ struct alignas(8) MP_RESET_STATS
 
 	MP_RESET_STATS(bool reset_stats) noexcept : reset_stats_(reset_stats)
 	{}
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	bool validate(const COMM_HEADER *phdr) const noexcept
 	{
@@ -1074,6 +1202,11 @@ struct alignas(8) TASK_MINI_ADD
 
 	/*char				task_cmdline_[task_cmdline_len_] follows */
 	/*char				padding_[padding_len_]; follows to make the entire 8 byte aligned */
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this) + task_cmdline_len_ + padding_len_;
+	}
 
 	bool validate(const COMM_HEADER *phdr, size_t & elem_sz) noexcept;
 
@@ -1228,6 +1361,11 @@ struct alignas(8) PING_TASK_AGGR
 
 	PING_TASK_AGGR() noexcept	= default;
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(PING_TASK_AGGR));
@@ -1238,6 +1376,11 @@ struct alignas(8) MM_TASK_AGGR_PING
 {
 	uint64_t			aggr_task_id_;
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(MM_TASK_AGGR_PING));
@@ -1247,6 +1390,11 @@ struct alignas(8) MM_TASK_AGGR_PING
 struct alignas(8) MM_TASK_AGGR_DEL
 {
 	uint64_t			aggr_task_id_;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -1307,6 +1455,11 @@ public :
 
 	bool validate(const COMM_HEADER *phdr) noexcept;
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this) + nprocs_ * sizeof(TOP_TASK) + npg_procs_ * sizeof(TOP_PG_TASK) + nrss_procs_ * sizeof(TOP_TASK) + nfork_procs_ * sizeof(TOP_FORK_TASK);
+	}
+
 	static constexpr size_t get_max_elem_size() noexcept
 	{
 		return sizeof(TASK_TOP_PROCS) + TASK_MAX_TOP_N * sizeof(TOP_TASK) + TASK_MAX_TOPPG_N * sizeof(TOP_PG_TASK) + TASK_MAX_RSS_TOP_N * sizeof(TOP_TASK)
@@ -1354,6 +1507,11 @@ public :
 	uint64_t			aggr_task_id_;
 	char				comm_[TASK_COMM_LEN];
 	pid_t				pid_;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -1442,6 +1600,8 @@ struct alignas(8) LISTENER_INFO_REQ
 		: ntcp_listeners_(ntcp_listeners)
 	{}
 
+	uint32_t get_elem_size() const noexcept;
+
 	bool validate(const COMM_HEADER *phdr) const noexcept;
 };
 
@@ -1487,6 +1647,8 @@ struct alignas(8) LISTENERS_INFO_STATS_RESP
 {
 	uint32_t			ntcp_listeners_;
 	/*LISTENER_DAY_STATS		tcp_[ntcp_listeners_] follows;*/
+
+	uint32_t get_elem_size() const noexcept;
 
 	bool validate(const COMM_HEADER *phdr, const QUERY_RESPONSE *presp) const noexcept;
 };	
@@ -1581,6 +1743,11 @@ struct alignas(8) NAT_TCP_NOTIFY
 
 	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(NAT_TCP_NOTIFY) && pnotify->nevents_ <= MAX_NUM_CONNS);
@@ -1593,11 +1760,16 @@ struct alignas(8) MS_TCP_CONN_CLOSE
 	uint64_t			close_cli_bytes_sent_;
 	uint64_t			close_cli_bytes_rcvd_;
 
+	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+
 	MS_TCP_CONN_CLOSE(const PAIR_IP_PORT & tup, uint64_t close_cli_bytes_sent, uint64_t close_cli_bytes_rcvd) noexcept
 		: tup_(tup), close_cli_bytes_sent_(close_cli_bytes_sent), close_cli_bytes_rcvd_(close_cli_bytes_rcvd)
 	{}
 
-	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -1615,6 +1787,8 @@ struct alignas(8) MP_CLI_TCP_INFO
 	bool				cli_ser_diff_clusters_;
 	char 				ser_comm_[TASK_COMM_LEN];
 
+	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+
 	MP_CLI_TCP_INFO(const PAIR_IP_PORT & tup, GY_MACHINE_ID ser_partha_machine_id, uint64_t ser_glob_id, uint64_t ser_madhava_id, uint64_t ser_related_listen_id, bool cli_ser_diff_clusters, \
 		const char *ser_comm) noexcept
 		: tup_(tup), ser_partha_machine_id_(ser_partha_machine_id), ser_glob_id_(ser_glob_id), ser_madhava_id_(ser_madhava_id), ser_related_listen_id_(ser_related_listen_id),
@@ -1623,7 +1797,10 @@ struct alignas(8) MP_CLI_TCP_INFO
 		GY_STRNCPY(ser_comm_, ser_comm, sizeof(ser_comm_));
 	}
 
-	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -1643,6 +1820,8 @@ struct alignas(8) MP_SER_TCP_INFO
 	uint32_t			ser_conn_hash_;
 	uint32_t			ser_sock_inode_;
 
+	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+
 	MP_SER_TCP_INFO(GY_MACHINE_ID cli_partha_machine_id, uint64_t cli_task_aggr_id, uint64_t cli_madhava_id, uint64_t cli_related_listen_id, \
 		const char *cli_comm, const IP_PORT & ser_nat_ip_port, uint32_t ser_conn_hash, uint32_t ser_sock_inode) noexcept
 		: cli_partha_machine_id_(cli_partha_machine_id), cli_task_aggr_id_(cli_task_aggr_id), cli_madhava_id_(cli_madhava_id), cli_related_listen_id_(cli_related_listen_id),
@@ -1651,7 +1830,10 @@ struct alignas(8) MP_SER_TCP_INFO
 		GY_STRNCPY(cli_comm_, cli_comm, sizeof(cli_comm_));
 	}
 
-	static constexpr size_t		MAX_NUM_CONNS 		{2048};	// Send in batches
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -1700,6 +1882,11 @@ struct alignas(8) MS_TCP_CONN_NOTIFY
 	bool is_conn_closed() const noexcept
 	{
 		return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
+	}
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
 	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
@@ -1757,6 +1944,11 @@ struct alignas(8) SHYAMA_SER_TCP_INFO
 		return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
 	}
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(SHYAMA_SER_TCP_INFO) && pnotify->nevents_ <= MAX_NUM_CONNS);
@@ -1807,6 +1999,11 @@ struct alignas(8) SHYAMA_CLI_TCP_INFO
 	bool is_conn_closed() const noexcept
 	{
 		return close_cli_bytes_sent_ + close_cli_bytes_rcvd_ > 0;
+	}
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
 	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
@@ -2066,6 +2263,12 @@ struct alignas(8) HOST_STATE_NOTIFY__V000100
 	bool				severe_cpu_issue_	{false};
 	bool				severe_mem_issue_	{false};
 
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return ((phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(HOST_STATE_NOTIFY__V000100)) && (pnotify->nevents_ == 1));
@@ -2110,6 +2313,11 @@ struct alignas(8) HOST_STATE_NOTIFY
 
 		std::memcpy((void *)this, &ohost, sizeof(ohost));
 	}	
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 };
 
 
@@ -2177,6 +2385,11 @@ struct alignas(8) RELSVC_CLUSTER_ONE
 		
 		return (0 == std::memcmp(this, &other, sizeof(*this)));
 	}	
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	uint32_t get_hash() const noexcept
 	{
@@ -2289,6 +2502,11 @@ struct alignas(8) LISTENER_NAT_IP_EVENT
 	uint64_t			glob_id_		{0};
 
 	static constexpr size_t		MAX_NUM_LISTENERS 	{512};		// Send in batches
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -2442,6 +2660,11 @@ struct alignas(8) MM_LISTENER_PING
 		: glob_id_(glob_id)
 	{}	
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(MM_LISTENER_PING));
@@ -2455,6 +2678,11 @@ struct alignas(8) MM_LISTENER_DELETE
 	MM_LISTENER_DELETE(uint64_t glob_id) noexcept
 		: glob_id_(glob_id)
 	{}	
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -2471,6 +2699,11 @@ struct alignas(8) MM_LISTENER_DEPENDS
 	MM_LISTENER_DEPENDS(uint64_t glob_id, bool delete_depends, bool is_load_balanced = false) noexcept
 		: glob_id_(glob_id), delete_depends_(delete_depends), is_load_balanced_(is_load_balanced)
 	{}	
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -2557,6 +2790,11 @@ struct alignas(8) ACTIVE_CONN_STATS
 		is_remote_cli_		= is_remote_cli;
 	}	
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(ACTIVE_CONN_STATS) && pnotify->nevents_ <= MAX_NUM_CONNS);
@@ -2625,6 +2863,11 @@ struct alignas(8) HOST_INFO_NOTIFY
 	bool				is_virtual_cpu_				{false};
 	char				virtualization_type_[64]		{};
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return ((phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(HOST_INFO_NOTIFY)) && pnotify->nevents_ == 1);
@@ -2646,6 +2889,11 @@ struct alignas(8) HOST_CPU_MEM_CHANGE
 	bool				mem_corrupt_changed_		{false};
 	uint32_t			new_corrupted_ram_mb_		{0};
 	uint32_t			old_corrupted_ram_mb_		{0};
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -2809,6 +3057,11 @@ struct alignas(8) SM_ALERT_ADEF_UPD
 		adef_id_(adef_id), type_(type), isrealtime_(isrealtime), for_partha_(for_partha)
 	{}
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(SM_ALERT_ADEF_UPD));
@@ -2825,6 +3078,11 @@ struct alignas(8) SM_ALERT_STAT_DISABLE
 	SM_ALERT_STAT_DISABLE(time_t tdisable_end) noexcept :
 		tdisable_end_(tdisable_end)
 	{}
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -2900,6 +3158,11 @@ struct alignas(8) ALERT_STAT_CLOSE
 		tlast_hit_(tlast_hit), tcurr_(tcurr), alertid_(alertid), adef_id_(adef_id), is_force_close_(is_force_close), isrealtime_(isrealtime)
 	{}
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(ALERT_STAT_CLOSE));
@@ -2954,6 +3217,11 @@ struct alignas(8) MS_CLUSTER_STATE
 		GY_STRNCPY(clustname_, clustname, sizeof(clustname_));
 	}	
 
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(MS_CLUSTER_STATE) && pnotify->nevents_ <= MAX_NUM_CLUSTERS);
@@ -2973,6 +3241,11 @@ struct alignas(8) MS_PARTHA_PING
 	{}
 
 	MS_PARTHA_PING() noexcept	= default;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 	{
@@ -2994,6 +3267,11 @@ struct alignas(8) MS_REG_PARTHA
 	static constexpr size_t		MAX_REG_PARTHA		{MAX_PARTHA_PER_MADHAVA};
 
 	MS_REG_PARTHA() noexcept	= default;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
 
 	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept;
 };
