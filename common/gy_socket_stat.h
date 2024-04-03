@@ -360,6 +360,8 @@ public :
 
 using WEAK_LISTEN_TABLE			= RCU_HASH_TABLE <TCP_LISTENER_PTR, WEAK_LISTEN_RAW>;
 
+class SVC_INFO_CAP;
+
 class TCP_LISTENER : public std::enable_shared_from_this <TCP_LISTENER>
 {
 public :	
@@ -553,15 +555,6 @@ public :
 	const bool					is_any_ip_;
 	const bool					is_root_netns_;
 
-	tribool						is_http_svc_			{indeterminate};
-	std::atomic<tribool>				httperr_cap_started_		{indeterminate};
-
-	static_assert(decltype(httperr_cap_started_)::is_always_lock_free == true, "Boost Tribool Atomics not lock free!");
-	
-	std::atomic<tribool>				api_cap_started_		{indeterminate};
-	std::atomic<tribool>				api_is_ssl_			{indeterminate};
-	std::atomic<PROTO_TYPES>			api_proto_			{PROTO_UNINIT};
-
 	uint32_t					last_qps_count_			{0};
 
 	std::weak_ptr <TASK_STAT>			task_weak_;
@@ -590,6 +583,21 @@ public :
 	gy_atomic <uint64_t>				clock_usec_			{0};
 	gy_atomic <uint64_t>				start_clock_usec_		{0};
 	uint64_t					tstart_usec_			{0};
+
+	tribool						is_http_svc_			{indeterminate};
+	std::atomic<tribool>				httperr_cap_started_		{indeterminate};
+
+	static_assert(decltype(httperr_cap_started_)::is_always_lock_free == true, "Boost Tribool Atomics not lock free!");
+	
+	gy_atomic<PROTO_CAP_STATUS_E>			api_cap_started_		{CAPSTAT_UNINIT};
+	gy_atomic<time_t>				tapi_cap_stop_			{0};
+	std::atomic<tribool>				api_is_ssl_			{indeterminate};
+	gy_atomic<PROTO_TYPES>				api_proto_			{PROTO_UNINIT};
+
+	GY_MUTEX					svcweak_lock_;
+	std::weak_ptr<SVC_INFO_CAP>			api_svcweak_;
+	uint64_t					last_api_ncli_errors_		{0};
+	uint64_t					last_api_nser_errors_		{0};
 
 	gy_atomic <int>					nconn_				{0};
 	gy_atomic <int>					nconn_recent_active_		{0};
@@ -1227,6 +1235,7 @@ public :
 
 	int update_cli_conn_info_madhava(const comm::MP_CLI_TCP_INFO *pinfo, int nevents, const uint8_t * const pendptr) noexcept;
 	int update_ser_conn_info_madhava(const comm::MP_SER_TCP_INFO *pinfo, int nevents, const uint8_t * const pendptr) noexcept;
+	int handle_api_trace_set(const comm::REQ_TRACE_SET *preq, int pinfo) noexcept;
 
 	void handle_listener_event(tcp_listener_event_t * pevent, bool more_data) noexcept;
 	bool notify_new_listener(TCP_LISTENER *plistener, bool more_data, bool is_listen_event_thread); 

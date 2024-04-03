@@ -421,7 +421,7 @@ enum LISTENER_ISSUE_SRC : uint8_t
 	
 	ISSUE_QPS_HIGH,
 	ISSUE_ACTIVE_CONN_HIGH,
-	ISSUE_HTTP_SERVER_ERRORS,
+	ISSUE_SERVER_ERRORS,
 	
 	ISSUE_OS_CPU,
 	ISSUE_OS_MEMORY,
@@ -441,7 +441,7 @@ static constexpr const char * issue_to_string(LISTENER_ISSUE_SRC issue) noexcept
 	
 	case ISSUE_QPS_HIGH :			return "High QPS (Queries/sec)";
 	case ISSUE_ACTIVE_CONN_HIGH :		return "High Active Connections count";
-	case ISSUE_HTTP_SERVER_ERRORS :		return "HTTP 5xx Server Errors";
+	case ISSUE_SERVER_ERRORS :		return "Server Errors";
 				
 	case ISSUE_OS_CPU :			return "Host CPU Issue";
 	case ISSUE_OS_MEMORY :			return "Host Virtual Memory Issue";

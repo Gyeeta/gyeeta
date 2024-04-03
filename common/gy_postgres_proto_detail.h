@@ -106,6 +106,7 @@ struct TRAN_EXTSTAT
 	time_t				dyn_prep_time_t_		{0};
 	uint32_t			nrows_				{0};
 	int				spid_				{0};
+	bool				is_serv_err_			{false};
 
 	void reset_on_req() noexcept
 	{
@@ -113,6 +114,7 @@ struct TRAN_EXTSTAT
 		dyn_prep_reqnum_ = 0;
 		dyn_prep_time_t_ = 0;
 		nrows_ = 0;
+		is_serv_err_ = false;
 	}
 };	
 
@@ -178,7 +180,7 @@ struct PG_REQSTAT
 	}	
 };	
 
-
+class SVC_INFO_CAP;
 
 class POSTGRES_SESSINFO : public POSTGRES_PROTO
 {
@@ -238,6 +240,7 @@ public :
 	PG_DYN_PORTAL			noname_portal_;
 
 	SVC_SESSION 			& svcsess_;
+	SVC_INFO_CAP			*psvc_				{nullptr};
 
 	uint8_t				login_complete_			{0};
 	uint8_t				is_midway_session_		{0};
@@ -273,6 +276,8 @@ public :
 	
 	void reset_on_error();
 	
+	std::pair<int, bool> get_error_code(char *ebuf) noexcept;
+
 	bool print_req() noexcept;
 	
 	void print_partial_req()

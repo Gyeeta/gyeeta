@@ -22,19 +22,16 @@
 #include		"gy_stream_json.h"
 #include		"gy_web_proto.h"
 #include		"gy_postgres.h"
-#include		"gy_query_common.h"
 #include		"gy_statistics.h"
 
 #include		"folly/MPMCQueue.h"
 #include 		"folly/Function.h"
 #include		"folly/concurrency/AtomicSharedPtr.h" 
 /*#include 		"folly/Synchronized.h"*/
-#include 		"folly/SharedMutex.h"
 
 #include 		<variant>
 #include 		<unordered_map>
-
-using folly::SharedMutex;
+#include 		<list>
 
 namespace gyeeta {
 namespace madhava {
@@ -842,6 +839,7 @@ public :
 		~PARTHA_TRACE_CONN() noexcept						= default;
 	};
 	
+	
 	static constexpr size_t			MAX_TRACE_CONN_VEC = 4000;
 
 	static constexpr size_t			AGGR_TASK_DB_STORE_SEC = 6 * 3600; 	// 6 hours
@@ -947,6 +945,8 @@ public :
 	using MRELATED_LISTENER_ELEM_TYPE	= MSOCKET_HDLR::MRELATED_LISTENER_ELEM_TYPE;
 	using MRELATED_LISTENER_HASH_TABLE	= MSOCKET_HDLR::MRELATED_LISTENER_HASH_TABLE;
 	
+	using MREQ_TRACE_SVC			= MSOCKET_HDLR::MREQ_TRACE_SVC;
+
 	using MAGGR_LISTENER			= MSOCKET_HDLR::MAGGR_LISTENER;
 	using MAGGR_LISTENER_ELEM_TYPE		= MSOCKET_HDLR::MAGGR_LISTENER_ELEM_TYPE;
 	using MAGGR_LISTENER_HASH_TABLE		= MSOCKET_HDLR::MAGGR_LISTENER_HASH_TABLE;
@@ -1005,7 +1005,69 @@ public :
 	using TopPgCpuFields			= MFields::TopPgCpuFields;
 	using TopForkFields			= MFields::TopForkFields;
 
-	static constexpr uint64_t		INFO_DB_UPDATE_SEC			{300};		// 5 min
+	static constexpr uint64_t		INFO_DB_UPDATE_SEC		{300};		// 5 min
+
+	struct MREQ_TRACE_STATUS
+	{
+		uint64_t				glob_id_		{0};
+		time_t					tstatus_		{0};
+		uint16_t				port_			{0};
+		PROTO_CAP_STATUS_E			status_			{CAPSTAT_UNINIT};
+		char					comm_[TASK_COMM_LEN]	{};
+		char					msgstr_[comm::COMM_MAX_ERROR_LEN];
+		
+		MREQ_TRACE_STATUS(uint64_t glob_id, time_t tstatus, uint16_t port, PROTO_CAP_STATUS_E status, const char *comm, const char *msgstr) noexcept
+			: glob_id_(glob_id), tstatus_(tstatus), port_(port), status_(status)
+		{
+			GY_STRNCPY(comm_, comm, sizeof(comm_));
+
+			if (msgstr) {
+				GY_STRNCPY(msgstr_, msgstr, sizeof(msgstr_));
+			}	
+			else {
+				*msgstr_ = 0;
+			}	
+		}	
+	};	
+
+	class REQ_TRACE_SVC
+	{
+	public :
+		uint64_t				glob_id_		{0};
+		NS_IP_PORT				ns_ip_port_;
+		std::weak_ptr<MTCP_LISTENER>		weaksvc_;
+		std::shared_ptr<MREQ_TRACE_SVC>		rtraceshr_;
+		char					comm_[TASK_COMM_LEN]	{};
+
+		REQ_TRACE_SVC(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, std::weak_ptr<MTCP_LISTENER> weaksvc, std::shared_ptr<MREQ_TRACE_SVC> rtraceshr, 
+				const char *comm) noexcept
+			: glob_id_(glob_id), ns_ip_port_(ns_ip_port), weaksvc_(std::move(weaksvc)), rtraceshr_(std::move(rtraceshr))
+		{
+			GY_STRNCPY(comm_, comm, sizeof(comm_));
+		}	
+	};
+
+	class REQ_TRACE_SVC_DEFS
+	{
+	public :
+		std::vector<uint32_t>			defvec_;
+		time_t					tmaxexp_		{0};
+	};	
+
+	class REQ_TRACE_STAT_HDLR
+	{
+	public :
+		using					SvcMap = folly::F14NodeMap<uint64_t, REQ_TRACE_SVC, GY_JHASHER<uint64_t>>;
+		using					ListMap = folly::F14NodeMap<uint32_t, SvcMap, GY_JHASHER<uint32_t>>;
+		using					StatList = std::list<MREQ_TRACE_STATUS>;
+
+		GY_MUTEX				mutex_;
+
+		ListMap					listmap_;	
+		SvcMap					svcmap_;
+		StatList				statlist_;
+	};	
+
 
 	class RT_ALERT_VECS
 	{
@@ -1661,6 +1723,7 @@ public :
 	GY_MUTEX				trace_mutex_arr_[MAX_L2_TRACE_THREADS];
 	PARTHA_TRACE_MAP			trace_map_arr_[MAX_L2_TRACE_THREADS];
 	int					trace_epoll_fd_[MAX_L2_TRACE_THREADS] {};
+	MREQ_TRACE_DEFS				tracedefs_;
 
 	COND_VAR <SCOPE_GY_MUTEX>		barcond_;
 	std::atomic<size_t>			nblocked_acc_		{0};
@@ -1877,6 +1940,9 @@ public :
 
 	uint32_t handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, \
 			STR_WR_BUF & strbuf, STATS_STR_MAP & statsmap);
+	bool 	handle_new_req_trace_def(comm::SM_REQ_TRACE_DEF_NEW *pdef, int nevents, uint8_t *pendptr);
+	bool 	handle_req_trace_def_disable(comm::SM_REQ_TRACE_DEF_DISABLE *pdef, int nevents, uint8_t *pendptr);
+	int	check_new_req_trace_svcs() noexcept;
 
 	bool	handle_node_query(const std::shared_ptr<MCONNTRACK> & connshr, const comm::QUERY_CMD *pquery, char *pjson, char *pendptr, \
 			POOL_ALLOC_ARRAY *pthrpoolarr, STATS_STR_MAP & statsmap, PGConnPool & dbpool);

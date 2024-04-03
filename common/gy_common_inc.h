@@ -9933,6 +9933,11 @@ public :
 		: SSO_STRING(strbuf.buffer(), strbuf.length())
 	{}	
 
+	SSO_STRING(std::string_view sv)
+		: SSO_STRING(sv.data(), sv.size())
+	{}	
+
+
 	template <size_t newsz>
 	SSO_STRING & operator=(const SSO_STRING<newsz> & other)
 	{

@@ -279,6 +279,11 @@ public :
 		return status >= 400;
 	}	
 
+	static bool is_server_error(int status) noexcept
+	{
+		return status >= 500;
+	}	
+
 	// Returns { true if end detected, pend the first byte after the end} or {false, nullptr} if no end detected
 	static std::pair<bool, const uint8_t *> is_req_resp_end_heuristic(const uint8_t *pdata, int pktlen, DirPacket dir) noexcept
 	{

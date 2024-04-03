@@ -1417,8 +1417,8 @@ public :
 
 			case FIELD_KBIN15S		:	return NUMBER_CRITERION(int(state.curr_kbytes_inbound_));
 			case FIELD_KBOUT15S		:	return NUMBER_CRITERION(int(state.curr_kbytes_outbound_));
-			case FIELD_SERERR		:	return NUMBER_CRITERION(int(state.ser_http_errors_));
-			case FIELD_CLIERR		:	return NUMBER_CRITERION(int(state.cli_http_errors_));
+			case FIELD_SERERR		:	return NUMBER_CRITERION(int(state.ser_errors_));
+			case FIELD_CLIERR		:	return NUMBER_CRITERION(int(state.cli_errors_));
 
 			case FIELD_DELAYUS		:	return NUMBER_CRITERION(int(state.tasks_delay_usec_));
 			case FIELD_CPUDELUS		:	return NUMBER_CRITERION(int(state.tasks_cpudelay_usec_));
@@ -1622,12 +1622,12 @@ public :
 
 			case FIELD_SERERR :
 				writer.KeyConst("sererr");
-				writer.Uint(state.ser_http_errors_);
+				writer.Uint(state.ser_errors_);
 				return true;
 
 			case FIELD_CLIERR :
 				writer.KeyConst("clierr");
-				writer.Uint(state.cli_http_errors_);
+				writer.Uint(state.cli_errors_);
 				break;
 
 			case FIELD_DELAYUS :

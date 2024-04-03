@@ -10,9 +10,50 @@
 
 namespace gyeeta {
 
+using PG_ERRCODE_MAP				= std::unordered_map<CHAR_BUF<6>, std::pair<const char *, bool>, CHAR_BUF<6>::CHAR_BUF_HASH>;
+
+static PG_ERRCODE_MAP				gerrmap_;
+
+static void init_errcode_map()
+{
+	// Refer to https://www.postgresql.org/docs/current/errcodes-appendix.html
+
+	gerrmap_ = {
+		{ "0A", { "10", false /* server error */ } },
+		{ "0B", { "11", false } },
+		{ "0F", { "15", false } },
+		{ "0L", { "16", false } },
+		{ "0P", { "17", false } },
+		{ "0Z", { "18", false } },
+		{ "2B", { "29", false } },
+		{ "2D", { "29", false } },
+		{ "2F", { "29", false } },
+		{ "38", { "38", true /* server error */ } },
+		{ "39", { "38", true /* server error */ } },
+		{ "3B", { "39", false } },
+		{ "3D", { "39", false } },
+		{ "3F", { "39", false } },
+		{ "53", { "53", true /* server error */ } },
+		{ "54", { "54", true /* server error */ } },
+		{ "55", { "55", true /* server error */ } },
+		{ "57", { "57", true /* server error */ } },
+		{ "58", { "58", true /* server error */ } },
+		{ "72", { "72", true /* server error */ } },
+		{ "F0", { "80", true /* server error */ } },
+		{ "HV", { "81", true /* server error */ } },
+		{ "P0", { "82", false } },
+		{ "XX", { "83", true /* server error */ } },
+
+	};
+};	
+
+
+
 POSTGRES_PROTO::POSTGRES_PROTO(API_PARSE_HDLR & apihdlr, uint32_t api_max_len)
 	: apihdlr_(apihdlr), api_max_len_(api_max_len), max_pg_req_token_(api_max_len_ + 512), max_pg_resp_token_(2048)
-{}	
+{
+	init_errcode_map();
+}	
 
 POSTGRES_PROTO::~POSTGRES_PROTO() noexcept		= default;
 
@@ -58,7 +99,7 @@ POSTGRES_SESSINFO::POSTGRES_SESSINFO(POSTGRES_PROTO & prot, SVC_SESSION & svcses
 		svcsess.common_.glob_id_, svcsess.proto_, svcsess.psvc_ ? svcsess.psvc_->comm_ : nullptr), 
 	tdstrbuf_(prot.api_max_len_ - 1), 
 	preqfragbuf_(new uint8_t[prot.max_pg_req_token_ + 16 + prot.max_pg_resp_token_ + 16]), presfragbuf_(preqfragbuf_ + prot.max_pg_req_token_ + 16), 
-	svcsess_(svcsess)
+	svcsess_(svcsess), psvc_(svcsess.psvc_)
 {
 	std::memset(tdstrbuf_.get(), 0, 128);
 	std::memset(preqfragbuf_, 0, 128);
@@ -1690,7 +1731,7 @@ int POSTGRES_SESSINFO::handle_resp_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen
 	case MSG_B_ERROR_RESP :
 		
 		if (true) {
-			char				c;
+			char				c, ebuf[6] = {};
 			const char			*ptmp = (const char *)sptr;			
 			uint32_t			len;
 			
@@ -1713,11 +1754,28 @@ int POSTGRES_SESSINFO::handle_resp_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen
 						break;
 					
 					case 'C' :
-						tdstat_.errorbuf_ << "Code : "sv;
-						tdstat_.errorbuf_.append(ptmp, len);
-						tdstat_.errorbuf_ << ',';
-						
-						tran_.errorcode_ = atoi(ptmp);
+						if (len < 5) {
+							break;
+						}	
+
+						if (ptmp[0] == '0' && (ptmp[1] == '1' || ptmp[1] == '0')) {
+							// Skip warnings
+							break;
+						}
+						else {
+							tdstat_.errorbuf_ << "Code : "sv;
+							tdstat_.errorbuf_.append(ptmp, len);
+							tdstat_.errorbuf_ << ',';
+							
+							std::memcpy(ebuf, ptmp, 5);
+							ebuf[5] = 0;
+
+							auto [ecode, is_serv_err] = get_error_code(ebuf);
+
+							tran_.errorcode_ = ecode;
+							tdstat_.is_serv_err_ = is_serv_err;
+						}
+
 						break;
 							
 					case 'M' :
@@ -1888,6 +1946,22 @@ void POSTGRES_SESSINFO::reset_on_error()
 	}	
 }
 
+std::pair<int, bool> POSTGRES_SESSINFO::get_error_code(char *ebuf) noexcept
+{
+	char				tbuf[] = {ebuf[0], ebuf[1], 0};
+	bool				is_serv_err = false;
+	auto				it = gerrmap_.find(CHAR_BUF<6>(tbuf, 2));
+
+	if (it != gerrmap_.end()) {
+		ebuf[0] = it->second.first[0];
+		ebuf[1] = it->second.first[1];
+
+		is_serv_err = it->second.second;
+	}	
+	
+	return {atoi(ebuf), is_serv_err};
+}
+
 bool POSTGRES_SESSINFO::print_req() noexcept
 {
 	auto				& apihdlr = get_api_hdlr();
@@ -1930,9 +2004,24 @@ bool POSTGRES_SESSINFO::print_req() noexcept
 			ustrbuf << PARSE_FIELD_LEN(EFIELD_DBNAME, tdstat_.dbbuf_.size() + 1) << std::string_view(tdstat_.dbbuf_.data(), tdstat_.dbbuf_.size() + 1);
 		}	
 
-		if (ptran->errorcode_ != 0 && (tdstat_.errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + tdstat_.errorbuf_.size() + 1)) {
-			next++;
-			ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, tdstat_.errorbuf_.size() + 1) << std::string_view(tdstat_.errorbuf_.data(), tdstat_.errorbuf_.size() + 1);
+		if (psvc_) {
+			psvc_->stats_.nrequests_++;
+		}	
+
+		if (ptran->errorcode_ != 0) {
+			if (tdstat_.errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + tdstat_.errorbuf_.size() + 1) {
+				next++;
+				ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, tdstat_.errorbuf_.size() + 1) << std::string_view(tdstat_.errorbuf_.data(), tdstat_.errorbuf_.size() + 1);
+			}
+
+			if (psvc_) {
+				if (tdstat_.is_serv_err_) {
+					psvc_->stats_.nser_errors_++;
+				}
+				else {
+					psvc_->stats_.ncli_errors_++;
+				}	
+			}	
 		}	
 
 		if (tdstat_.dyn_prep_reqnum_ && tdstat_.dyn_prep_time_t_ && ustrbuf.bytes_left() >= 2 * sizeof(PARSE_FIELD_LEN) + 2 * sizeof(uint64_t)) {

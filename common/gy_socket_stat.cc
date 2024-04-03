@@ -1277,12 +1277,11 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 			std::memcpy(plistener->orig_comm_, plistener->comm_, sizeof(plistener->orig_comm_));
 
 			// Reset Service Error and API Network Capture : Currently if restart happens within 30 sec we keep the old state...
-			plistener->httperr_cap_started_.store(indeterminate, std::memory_order_relaxed);
+			plistener->httperr_cap_started_.store(indeterminate, mo_relaxed);
 			plistener->is_http_svc_ = indeterminate;
 
-			plistener->api_cap_started_.store(indeterminate, std::memory_order_relaxed);
-			plistener->api_is_ssl_.store(indeterminate, std::memory_order_relaxed);
-			plistener->api_proto_.store(PROTO_UNINIT, std::memory_order_relaxed);
+			plistener->api_is_ssl_.store(indeterminate, mo_relaxed);
+			plistener->api_proto_.store(PROTO_UNINIT, mo_relaxed);
 
 			ptask_handler_->get_task(pevent->pid, newtaskcb);
 
@@ -2130,54 +2129,54 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				}		
 				else if (!task_issue && ser_errors) {
 					if (ser_errors * 2 > nqrys_5s) {
-						lissue		= ISSUE_HTTP_SERVER_ERRORS;
+						lissue		= ISSUE_SERVER_ERRORS;
 						lstate		= STATE_SEVERE;
 						
-						strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors seen with no Process Issues and Low Response Time and Low QPS ");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+						strbuf.appendconst("State SEVERE : Many Server Errors seen with no Process Issues and Low Response Time and Low QPS ");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 						return;	
 					}
 					else if (ser_errors * 5 > nqrys_5s) {
-						lissue		= ISSUE_HTTP_SERVER_ERRORS;
+						lissue		= ISSUE_SERVER_ERRORS;
 						lstate		= STATE_BAD;
 						
-						strbuf.appendconst("State Bad : HTTP 5xx Errors seen with no Process Issues and Low Response Time and Low QPS ");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+						strbuf.appendconst("State Bad : Server Errors seen with no Process Issues and Low Response Time and Low QPS ");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 						return;	
 					}
 					else if (ser_errors < nqrys_5s * 0.1) {
-						lissue		= ISSUE_HTTP_SERVER_ERRORS;
+						lissue		= ISSUE_SERVER_ERRORS;
 						lstate		= STATE_OK;
 						
-						strbuf.appendconst("State Idle : Low Response Time and Low QPS currently but few HTTP 5xx Errors seen");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+						strbuf.appendconst("State Idle : Low Response Time and Low QPS currently but few Server Errors seen");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 						return;	
 					}
 				}		
 				else {
 					// There is a task issue 
 					if (ser_errors * 2 > nqrys_5s) {
-						lissue		= ISSUE_HTTP_SERVER_ERRORS;
+						lissue		= ISSUE_SERVER_ERRORS;
 						lstate		= STATE_SEVERE;
 						
-						strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors seen with Process Issues and Low Response Time and Low QPS ");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State SEVERE : Many Server Errors seen with Process Issues and Low Response Time and Low QPS ");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 						return;	
 					}
 					else if (ser_errors * 5 > nqrys_5s) {
-						lissue		= ISSUE_HTTP_SERVER_ERRORS;
+						lissue		= ISSUE_SERVER_ERRORS;
 						lstate		= STATE_BAD;
 						
-						strbuf.appendconst("State Bad : HTTP 5xx Errors seen with Process Issues and Low Response Time and Low QPS ");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State Bad : Server Errors seen with Process Issues and Low Response Time and Low QPS ");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 						return;	
 					}
 					else if (ser_errors) {
 						lissue	= ISSUE_LISTENER_TASKS;
 						lstate	= STATE_BAD;
 
-						strbuf.appendconst("State Bad : Low Response Time but Listener Processes have issues and HTTP 5xx Errors seen which may be causing the Low QPS and Response");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State Bad : Low Response Time but Listener Processes have issues and Server Errors seen which may be causing the Low QPS and Response");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 						return;
 					}
 
@@ -2206,30 +2205,30 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 
 			if (ser_errors) {
 				if (ser_errors * 2 > nqrys_5s) {
-					lissue		= ISSUE_HTTP_SERVER_ERRORS;
+					lissue		= ISSUE_SERVER_ERRORS;
 					lstate		= STATE_SEVERE;
 					
 					if (!task_issue) {
-						strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors seen with no Process Issues and lower Response Time");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+						strbuf.appendconst("State SEVERE : Many Server Errors seen with no Process Issues and lower Response Time");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 					}
 					else {
-						strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors and Listener Processes have issues");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State SEVERE : Many Server Errors and Listener Processes have issues");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 					}	
 					return;	
 				}
 				else if (ser_errors * 5 > nqrys_5s) {
-					lissue		= ISSUE_HTTP_SERVER_ERRORS;
+					lissue		= ISSUE_SERVER_ERRORS;
 					lstate		= STATE_BAD;
 					
 					if (!task_issue) {
-						strbuf.appendconst("State Bad : HTTP 5xx Errors seen with no Process Issues and Lower Response Time");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+						strbuf.appendconst("State Bad : Server Errors seen with no Process Issues and Lower Response Time");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 					}
 					else {
-						strbuf.appendconst("State Bad : Many HTTP 5xx Errors and Listener Processes have issues");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State Bad : Many Server Errors and Listener Processes have issues");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 					}	
 					return;	
 				}
@@ -2244,8 +2243,8 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 					strbuf.appendfmt(" : Response %ld msec : QPS %d : Listener Procs with issues %d", r5p95, curr_qps, ntasks_issue);
 				}
 				else {
-					strbuf.appendconst("State Bad : HTTP 5xx Errors and Listener Processes have issues");
-					strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+					strbuf.appendconst("State Bad : Server Errors and Listener Processes have issues");
+					strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 				}	
 				return;
 			}	
@@ -2272,11 +2271,11 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				}	
 			}
 			else {
-				lissue	= ISSUE_HTTP_SERVER_ERRORS;
+				lissue	= ISSUE_SERVER_ERRORS;
 				lstate	= STATE_OK;
 				
-				strbuf.appendconst("State OK : Some HTTP 5xx Errors seen but Current Response is lower than historical Response but QPS is higher than the 95th percentile QPS");
-				strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+				strbuf.appendconst("State OK : Some Server Errors seen but Current Response is lower than historical Response but QPS is higher than the 95th percentile QPS");
+				strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 			}	
 				
 			return;
@@ -2285,30 +2284,30 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 		if (r5p95 == r5daysp95) {
 			if (ser_errors) {
 				if (ser_errors * 2 > nqrys_5s) {
-					lissue		= ISSUE_HTTP_SERVER_ERRORS;
+					lissue		= ISSUE_SERVER_ERRORS;
 					lstate		= STATE_SEVERE;
 					
 					if (!task_issue) {
-						strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors seen with no Process Issues");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+						strbuf.appendconst("State SEVERE : Many Server Errors seen with no Process Issues");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 					}
 					else {
-						strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors and Listener Processes have issues");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State SEVERE : Many Server Errors and Listener Processes have issues");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 					}	
 					return;	
 				}
 				else if (ser_errors * 5 > nqrys_5s) {
-					lissue		= ISSUE_HTTP_SERVER_ERRORS;
+					lissue		= ISSUE_SERVER_ERRORS;
 					lstate		= STATE_BAD;
 					
 					if (!task_issue) {
-						strbuf.appendconst("State Bad : HTTP 5xx Errors seen with no Process Issues");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+						strbuf.appendconst("State Bad : Server Errors seen with no Process Issues");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 					}
 					else {
-						strbuf.appendconst("State Bad : Many HTTP 5xx Errors and Listener Processes have issues");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State Bad : Many Server Errors and Listener Processes have issues");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 					}	
 					return;	
 				}
@@ -2320,16 +2319,16 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				if (curr_qps <= stats_qps[1].data_value) {
 					// QPS too low. Check if procs OK. If so, no issues
 					if (ser_errors) {
-						lissue		= ISSUE_HTTP_SERVER_ERRORS;
+						lissue		= ISSUE_SERVER_ERRORS;
 						lstate		= STATE_BAD;
 						
 						if (!task_issue) {
-							strbuf.appendconst("State Bad : Some HTTP 5xx Errors seen with no Process Issues and low QPS");
-							strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+							strbuf.appendconst("State Bad : Some Server Errors seen with no Process Issues and low QPS");
+							strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 						}
 						else {
-							strbuf.appendconst("State Bad : Some HTTP 5xx Errors and Listener Processes have issues with low QPS");
-							strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+							strbuf.appendconst("State Bad : Some Server Errors and Listener Processes have issues with low QPS");
+							strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 						}	
 						return;	
 					}	
@@ -2374,16 +2373,16 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 						lissue		= ISSUE_LISTENER_TASKS;
 						lstate		= STATE_BAD;
 							
-						strbuf.appendconst("State Bad : Some HTTP 5xx Errors and Listener Processes have issues");
-						strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+						strbuf.appendconst("State Bad : Some Server Errors and Listener Processes have issues");
+						strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 						return;	
 					}
 
-					lissue		= ISSUE_HTTP_SERVER_ERRORS;
+					lissue		= ISSUE_SERVER_ERRORS;
 					lstate		= STATE_OK;
 						
-					strbuf.appendconst("State OK : Some HTTP 5xx Errors seen with no Process Issues");
-					strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+					strbuf.appendconst("State OK : Some Server Errors seen with no Process Issues");
+					strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 				}	
 
 				lissue	= ISSUE_LISTENER_TASKS;
@@ -2409,30 +2408,30 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 
 		if (ser_errors) {
 			if (ser_errors * 2 > nqrys_5s) {
-				lissue		= ISSUE_HTTP_SERVER_ERRORS;
+				lissue		= ISSUE_SERVER_ERRORS;
 				lstate		= STATE_SEVERE;
 				
 				if (!task_issue) {
-					strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors seen with no Process Issues and High Response");
-					strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+					strbuf.appendconst("State SEVERE : Many Server Errors seen with no Process Issues and High Response");
+					strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 				}
 				else {
-					strbuf.appendconst("State SEVERE : Many HTTP 5xx Errors and Listener Processes have issues with High Response");
-					strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+					strbuf.appendconst("State SEVERE : Many Server Errors and Listener Processes have issues with High Response");
+					strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 				}	
 				return;	
 			}
 			else if (ser_errors * 5 > nqrys_5s) {
-				lissue		= ISSUE_HTTP_SERVER_ERRORS;
+				lissue		= ISSUE_SERVER_ERRORS;
 				lstate		= STATE_BAD;
 				
 				if (!task_issue) {
-					strbuf.appendconst("State Bad : HTTP 5xx Errors seen with no Process Issues and High Response");
-					strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u", r5p95, curr_qps, ser_errors);
+					strbuf.appendconst("State Bad : Server Errors seen with no Process Issues and High Response");
+					strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u", r5p95, curr_qps, ser_errors);
 				}
 				else {
-					strbuf.appendconst("State Bad : Many HTTP 5xx Errors and Listener Processes have issues with High Response");
-					strbuf.appendfmt(" : Response %ld msec : QPS %d : HTTP 5xx Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
+					strbuf.appendconst("State Bad : Many Server Errors and Listener Processes have issues with High Response");
+					strbuf.appendfmt(" : Response %ld msec : QPS %d : Server Errors %u : Listener Procs with issues %d", r5p95, curr_qps, ser_errors, ntasks_issue);
 				}	
 				return;	
 			}
@@ -2446,7 +2445,7 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				lstate	= STATE_SEVERE;
 				strbuf.appendconst("State SEVERE : Current Response is much higher than historical Response likely due to QPS being very high");
 				if (ser_errors) {
-					strbuf.appendconst(" and some HTTP 5xx Errors");
+					strbuf.appendconst(" and some Server Errors");
 				}
 				strbuf.appendfmt(" : Response %ld msec : QPS %d : p95 QPS %ld", r5p95, curr_qps, stats_qps[0].data_value);
 			}
@@ -2454,13 +2453,13 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				lstate	= STATE_BAD;
 				strbuf.appendconst("State Bad : Current Response is higher than historical Response likely due to QPS being very high");
 				if (ser_errors) {
-					strbuf.appendconst(" and some HTTP 5xx Errors");
+					strbuf.appendconst(" and some Server Errors");
 				}
 				strbuf.appendfmt(" : Response %ld msec : QPS %d : p95 QPS %ld", r5p95, curr_qps, stats_qps[0].data_value);
 			}	
 			
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2482,7 +2481,7 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			}	
 
 			if (ser_errors) {
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			if (task_issue) {
@@ -2493,7 +2492,7 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			}	
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2514,14 +2513,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 
 			strbuf.appendconst(" likely due to Active Connections being higher than usual");
 			if (ser_errors) {
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			strbuf.appendfmt(" : Response %ld msec : QPS %d : Active Connections %d : p95 Active Conns %ld", 
 				r5p95, curr_qps, curr_active_conn, stats_active[0].data_value);
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2536,14 +2535,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				strbuf.appendconst("State OK : Current Response is similar to historical Response though a few queries are much slower");
 				
 				if (ser_errors) {
-					lissue	= ISSUE_HTTP_SERVER_ERRORS;
-					strbuf.appendconst(" and some HTTP 5xx Errors");
+					lissue	= ISSUE_SERVER_ERRORS;
+					strbuf.appendconst(" and some Server Errors");
 				}
 
 				strbuf.appendfmt(" : Response %ld msec : QPS %d", r5p95, curr_qps);
 
 				if (ser_errors) {
-					strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+					strbuf.appendfmt(" : Server Errors %u", ser_errors);
 				}
 
 				return;
@@ -2560,13 +2559,13 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 							"due to Listener Process(es) delays and Host CPU and Memory Issues");
 				
 				if (ser_errors) {
-					strbuf.appendconst(" and some HTTP 5xx Errors");
+					strbuf.appendconst(" and some Server Errors");
 				}
 
 				strbuf.appendfmt(" : Response %ld msec : QPS %d : Listener Procs with issues %d", r5p95, curr_qps, ntasks_issue);
 				
 				if (ser_errors) {
-					strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+					strbuf.appendfmt(" : Server Errors %u", ser_errors);
 				}
 
 				return;
@@ -2578,13 +2577,13 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				strbuf.appendconst("State Bad : Current Response is higher than historical but with low QPS and active connections due to Listener Process(es) delays and Host Issues");
 				
 				if (ser_errors) {
-					strbuf.appendconst(" and some HTTP 5xx Errors");
+					strbuf.appendconst(" and some Server Errors");
 				}
 
 				strbuf.appendfmt(" : Response %ld msec : QPS %d : Listener Procs with issues %d", r5p95, curr_qps, ntasks_issue);
 				
 				if (ser_errors) {
-					strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+					strbuf.appendfmt(" : Server Errors %u", ser_errors);
 				}
 
 				return;
@@ -2596,14 +2595,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			strbuf.appendconst("State OK : Current Response is higher than historical but client QPS and active connections are low which may account for this");
 				
 			if (ser_errors) {
-				lissue	= ISSUE_HTTP_SERVER_ERRORS;
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				lissue	= ISSUE_SERVER_ERRORS;
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			strbuf.appendfmt(" : Response %ld msec : QPS %d : Connections %d", r5p95, curr_qps, nconn);
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2622,14 +2621,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			strbuf.appendconst("State OK : Current Response is similar to previous history although higher than historical response as historical QPS low");
 				
 			if (ser_errors) {
-				lissue	= ISSUE_HTTP_SERVER_ERRORS;
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				lissue	= ISSUE_SERVER_ERRORS;
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			strbuf.appendfmt(" : Response %ld msec : QPS %d", r5p95, curr_qps);
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2643,14 +2642,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			strbuf.appendconst("State OK : Current Response is higher than historical but client queries and active connections are very low which may account for this");
 				
 			if (ser_errors) {
-				lissue	= ISSUE_HTTP_SERVER_ERRORS;
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				lissue	= ISSUE_SERVER_ERRORS;
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			strbuf.appendfmt(" : Response %ld msec : QPS %d : Active Connections %d", r5p95, curr_qps, curr_active_conn);
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2667,14 +2666,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				strbuf.appendconst("State OK : Current Response is higher than historical but this may be a transient issue as the last 5 minutes is not high");
 				
 				if (ser_errors) {
-					lissue	= ISSUE_HTTP_SERVER_ERRORS;
-					strbuf.appendconst(" and some HTTP 5xx Errors");
+					lissue	= ISSUE_SERVER_ERRORS;
+					strbuf.appendconst(" and some Server Errors");
 				}
 
 				strbuf.appendfmt(" : Response %ld msec : QPS %d", r5p95, curr_qps);
 
 				if (ser_errors) {
-					strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+					strbuf.appendfmt(" : Server Errors %u", ser_errors);
 				}
 
 				return;
@@ -2703,14 +2702,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 				strbuf.appendconst("State OK : Current Response is higher than historical but only a few connections may be affected by this");
 
 				if (ser_errors) {
-					lissue	= ISSUE_HTTP_SERVER_ERRORS;
-					strbuf.appendconst(" and some HTTP 5xx Errors");
+					lissue	= ISSUE_SERVER_ERRORS;
+					strbuf.appendconst(" and some Server Errors");
 				}
 
 				strbuf.appendfmt(" : Response %ld msec : QPS %d : Active Connections %d", r5p95, curr_qps, curr_active_conn);
 
 				if (ser_errors) {
-					strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+					strbuf.appendfmt(" : Server Errors %u", ser_errors);
 				}
 
 				return;
@@ -2732,14 +2731,14 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			strbuf.appendconst("State OK : Current Response is higher than historical but this is not consistent for the last few iterations");
 
 			if (ser_errors) {
-				lissue	= ISSUE_HTTP_SERVER_ERRORS;
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				lissue	= ISSUE_SERVER_ERRORS;
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			strbuf.appendfmt(" : Response %ld msec : QPS %d : High Response Iteration Count %d", r5p95, curr_qps, nhigh);
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2781,13 +2780,13 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			}
 
 			if (ser_errors) {
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			strbuf.appendfmt(" : Response %ld msec : QPS %d : Active Connections %d : Proc Delays %lu msec", r5p95, curr_qps, curr_active_conn, tasks_delay_msec);
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
@@ -2818,20 +2817,20 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			}
 
 			if (ser_errors) {
-				strbuf.appendconst(" and some HTTP 5xx Errors");
+				strbuf.appendconst(" and some Server Errors");
 			}
 
 			strbuf.appendfmt(" : Response %ld msec : QPS %d : Active Connections %d : Proc Delays %lu msec", r5p95, curr_qps, curr_active_conn, tasks_delay_msec);
 
 			if (ser_errors) {
-				strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+				strbuf.appendfmt(" : Server Errors %u", ser_errors);
 			}
 
 			return;
 		}	
 		else if (ser_errors) {
-			lissue = ISSUE_HTTP_SERVER_ERRORS;
-			strbuf.appendconst(" which may be due to some HTTP 5xx Errors");
+			lissue = ISSUE_SERVER_ERRORS;
+			strbuf.appendconst(" which may be due to some Server Errors");
 		}	
 		else {		
 			lissue = ISSUE_SRC_UNKNOWN;
@@ -2842,7 +2841,7 @@ void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lis
 			r5p95, r5daysp95, curr_qps, curr_active_conn);
 
 		if (ser_errors) {
-			strbuf.appendfmt(" : HTTP 5xx Errors %u", ser_errors);
+			strbuf.appendfmt(" : Server Errors %u", ser_errors);
 		}
 	}
 	GY_CATCH_EXCEPTION(
@@ -2883,7 +2882,7 @@ const char * TCP_LISTENER::print_string(STR_WR_BUF & strbuf, bool print_stats)
 		}
 
 		if (cumul_cli_errors_ + cumul_ser_errors_) {
-			strbuf.appendfmt("Total HTTP Client Errors %u Server Errors %u from start : ", cumul_cli_errors_, cumul_ser_errors_);
+			strbuf.appendfmt("Total Client Errors %u Server Errors %u from start : ", cumul_cli_errors_, cumul_ser_errors_);
 		}	
 
 		strbuf.appendfmt("Server DNS \'%s\'\n\n", server_domain_);
@@ -3772,6 +3771,78 @@ int TCP_SOCK_HANDLER::update_ser_conn_info_madhava(const comm::MP_SER_TCP_INFO *
 	);
 }
 
+int TCP_SOCK_HANDLER::handle_api_trace_set(const comm::REQ_TRACE_SET *preq, int nreq) noexcept
+{
+	using namespace		comm;
+
+	try {
+		GlobIDInodeMap			delidmap;
+		int64_t				nadd = 0, ndel;
+		bool				isnocaperr = false;
+		
+		RCU_LOCK_SLOW			slowlock;
+
+		auto lam_chk = [&, this](TCP_LISTENER_ELEM_TYPE *pdatanode, void *arg1, void *arg2) -> CB_RET_E
+		{
+			auto 			plistener = pdatanode->get_cref().get();
+			const REQ_TRACE_SET	*ptmp = (const REQ_TRACE_SET *)arg1;
+
+			if (gy_unlikely(plistener == nullptr)) {
+				return CB_OK;
+			}
+			
+			if (ptmp->enable_cap_) {
+				if (bool(svcnetcap_) && svcnetcap_->is_svc_cap_allowed(true /* isapicall */)) {
+
+					plistener->tapi_cap_stop_.store(ptmp->tend_, mo_relaxed);
+
+					nadd += svcnetcap_->sched_add_listener(0, gy_to_charbuf<128>("API Capture for Svc %s %016lx", plistener->comm_, plistener->glob_id_).get(),
+						plistener->ns_ip_port_.get_ns_inode(), plistener->shared_from_this(), true /* isapicall */);
+				}
+				else {
+					if (!isnocaperr) {
+						isnocaperr = true;
+						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Request Trace Enable called but Trace API Capture is disabled. Cannot enable Capture for \'%s\'\n",
+							ptmp->comm_);
+					}
+				}	
+			}
+			else {
+				auto		[it, success] = delidmap.try_emplace(plistener->ns_ip_port_.get_ns_inode());
+				auto		& vec = it->second;		
+					
+				vec.emplace_back(plistener->glob_id_, plistener->ns_ip_port_.get_port());
+			}	
+
+			return CB_OK;
+		};
+
+		const REQ_TRACE_SET		*ptmp = preq;
+
+		for (int i = 0; i < nreq; ++i, ++ptmp) {
+			listener_tbl_.lookup_single_elem(ptmp->ns_ip_port_, ptmp->ns_ip_port_.get_hash(true /* ignore_ip */), lam_chk, (void *)ptmp);
+		}	
+
+		slowlock.unlock();
+
+		ndel = delidmap.size();
+
+		if (ndel > 0) {
+			svcnetcap_->sched_del_listeners(0, gy_to_charbuf<128>("Request Trace Delete Listeners %ld", get_usec_time()).get(), std::move(delidmap));
+		}
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Request Trace Set : Scheduled Trace Capture for %ld listeners and Scheduled Trace disabled for %ld\n",
+			nadd, ndel);
+
+		return 0;
+	}	
+	GY_CATCH_EXCEPTION(
+		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Caught Exception while handling Req Trace Set messages from Madhava : %s\n", GY_GET_EXCEPT_STRING););
+		return -1;
+	);
+}
+
+
 std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::shared_ptr<SERVER_CONNTRACK> & servshr, bool cpu_issue, bool mem_issue, GlobIDInodeMap & delidmap) noexcept
 {
 	GY_NOMT_COLLECT_PROFILE(40, "Listener Stats updation and checks");
@@ -3936,9 +4007,34 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 				}
 					
 				uint32_t		cli_errors = 0, ser_errors = 0, ccerr = GY_READ_ONCE(plistener->cumul_cli_errors_), cserr = GY_READ_ONCE(plistener->cumul_ser_errors_);
+				bool			is_apicap = false;
 
-				cli_errors = gy_diff_counter(ccerr, plistener->last_cli_errors_);
-				ser_errors = gy_diff_counter(cserr, plistener->last_ser_errors_);
+				if (plistener->api_cap_started_.load(mo_acquire) == CAPSTAT_ACTIVE) {
+					SCOPE_GY_MUTEX			slock(plistener->svcweak_lock_);
+					auto				svcshr = plistener->api_svcweak_.lock();
+					
+					slock.unlock();
+
+					if (svcshr) {
+						uint64_t			acerr, aserr;
+
+						acerr = GY_READ_ONCE(svcshr->stats_.ncli_errors_);
+						aserr = GY_READ_ONCE(svcshr->stats_.nser_errors_);
+
+						cli_errors = (uint32_t)gy_diff_counter(acerr, plistener->last_api_ncli_errors_);
+						ser_errors = (uint32_t)gy_diff_counter(aserr, plistener->last_api_nser_errors_);
+
+						plistener->last_api_ncli_errors_ = acerr;
+						plistener->last_api_nser_errors_ = aserr;
+
+						is_apicap = true;
+					}	
+				}	
+
+				if (!is_apicap) {
+					cli_errors = gy_diff_counter(ccerr, plistener->last_cli_errors_);
+					ser_errors = gy_diff_counter(cserr, plistener->last_ser_errors_);
+				}
 
 				plistener->last_cli_errors_ = ccerr;
 				plistener->last_ser_errors_ = cserr;
@@ -4030,6 +4126,12 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 							catch(...) {
 
 							}	
+						}	
+						else if (plistener->api_cap_started_.load(mo_relaxed) >= CAPSTAT_STARTING) {
+							plistener->tapi_cap_stop_.store(time(nullptr), mo_relaxed);
+
+							svcnetcap_->sched_del_one_listener(0, plistener->glob_id_, plistener->ns_ip_port_.inode_,
+									plistener->ns_ip_port_.ip_port_.port_, true /* onlyapi */);
 						}	
 
 						// Set the last_nat_chg_ip_tsec_ to inform Madhava and Shyama
@@ -4155,8 +4257,8 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 					pnotify->curr_kbytes_inbound_		= GY_DOWN_KB(curr_bytes_inbound);
 					pnotify->curr_kbytes_outbound_		= GY_DOWN_KB(curr_bytes_outbound);
 					
-					pnotify->ser_http_errors_		= ser_errors;
-					pnotify->cli_http_errors_		= cli_errors;
+					pnotify->ser_errors_			= ser_errors;
+					pnotify->cli_errors_			= cli_errors;
 
 					pnotify->tasks_delay_usec_		= taskstatus.tasks_delay_usec_;
 					pnotify->tasks_cpudelay_usec_		= taskstatus.tasks_cpudelay_usec_;
@@ -6859,13 +6961,12 @@ int TCP_SOCK_HANDLER::upd_conn_from_diag(struct inet_diag_msg *pdiag_msg, int rt
 						vec.emplace_back(plistener->shared_from_this());
 					}
 
-					/*
-					 * XXX Testing TODO Remove
-					 */
+#if 0
 					if (bool(svcnetcap_) && svcnetcap_->is_svc_cap_allowed(true /* isapicall */)) {
 						svcnetcap_->sched_add_listener(1, gy_to_charbuf<128>("API Capture for Svc %s %016lx", plistener->comm_, plistener->glob_id_).get(),
 							inode, plistener->shared_from_this(), true /* isapicall */);
 					}
+#endif					
 				}	
 			}
 		}

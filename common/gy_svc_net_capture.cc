@@ -1,6 +1,7 @@
 //  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
 //  SPDX-License-Identifier: GPL-3.0-or-later
 
+#include			"gy_server_int.h"
 #include			"gy_svc_net_capture.h"
 #include			"gy_stack_container.h"
 #include			"gy_socket_stat.h"
@@ -65,8 +66,10 @@ SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid, bool disable_api_capture, uint3
 	});	
 
 	apischedthr_.add_schedule(100'200, 30'000, 0, "Check for api netns Listener Deletes and Netns capture errors", 
-	[this] { 
-		check_netns_api_listeners();
+	[this, sendstatus = bool(false)] () mutable { 
+		check_netns_api_listeners(sendstatus);
+
+		sendstatus = !sendstatus;
 	});
 
 	apischedthr_.add_schedule(5550, 1000, 0, "rcu offline thread", 
@@ -386,7 +389,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 						bret = apihdlr_->msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_DEL_SVCCAP>, psvc->glob_id_));
 						if (!bret) {
 							if (psvc->svcinfocap_) {
-								psvc->svcinfocap_->stop_parser_tusec_.store(get_usec_time(), mo_release);
+								psvc->svcinfocap_->stopped_parser_tusec_.store(get_usec_time(), mo_release);
 							}
 
 							WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Skipping Network API Capture for Listener %s Port %hu as Msg Pool is full and deletion msg failed...\n", 
@@ -398,7 +401,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 
 					}	
 					else if (psvc) {
-						plistener->api_cap_started_.store(true, std::memory_order_relaxed);
+						plistener->api_cap_started_.store(CAPSTAT_STARTING, mo_release);
 						continue;
 					}	
 
@@ -570,6 +573,8 @@ void SVC_NET_CAPTURE::del_err_listeners(const GlobIDInodeMap & nslistmap) noexce
 
 void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexcept
 {
+	using namespace comm;
+
 	try {
 		if (apicallmap_.size() == 0) {
 			return;
@@ -577,6 +582,13 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 
 		uint64_t			sslidarr[MAX_SVC_API_CAP * 2];
 		uint32_t			ndelsvc = 0, nssl = 0;
+		char				ebuf[256];
+
+		INLINE_STACK_VECTOR<REQ_TRACE_STATUS, REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM * sizeof(REQ_TRACE_STATUS)>	reqvec;
+		
+		reqvec.reserve(REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM >> 1);
+
+		assert(gy_get_thread_local().get_thread_stack_freespace() >= 256 * 1024);
 
 		for (const auto & [inode, vecone] : nslistmap) {
 
@@ -597,8 +609,8 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 					
 				for (auto [globid, port] : vecone) {
 
-					SVC_API_PARSER		*psvc;
-					bool			portused = false, bret;
+					SVC_API_PARSER			*psvc;
+					bool				portused = false, bret;
 
 					psvc = nsone.find_svc_by_globid_locked(globid, port, portused);
 					
@@ -606,29 +618,43 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 						continue;
 					}
 
-					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Deleting API Network Capture for Listener %s Port %hu as delete request seen\n",
-						psvc->listenshr_ ? psvc->listenshr_->comm_ : "", psvc->serport_);
+					const auto			& listenshr = psvc->listenshr_;
+					const auto			& svcinfocap = psvc->svcinfocap_;
 
-					if (psvc->svcinfocap_) {
-						auto			sslreq = psvc->svcinfocap_->ssl_req_.load(mo_acquire);
+					const char			*perrstr = nullptr;
+					uint64_t			nrequests = 0, nerrors = 0;
+
+					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Deleting API Request Capture for Listener %s Port %hu as delete request seen : Reason for deletion %s\n",
+						listenshr ? listenshr->comm_ : "", psvc->serport_, perrstr ? perrstr : "unspecified");
+
+					if (svcinfocap) {
+						auto			sslreq = svcinfocap->ssl_req_.load(mo_acquire);
 
 						if (sslreq != SSL_REQ_E::SSL_NO_REQ && sslreq != SSL_REQ_E::SSL_REJECTED) {
 							if (nssl + 1 < GY_ARRAY_SIZE(sslidarr)) {
 								sslidarr[nssl++] = psvc->glob_id_;
 							}	
 						}
+
+						nrequests = svcinfocap->stats_.nrequests_;
+						nerrors = svcinfocap->stats_.ncli_errors_ + svcinfocap->stats_.nser_errors_;
+
+						if (svcinfocap->api_cap_err_) {
+							GY_STRNCPY(ebuf, svcinfocap->api_cap_err_.get(), sizeof(ebuf));
+							perrstr = ebuf;
+						}
 					}
 
 					bret = apihdlr_->msgpool_.write(PARSE_MSG_BUF(std::in_place_type<MSG_DEL_SVCCAP>, psvc->glob_id_));
 					if (!bret) {
-						if (psvc->svcinfocap_) {
-							psvc->svcinfocap_->stop_parser_tusec_.store(get_usec_time(), mo_release);
+						if (svcinfocap) {
+							svcinfocap->stopped_parser_tusec_.store(get_usec_time(), mo_release);
 						}
 
 						DEBUGEXECN(1, 
 							WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, 
 								"Skipping sending Network API Capture Parser stop for Listener %s as Msg Pool is full and deletion msg failed...\n", 
-									psvc->listenshr_ ? psvc->listenshr_->comm_ : "");
+									listenshr ? listenshr->comm_ : "");
 						);	
 					}	
 
@@ -636,8 +662,16 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 						torestart = true;
 					}
 
-					if (psvc->listenshr_) {
-						psvc->listenshr_->api_cap_started_.store(false, std::memory_order_relaxed);
+					if (listenshr) {
+						SCOPE_GY_MUTEX				scope(listenshr->svcweak_lock_);
+
+						listenshr->api_svcweak_.reset();
+						listenshr->api_cap_started_.store(CAPSTAT_UNINIT, mo_relaxed);
+						listenshr->tapi_cap_stop_.store(0L, mo_relaxed);
+						
+						scope.unlock();
+
+						reqvec.emplace_back(listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, CAPSTAT_UNINIT, perrstr, nrequests, nerrors);
 					}
 
 					ndelsvc += nsone.port_listen_tbl_.delete_elem_locked(psvc);
@@ -675,6 +709,15 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 		if (ndelsvc > 0) {
 			ncap_api_svc_.fetch_sub_relaxed_0(ndelsvc);
 		}
+
+		if (reqvec.size()) {
+
+			if (reqvec.size() > REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM) {
+				reqvec.resize(REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM);
+			}	
+
+			send_api_cap_status(reqvec.data(), reqvec.size());
+		}	
 	}
 	GY_CATCH_EXCEPTION(
 		DEBUGEXECN(1,
@@ -833,8 +876,10 @@ void SVC_NET_CAPTURE::check_netns_err_listeners() noexcept
 	);
 }	
 
-void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
+void SVC_NET_CAPTURE::check_netns_api_listeners(const bool sendstatus) noexcept
 {
+	using namespace comm;
+
 	try {
 		size_t				nnetns = 0, nlisten = 0;
 
@@ -848,7 +893,7 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 
 		const auto			psockhdlr = TCP_SOCK_HANDLER::get_singleton();
 		const time_t			tcurr = time(nullptr);
-		bool				forcerestart = false;
+		bool				forcerestart = false, bret;
 
 		nnetns = apicallmap_.size();
 
@@ -856,10 +901,18 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 			return;
 		}	
 
+		INLINE_STACK_VECTOR<REQ_TRACE_STATUS, REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM * sizeof(REQ_TRACE_STATUS)>	reqvec;
+		
+		reqvec.reserve(REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM >> 1);
+
+		assert(gy_get_thread_local().get_thread_stack_freespace() >= 256 * 1024);
+
 		const auto pchk = [&](SVC_API_PARSER *psvcone, void *arg1) -> CB_RET_E
 		{
-			const auto 		& lshr = psvcone->listenshr_;
-			NETNS_API_CAP1		*pnetone = (NETNS_API_CAP1 *)arg1;
+			const auto 			& lshr = psvcone->listenshr_;
+			const auto			& svcinfocap = psvcone->svcinfocap_;
+
+			NETNS_API_CAP1			*pnetone = (NETNS_API_CAP1 *)arg1;
 
 			if (!lshr || !psvcone) {
 				return CB_DELETE_ELEM;
@@ -867,29 +920,40 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 
 			assert(pnetone);
 
-			if (psockhdlr->is_listener_deleted(lshr)) {
+			time_t				tstop = lshr->tapi_cap_stop_.load(mo_relaxed);
+			uint64_t			nrequests = 0, nerrors = 0;
 
-				GlobIDInodeMap			delidmap;
+			if ((tstop > 0 && tstop <= tcurr) || (psockhdlr->is_listener_deleted(lshr))) {
 
-				uint64_t			glob_id = lshr->glob_id_;
-				ino_t				inode = lshr->ns_ip_port_.inode_;
-				uint16_t			port = lshr->ns_ip_port_.ip_port_.port_;
+				bret = sched_del_one_listener(0, lshr->glob_id_, lshr->ns_ip_port_.inode_, lshr->ns_ip_port_.ip_port_.port_, true /* onlyapi */);
 				
-				// Send delete msg
-				try {
-					auto			[it, success] = delidmap.try_emplace(inode);
-					auto			& vec = it->second;		
-					
-					vec.emplace_back(glob_id, port);
+				if (!bret) {
+					// This should not happen : Try forced cleanup...
 
-					sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listener %s %lx", lshr->comm_, glob_id).get(), std::move(delidmap));
-				}
-				catch(...) {
+					lshr->tapi_cap_stop_.store(0L, mo_relaxed);
+					lshr->api_cap_started_.store(CAPSTAT_UNINIT, mo_release);
+
+					if (svcinfocap) {
+						nrequests = svcinfocap->stats_.nrequests_;
+						nerrors = svcinfocap->stats_.ncli_errors_ + svcinfocap->stats_.nser_errors_;
+					}	
+
+					reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, CAPSTAT_UNINIT, nrequests, nerrors);
+					
 					if (!forcerestart && (1 >= pnetone->port_listen_tbl_.count_duplicate_elems(psvcone->serport_, get_uint32_hash(psvcone->serport_), 2))) {
 						forcerestart = true;
 					}
 					return CB_DELETE_ELEM;
 				}
+			}	
+			else if (sendstatus) {
+				if (svcinfocap) {
+					nrequests = svcinfocap->stats_.nrequests_;
+					nerrors = svcinfocap->stats_.ncli_errors_ + svcinfocap->stats_.nser_errors_;
+				}	
+
+
+				reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, lshr->api_cap_started_.load(mo_relaxed), nrequests, nerrors);
 			}	
 
 			pnetone->printbuf_ << "[Svc \'"sv << lshr->comm_ << "\' Port " << psvcone->serport_ << "], "sv;
@@ -966,6 +1030,15 @@ void SVC_NET_CAPTURE::check_netns_api_listeners() noexcept
 		if (nnetns > 0 || nlisten > 0) {
 			INFOPRINT_OFFLOAD("Service API Network Capture : Network Namespaces %lu, Listeners %lu\n%s\n", nnetns, nlisten, strbuf.buffer());
 		}	
+
+		if (reqvec.size()) {
+
+			if (reqvec.size() > REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM) {
+				reqvec.resize(REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM);
+			}	
+
+			send_api_cap_status(reqvec.data(), reqvec.size());
+		}	
 	}
 	GY_CATCH_EXCEPTION(
 		DEBUGEXECN(1, ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_RED, "Caught Exception while checking API Port Listener Map : %s\n", GY_GET_EXCEPT_STRING););
@@ -981,7 +1054,7 @@ bool SVC_NET_CAPTURE::sched_add_listeners(uint64_t start_after_msec, const char 
 				add_err_listeners(svcinodemap);
 
 				last_errmapsize_.store(errcodemap_.size(), mo_release);
-			});	
+			}, false);	
 	}
 	else {
 		return apischedthr_.add_oneshot_schedule(start_after_msec, name,
@@ -990,7 +1063,7 @@ bool SVC_NET_CAPTURE::sched_add_listeners(uint64_t start_after_msec, const char 
 				add_api_listeners(svcinodemap);
 
 				last_apimapsize_.store(apicallmap_.size(), mo_release);
-			});	
+			}, false);	
 	}	
 }	
 
@@ -1014,7 +1087,7 @@ bool SVC_NET_CAPTURE::sched_add_listener(uint64_t start_after_msec, const char *
 				add_err_listeners(svcinodemap);
 
 				last_errmapsize_.store(errcodemap_.size(), mo_release);
-			});	
+			}, false);	
 	}
 	else {
 		return apischedthr_.add_oneshot_schedule(start_after_msec, name,
@@ -1023,13 +1096,14 @@ bool SVC_NET_CAPTURE::sched_add_listener(uint64_t start_after_msec, const char *
 				add_api_listeners(svcinodemap);
 
 				last_apimapsize_.store(apicallmap_.size(), mo_release);
-			});	
+			}, false);	
 	}	
 }	
 
 bool SVC_NET_CAPTURE::sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap, bool onlyapi)
 {
 	GlobIDInodeMap			apimap, *pmap = nullptr;
+	bool				bret1 = true, bret2;
 
 	if (!onlyapi) {	
 		/*
@@ -1038,27 +1112,46 @@ bool SVC_NET_CAPTURE::sched_del_listeners(uint64_t start_after_msec, const char 
 		apimap = nslistmap;	// Copy
 		pmap = &apimap;
 
-		errschedthr_.add_oneshot_schedule(start_after_msec, name,
+		bret1 = errschedthr_.add_oneshot_schedule(start_after_msec, name,
 		[this, delidmap = std::move(nslistmap)]() {
 
 			del_err_listeners(delidmap);
 
 			last_errmapsize_.store(errcodemap_.size(), mo_release);
-		});	
+		}, false);	
 	}
 	else {
 		pmap = &nslistmap;
 	}	
 
-	apischedthr_.add_oneshot_schedule(start_after_msec, name,
+	bret2 = apischedthr_.add_oneshot_schedule(start_after_msec, name,
 		[this, delidmap = std::move(*pmap)]() {
 			del_api_listeners(delidmap);
 
 			last_apimapsize_.store(apicallmap_.size(), mo_release);
-		});	
+		}, false);	
 
-	return true;
+	return (bret1 && bret2);
 }	
+
+bool SVC_NET_CAPTURE::sched_del_one_listener(uint64_t start_after_msec, uint64_t glob_id, ino_t inode, uint16_t port, bool onlyapi) noexcept
+{
+	try {
+		GlobIDInodeMap			delidmap;
+
+		auto			[it, success] = delidmap.try_emplace(inode);
+		auto			& vec = it->second;		
+		
+		vec.emplace_back(glob_id, port);
+
+		sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listener %lx", glob_id).get(), std::move(delidmap), onlyapi);
+
+		return true;
+	}
+	catch(...) {
+		return false;
+	}	
+}
 
 bool SVC_NET_CAPTURE::sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LISTENER> svcweak)
 {
@@ -1088,7 +1181,7 @@ bool SVC_NET_CAPTURE::sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LI
 			}
 			catch(...) {
 			}
-		});
+		}, false);
 }
 
 bool SVC_NET_CAPTURE::sched_svc_ssl_stop(const char *name, uint64_t glob_id) noexcept
@@ -1100,7 +1193,40 @@ bool SVC_NET_CAPTURE::sched_svc_ssl_stop(const char *name, uint64_t glob_id) noe
 	return apischedthr_.add_oneshot_schedule(1, name, 
 		[this, glob_id]() {
 			apihdlr_->sslcap_.stop_svc_cap(glob_id);
-		});
+		}, false);
+}
+
+bool SVC_NET_CAPTURE::send_api_cap_status(comm::REQ_TRACE_STATUS *preq, size_t nreq)
+{
+	using namespace comm;
+
+	auto				pser = SERVER_COMM::get_singleton();
+	auto				shrp = pser->get_server_conn(comm::CLI_TYPE_REQ_ONLY);
+	auto				pconn1 = shrp.get();
+
+	if (!pconn1) {
+		return false;
+	}
+
+	size_t				totallen = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(REQ_TRACE_STATUS) * nreq;
+
+	void				*palloc = malloc(totallen + 32);
+	if (!palloc) {
+		return false;
+	}	
+
+	COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);
+	EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1); 
+	REQ_TRACE_STATUS		*pone = reinterpret_cast<REQ_TRACE_STATUS *>(pnot + 1);
+
+	new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, totallen, pser->get_conn_magic());
+
+	new (pnot) EVENT_NOTIFY(NOTIFY_REQ_TRACE_STATUS, nreq);
+
+	std::memcpy((void *)pone, preq, nreq * sizeof(REQ_TRACE_STATUS));
+
+	return pser->send_server_data(EPOLL_IOVEC_ARR(2, false, phdr, phdr->get_act_len(), ::free, pser->gpadbuf, phdr->get_pad_len(), nullptr), 
+					comm::CLI_TYPE_REQ_ONLY, COMM_EVENT_NOTIFY, shrp);
 }
 
 SVC_ERR_HTTP::SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart)
@@ -1123,7 +1249,7 @@ SVC_API_PARSER::SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool 
 		tstart_(tstart), svcinfocap_(std::make_shared<SVC_INFO_CAP>(listenshr_, *pgsvccap->apihdlr_.get())), 
 		serport_(listenshr_->ns_ip_port_.ip_port_.port_), is_rootns_(is_rootns)
 {
-	listenshr_->api_cap_started_.store(true, std::memory_order_relaxed);
+	listenshr_->api_cap_started_.store(CAPSTAT_STARTING, mo_release);
 }
 
 
@@ -1843,12 +1969,12 @@ uint32_t NETNS_API_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 
 	tports = (uint16_t)port_listen_tbl_.walk_hash_table_const(pchk);
 
-	if ((portset.size() < 6) || (maxport - minport > 16 && maxport - minport > 1.5 * tports)) {
+	if ((portset.size() < 6) || (maxport - minport > 64)) {
 		for (uint16_t port : portset) {
 			if (nports++ > 0) strbuf.appendconst(" or ");
 
 			strbuf.appendfmt("tcp port %hu", port);
-		}	
+		}
 	}
 	else {
 		strbuf << "tcp portrange "sv << minport << '-' << maxport;

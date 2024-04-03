@@ -55,6 +55,8 @@ static constexpr size_t			MAX_PARTHA_PER_MADHAVA		{512};
  * Shyama and Madhava servers will support upto 2 previous Partha versions. Currently, Shyama and Madhava servers need to be on
  * the same version. Older version connections within the Shyama and Madhava servers will be rejected.
  *
+ * All string length fields include the '\0' character i.e. length = strlen + 1
+ *
  * XXX Please ensure any changes related to underlying protocol for Node to other hosts is in sync with Node gyeeta_comm.js file.
  */
 
@@ -191,6 +193,8 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_LISTEN_CLUSTER_INFO,
 	NOTIFY_HOST_STATE,
 	NOTIFY_REQ_TRACE_TRAN,
+	NOTIFY_REQ_TRACE_SET,
+	NOTIFY_REQ_TRACE_STATUS,
 
 	NOTIFY_PM_EVT_MAX,
 
@@ -210,6 +214,9 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_MS_CLUSTER_STATE,
 	NOTIFY_MS_PARTHA_PING,
 	NOTIFY_MS_REG_PARTHA,
+	NOTIFY_SM_REQ_TRACE_DEF_NEW,
+	NOTIFY_SM_REQ_TRACE_DEF_DISABLE,
+
 	NOTIFY_MS_EVT_MAX,
 
 	NOTIFY_MM_TASK_AGGR_PING	= 0x701,
@@ -221,9 +228,11 @@ enum NOTIFY_TYPE_E : uint32_t
 	NOTIFY_MM_LISTENER_DELETE,
 	NOTIFY_MM_LISTENER_DEPENDS,
 	NOTIFY_MM_ACTIVE_CONN_STATS,
+
 	NOTIFY_MM_EVT_MAX,
 
 	NOTIFY_SM_PARTHA_IDENT		= 0x901,
+
 	NOTIFY_SM_EVT_MAX,
 	
 	NOTIFY_PING_CONN		= 0xA01,
@@ -2185,8 +2194,8 @@ struct alignas(8) LISTENER_STATE_NOTIFY
 	uint32_t			p95_5min_resp_ms_	{0};
 	uint32_t			curr_kbytes_inbound_	{0};
 	uint32_t			curr_kbytes_outbound_	{0};
-	uint32_t			ser_http_errors_	{0};
-	uint32_t			cli_http_errors_	{0};
+	uint32_t			ser_errors_		{0};
+	uint32_t			cli_errors_		{0};
 
 	uint32_t 			tasks_delay_usec_	{0};
 	uint32_t			tasks_cpudelay_usec_	{0};
@@ -3282,6 +3291,164 @@ struct alignas(8) REQ_TRACE_TRAN : public API_TRAN
 
 	static bool validate(const comm::COMM_HEADER *phdr, const comm::EVENT_NOTIFY *pnotify) noexcept;
 };	
+
+struct alignas(8) REQ_TRACE_SET
+{
+	uint64_t			glob_id_		{0};
+	NS_IP_PORT			ns_ip_port_;
+	time_t				tend_			{0};
+	char				comm_[TASK_COMM_LEN]	{};
+	bool				enable_cap_		{false};
+
+	static constexpr size_t		MAX_REQ_TRACE_ELEM	{128};
+
+	// To enable capture
+	REQ_TRACE_SET(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm, time_t tend) noexcept
+		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), tend_(tend), enable_cap_(true)
+	{
+		GY_STRNCPY_0(comm_, comm, sizeof(comm_));
+	}	
+
+	// To disable capture
+	REQ_TRACE_SET(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm) noexcept
+		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), enable_cap_(false)
+	{
+		GY_STRNCPY_0(comm_, comm, sizeof(comm_));
+	}	
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
+	bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) const noexcept
+	{	
+		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(REQ_TRACE_SET) && pnotify->nevents_ <= MAX_REQ_TRACE_ELEM);
+	}	
+};	
+
+struct alignas(8) REQ_TRACE_STATUS
+{
+	uint64_t			glob_id_			{0};
+	NS_IP_PORT			ns_ip_port_;
+	uint64_t			nrequests_			{0};
+	uint64_t			nerrors_			{0};
+	char				comm_[TASK_COMM_LEN]		{};
+	PROTO_CAP_STATUS_E		status_				{CAPSTAT_UNINIT};
+	char				errstr_[COMM_MAX_ERROR_LEN];
+
+	static constexpr size_t		MAX_REQ_TRACE_ELEM		{128};
+
+	REQ_TRACE_STATUS(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm, PROTO_CAP_STATUS_E status, 
+					const char *errstr = nullptr, uint64_t nrequests = 0, uint64_t nerrors = 0) noexcept
+		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), nrequests_(nrequests), nerrors_(nerrors), status_(status)
+	{
+		GY_STRNCPY_0(comm_, comm, sizeof(comm_));
+
+		if (errstr && *errstr) {
+			GY_STRNCPY(errstr_, errstr, sizeof(errstr_));
+		}	
+		else {
+			*errstr_ = 0;
+		}	
+	}	
+
+	REQ_TRACE_STATUS() noexcept	= default;
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
+	bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) const noexcept
+	{	
+		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(REQ_TRACE_STATUS) && pnotify->nevents_ <= MAX_REQ_TRACE_ELEM);
+	}	
+};	
+
+
+struct alignas(8) SM_REQ_TRACE_DEF_NEW
+{
+	uint32_t			reqdefid_		{0};
+	bool				enable_cap_		{false};
+	time_t				tend_			{0};
+	char				name_[64]		{};
+	uint16_t			ncap_glob_id_arr_	{0};
+	uint16_t			lencrit_		{0};
+	uint8_t				padding_len_		{0};
+
+	// Either ncap_glob_id_arr_ or lencrit_ can be specified
+
+	/*uint64_t			cap_glob_id_arr_[ncap_glob_id_arr_] follows;*/
+	/*char				crit_[lencrit_] follows;*/
+	/*char				padding_[padding_len_]; follows to make the entire 8 byte aligned */
+
+	static constexpr size_t		MAX_GLOB_ID_ARR 	{2048};
+	static constexpr size_t		MAX_NUM_DEFS 		{128};	// Send in batches
+
+	SM_REQ_TRACE_DEF_NEW() noexcept				= default;
+
+	SM_REQ_TRACE_DEF_NEW(uint32_t reqdefid, const char *name, bool enable_cap, time_t tend, uint16_t lencrit) noexcept
+		: reqdefid_(reqdefid), enable_cap_(enable_cap), tend_(tend), lencrit_(lencrit)
+	{
+		GY_STRNCPY_0(name_, name, sizeof(name_));
+		set_padding_len();
+	}	
+
+	// Only fixed svcs as per ncap_glob_id_arr
+	SM_REQ_TRACE_DEF_NEW(uint32_t reqdefid, uint16_t ncap_glob_id_arr, const char *name, bool enable_cap, time_t tend) noexcept
+		: reqdefid_(reqdefid), enable_cap_(enable_cap), tend_(tend), ncap_glob_id_arr_(ncap_glob_id_arr)
+	{
+		GY_STRNCPY_0(name_, name, sizeof(name_));
+	}	
+
+	inline size_t get_elem_size() const noexcept
+	{
+		return get_act_size() + padding_len_;
+	}	
+
+	void set_padding_len() noexcept
+	{
+		size_t 			currsz, newsz;
+
+		currsz = get_act_size();
+		newsz = gy_align_up_2(currsz, 8);
+
+		padding_len_		= newsz - currsz;
+	}
+
+
+	bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) const noexcept;
+
+private :
+	inline size_t get_act_size() const noexcept
+	{
+		return sizeof(*this) + ncap_glob_id_arr_ * sizeof(uint64_t) + lencrit_; 
+	}
+};	
+
+struct alignas(8) SM_REQ_TRACE_DEF_DISABLE
+{
+	uint32_t			reqdefid_		{0};
+	time_t				tend_			{0};
+	
+	SM_REQ_TRACE_DEF_DISABLE() noexcept	= default;
+
+	SM_REQ_TRACE_DEF_DISABLE(uint32_t reqdefid, time_t tend) noexcept :
+		reqdefid_(reqdefid), tend_(tend)
+	{}
+
+	uint32_t get_elem_size() const noexcept
+	{
+		return sizeof(*this);
+	}
+
+	static bool validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
+	{
+		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(SM_REQ_TRACE_DEF_DISABLE));
+	}
+};
+
 
 } // namespace comm
 } // namespace gyeeta

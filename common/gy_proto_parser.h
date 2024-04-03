@@ -23,7 +23,11 @@ namespace gyeeta {
 static constexpr uint32_t			MAX_PARSE_CONC_SESS	{16 * 1024};	
 static constexpr uint32_t			MAX_PARSE_POOL_PKT	{100'000};
 static constexpr uint32_t			MAX_REORDER_PKTS	{20000};
-static constexpr size_t				MAX_API_PARSERS		{1};			// Currently only single threaded parser
+
+/*
+ * Currently single threaded parser (Requires changes in gy_svc_net_capture.h if > 1)
+ */
+static constexpr size_t				MAX_API_PARSERS		{1};			
 
 
 enum API_CAP_SRC : uint8_t
@@ -462,6 +466,10 @@ struct SVC_PARSE_STATS
 	uint64_t				nresppkts_		{0};
 	uint64_t				nrespbytes_		{0};
 	
+	uint64_t				nrequests_		{0};
+	uint64_t				ncli_errors_		{0};
+	uint64_t				nser_errors_		{0};
+
 	uint64_t				ndroppkts_		{0};
 	uint64_t				ndropbytes_		{0};
 	uint64_t				ndropbytesin_		{0};
@@ -510,8 +518,9 @@ public :
 	NS_IP_PORT				ns_ip_port_;
 	char					comm_[TASK_COMM_LEN]	{};
 	uint64_t				tstartusec_		{get_usec_time()};
-	gy_atomic<uint64_t>			stop_parser_tusec_	{0};	
+	gy_atomic<uint64_t>			stopped_parser_tusec_	{0};
 
+	std::unique_ptr<char []>		api_cap_err_;
 	PROTO_TYPES				proto_			{PROTO_UNINIT};
 	gy_atomic<SSL_REQ_E>			ssl_req_		{SSL_REQ_E::SSL_NO_REQ};
 	

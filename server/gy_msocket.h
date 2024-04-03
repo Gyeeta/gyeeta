@@ -8,13 +8,18 @@
 #include			"gy_pool_alloc.h"
 #include			"gy_stack_container.h"
 #include			"gy_statistics.h"
+#include			"gy_query_common.h"
 #include			"gy_proto_common.h"
 
 #include			"folly/concurrency/AtomicSharedPtr.h" 
 #include			"folly/MicroLock.h"
+#include 			"folly/SharedMutex.h"
+#include 			"folly/container/F14Map.h"
 
 #include			<unordered_map>
 #include			<optional>
+
+using 				folly::SharedMutex;
 
 namespace gyeeta {
 namespace madhava {
@@ -415,6 +420,58 @@ public :
 
 		return *this;
 	}
+};
+
+class MREQ_TRACE_DEF
+{
+public :
+	time_t					tstart_			{time(nullptr)};
+	time_t					tend_			{0};
+	uint64_t				cstartus_		{get_usec_clock()};
+	char					name_[64];
+	uint32_t				reqdefid_		{0};
+	std::vector<uint64_t>			cap_glob_id_vec_;
+	std::optional<CRITERIA_SET>		filcrit_;
+	std::string				filterstr_;
+
+	MREQ_TRACE_DEF(uint32_t reqdefid, const char *name, std::string_view filterstr, time_t tend)
+		: tend_(tend), reqdefid_(reqdefid), 
+		filcrit_(std::in_place, filterstr.data(), filterstr.size(), SUBSYS_SVCINFO), filterstr_(filterstr)
+	{
+		GY_STRNCPY(name_, name, sizeof(name_));
+	}	
+
+	MREQ_TRACE_DEF(uint32_t reqdefid, uint64_t *cap_glob_id_arr, uint16_t ncap_glob_id_arr, const char *name, time_t tend)
+		: tend_(tend), reqdefid_(reqdefid)
+	{
+		cap_glob_id_vec_.reserve(ncap_glob_id_arr);
+
+		for (uint16_t i = 0; i < ncap_glob_id_arr; ++i) {
+			cap_glob_id_vec_.emplace_back(cap_glob_id_arr[i]);
+		}	
+
+		GY_STRNCPY(name_, name, sizeof(name_));
+	}	
+
+	MREQ_TRACE_DEF(MREQ_TRACE_DEF && other) noexcept		= default;
+
+	MREQ_TRACE_DEF & operator= (MREQ_TRACE_DEF && other) noexcept	= default;
+
+	bool is_fixed_svcs() const noexcept
+	{
+		return cap_glob_id_vec_.size() > 0;
+	}	
+};	
+
+class MREQ_TRACE_DEFS
+{
+public :
+	using					DefMap = folly::F14VectorMap<uint32_t, MREQ_TRACE_DEF, GY_JHASHER<uint32_t>>;
+
+	SharedMutex				def_rwmutex_;
+	DefMap					defmap_;
+	gy_atomic<uint64_t>			lastupdcusec_		{0};
+	gy_atomic<uint64_t>			lastchkcusec_		{0};
 };
 
 
@@ -840,7 +897,7 @@ public :
 		tot_act_conn_		+= state.nconns_active_;
 		tot_kb_inbound_		+= state.curr_kbytes_inbound_;
 		tot_kb_outbound_	+= state.curr_kbytes_outbound_;
-		tot_ser_errors_		+= state.ser_http_errors_;
+		tot_ser_errors_		+= state.ser_errors_;
 
 		nlisteners_++;
 		nactive_		+= !!state.nqrys_5s_;
@@ -1231,6 +1288,24 @@ public :
 	// Use Pool Allocated Element
 	using MTCP_CONN_HASH_TABLE 		= RCU_HASH_TABLE <PAIR_IP_PORT, MTCP_CONN, TPOOL_DEALLOC<MTCP_CONN>>;
 
+	class MREQ_TRACE_SVC
+	{
+	public :
+		uint64_t				glob_id_		{0};
+		uint64_t				nrequests_		{0};
+		uint64_t				nerrors_		{0};
+		time_t					tlaststat_		{0};
+		time_t					tstart_			{0};
+		time_t					tend_			{0};
+		gy_atomic<PROTO_CAP_STATUS_E>		api_cap_status_		{CAPSTAT_UNINIT};
+		gy_atomic<bool>				api_is_ssl_		{false};
+		gy_atomic<PROTO_TYPES>			api_proto_		{PROTO_UNINIT};
+		
+		MREQ_TRACE_SVC(uint64_t glob_id) noexcept : glob_id_(glob_id)
+		{}	
+	};
+
+
 	using MRELATED_LISTENER_ELEM_TYPE	= RCU_HASH_WRAPPER <uint64_t, std::shared_ptr<MRELATED_LISTENER>>;
 	using MRELATED_LISTENER_HASH_TABLE	= RCU_HASH_TABLE <uint64_t, MRELATED_LISTENER_ELEM_TYPE>;
 
@@ -1290,10 +1365,8 @@ public :
 
 		MRELATED_LISTENER_HASH_TABLE			depending_related_tbl_			{8, 8, 1024, true, false};	// Valid both for local and remote MTCP_LISTENER  
 		
-		gy_atomic<uint8_t>				api_cap_started_			{0};		// 0 => false, 1 => started but proto indeterminate 2 => actual start
-		gy_atomic<bool>					api_is_ssl_				{false};
-		gy_atomic<PROTO_TYPES>				api_proto_				{PROTO_UNINIT};
-		
+		std::shared_ptr<MREQ_TRACE_SVC>			rtraceshr_;
+
 		uint8_t						comm_len_				{0};
 		uint8_t						cmdline_len_				{0};
 		uint8_t						domain_string_len_			{0};
@@ -1312,7 +1385,8 @@ public :
 			: ns_ip_port_(ns_ip_port), glob_id_(glob_id), aggr_glob_id_(aggr_glob_id), parthashr_(std::move(parthashr)),
 			partha_machine_id_(partha_machine_id), madhava_id_(madhava_id), madhava_weak_(std::move(madhava_weak)), 
 			cli_aggr_task_tbl_(std::in_place, 8, 8, 1024, true, false),
-			remote_madhava_tbl_(std::in_place, 8, 8, 1024, true, false), is_any_ip_(is_any_ip)
+			remote_madhava_tbl_(std::in_place, 8, 8, 1024, true, false), rtraceshr_(std::make_shared<MREQ_TRACE_SVC>(glob_id)), 
+			is_any_ip_(is_any_ip)
 		{
 			comm_len_ = GY_STRNCPY_LEN(comm_, comm, sizeof(comm_));
 			

@@ -68,6 +68,13 @@ static constexpr const char			*parse_field_str[EFIELD_MAX] =
 	"nrows", "cursorname", "statuscode",
 };	
 
+enum PROTO_CAP_STATUS_E : uint8_t
+{
+	CAPSTAT_UNINIT			= 0,
+	CAPSTAT_FAILED,
+	CAPSTAT_STARTING,		// Do not change the order...
+	CAPSTAT_ACTIVE,
+};	
 
 /*
  * NOTE : There is no padding added and direct dereference is not to be done...

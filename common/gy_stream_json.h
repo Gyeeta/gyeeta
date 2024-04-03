@@ -412,8 +412,10 @@ public :
 	const std::shared_ptr<ConnTrack>	& connshr_;
 	ConnHdlr				& connhdlr_;
 	size_t					total_sched_bytes_	{0};
+	size_t					curr_sched_bytes_	{0};
 	size_t					max_total_bytes_	{0};
 	size_t					total_sent_bytes_	{0};
+	size_t					flush_after_bytes_	{0};
 	comm::NOTIFY_TYPE_E			event_type_		{comm::NOTIFY_MIN_TYPE};
 	uint32_t				max_nevents_		{0};
 	uint32_t				nevents_		{0};
@@ -422,11 +424,11 @@ public :
 
 	// For const ref connshr
 	STREAM_EVENT_BUF(const std::shared_ptr<ConnTrack> & connshr, ConnHdlr & connhdlr, comm::NOTIFY_TYPE_E event_type, uint32_t max_nevents, \
-					uint64_t max_total_bytes = comm::MAX_COMM_DATA_SZ, POOL_ALLOC_ARRAY *parrpool = nullptr) 
+					uint64_t max_total_bytes = comm::MAX_COMM_DATA_SZ, uint64_t flush_after_bytes = comm::MAX_COMM_DATA_SZ, POOL_ALLOC_ARRAY *parrpool = nullptr) 
 
 		: cache_(comm::MAX_COMM_DATA_SZ, parrpool), connshr_(connshr), connhdlr_(connhdlr), 
 		max_total_bytes_(((max_total_bytes == 0) || (max_total_bytes > comm::MAX_COMM_DATA_SZ)) ? comm::MAX_COMM_DATA_SZ : max_total_bytes),
-		event_type_(event_type), max_nevents_(max_nevents > 0 ? max_nevents : 1)
+		flush_after_bytes_(std::min(max_total_bytes_, flush_after_bytes)), event_type_(event_type), max_nevents_(max_nevents > 0 ? max_nevents : 1)
 	{
 		if (!connshr_) {
 			GY_THROW_EXCEPTION("No connection object available for Streaming Event");
@@ -435,11 +437,11 @@ public :
 
 	// For rvalue ref connshr as the connshr_ cannot extend lifetime of a temporary as it is a class member
 	STREAM_EVENT_BUF(std::shared_ptr<ConnTrack> && connshr, ConnHdlr & connhdlr, comm::NOTIFY_TYPE_E event_type, uint32_t max_nevents, \
-					uint64_t max_total_bytes = comm::MAX_COMM_DATA_SZ, POOL_ALLOC_ARRAY *parrpool = nullptr)
+					uint64_t max_total_bytes = comm::MAX_COMM_DATA_SZ, uint64_t flush_after_bytes = comm::MAX_COMM_DATA_SZ, POOL_ALLOC_ARRAY *parrpool = nullptr)
 
 		: cache_(comm::MAX_COMM_DATA_SZ, parrpool), tmpshr_(std::move(connshr)), connshr_(tmpshr_), connhdlr_(connhdlr), 
 		max_total_bytes_(((max_total_bytes == 0) || (max_total_bytes > comm::MAX_COMM_DATA_SZ)) ? comm::MAX_COMM_DATA_SZ : max_total_bytes),
-		event_type_(event_type), max_nevents_(max_nevents > 0 ? max_nevents : 1)
+		flush_after_bytes_(std::min(max_total_bytes_, flush_after_bytes)), event_type_(event_type), max_nevents_(max_nevents > 0 ? max_nevents : 1)
 	{
 		if (!connshr_) {
 			GY_THROW_EXCEPTION("No connection object available for Streaming Event");
@@ -507,6 +509,7 @@ public :
 			}	
 		
 			nevents_ = 0;
+			curr_sched_bytes_ = 0;
 			nbatches_sent_++;
 			total_sent_bytes_ += total_sz;
 		};	
@@ -598,6 +601,7 @@ public :
 		cache_.set_buf_sz(sz);
 
 		total_sched_bytes_ 	+= sz;
+		curr_sched_bytes_	+= sz;
 		nevents_ 		+= nevents;
 
 		if (total_sched_bytes_ > max_total_bytes_) {
@@ -611,9 +615,12 @@ public :
 			set_completed();
 		}	
 		else {
-			if (nevents_ + 1 >= max_nevents_) {
+			if (nevents_ + 1 >= max_nevents_ && nevents_ > 0) {
 				force_flush(true /* throw_on_error */);
 			}
+			else if (curr_sched_bytes_ >= flush_after_bytes_ && nevents > 0) {
+				force_flush(true /* throw_on_error */);
+			}	
 			else if (max_nevents_ > 50 && nevents_ > max_nevents_ * 0.95) {
 				force_flush(true /* throw_on_error */);
 			}	
@@ -681,6 +688,8 @@ public :
 
 			nevents_ = 0;
 			total_sched_bytes_ = 0;
+			curr_sched_bytes_ = 0;
+
 			return true;
 		}	
 

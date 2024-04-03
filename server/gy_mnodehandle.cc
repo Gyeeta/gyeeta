@@ -2798,10 +2798,10 @@ bool MCONN_HANDLER::web_curr_top_listeners(const std::shared_ptr<MCONNTRACK> & c
 		writer.Uint(state.curr_kbytes_outbound_);
 
 		writer.KeyConst("sererr");
-		writer.Uint(state.ser_http_errors_);
+		writer.Uint(state.ser_errors_);
 
 		writer.KeyConst("clierr");
-		writer.Uint(state.cli_http_errors_);
+		writer.Uint(state.cli_errors_);
 
 		writer.KeyConst("delayus");
 		writer.Uint(state.tasks_delay_usec_);

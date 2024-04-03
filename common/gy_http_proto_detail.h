@@ -46,6 +46,8 @@ struct HCONN_STAT
 	}	
 };	
 
+class SVC_INFO_CAP;
+
 class HTTP1_SESSINFO : public HTTP1_PROTO
 {
 public :
@@ -142,6 +144,7 @@ public :
 	uint8_t					nresp_completed_			{0};
 	uint16_t				last_resp_status_			{0};
 	bool					resp_error_added_			{false};	
+	bool					is_serv_err_				{false};
 
 	alignas(8) uint8_t			reqfragbuf_[MAX_FRAG_LEN];
 	uint8_t					respfragbuf_[MAX_FRAG_LEN];
@@ -150,6 +153,7 @@ public :
 	HCONN_STAT				respstate_;
 
 	SVC_SESSION 				& svcsess_;
+	SVC_INFO_CAP				*psvc_				{nullptr};
 
 	bool					is_https_			{false};
 	bool					is_keep_alive_			{false};

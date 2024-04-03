@@ -118,6 +118,21 @@ public :
 		: ip_port_(ip_port), inode_(inode)
 	{}
 
+	const GY_IP_ADDR & get_ip() const noexcept
+	{
+		return ip_port_.ipaddr_;
+	}	
+
+	uint16_t get_port() const noexcept
+	{
+		return ip_port_.port_;
+	}	
+
+	ino_t get_ns_inode() const noexcept
+	{
+		return inode_;
+	}	
+
 	uint32_t get_hash(bool ignore_ip = false) const noexcept
 	{
 		alignas(8) uint8_t	buf1[sizeof(GY_IP_ADDR) + sizeof(uint32_t) + sizeof(ino_t)];

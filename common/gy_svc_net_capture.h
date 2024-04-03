@@ -11,6 +11,7 @@
 #include			"gy_stack_container.h"
 #include			"gy_misc.h"
 #include			"gy_proto_parser.h"
+#include			"gy_comm_proto.h"
 
 namespace gyeeta {
 
@@ -294,7 +295,7 @@ public :
 	static constexpr uint32_t		MAX_NETNS_PORTS_ERR	{64};
 	static constexpr uint32_t		MAX_NETNS_PORTS_API	{16};
 
-	static constexpr uint32_t		MAX_SVC_API_CAP		{32};
+	static constexpr uint32_t		MAX_SVC_API_CAP		{64};
 
 private :
 	ErrNSMap				errcodemap_;		// Map of captures for only http errors : To be accessed only from the errschedthr_
@@ -332,9 +333,13 @@ public :
 
 	bool sched_del_listeners(uint64_t start_after_msec, const char *name, GlobIDInodeMap && nslistmap, bool onlyapi = false);
 
+	bool sched_del_one_listener(uint64_t start_after_msec, uint64_t glob_id, ino_t inode, uint16_t port, bool onlyapi) noexcept;
+
 	bool sched_svc_ssl_probe(const char *name, std::weak_ptr<TCP_LISTENER> svcweak);
 
 	bool sched_svc_ssl_stop(const char *name, uint64_t glob_id) noexcept;
+
+	bool send_api_cap_status(comm::REQ_TRACE_STATUS *preq, size_t nreq);
 
 	MAKE_CLASS_FUNC_WRAPPER_NO_ARG(SVC_NET_CAPTURE, api_parse_thread);
 
@@ -379,8 +384,7 @@ private :
 	void del_api_listeners(const GlobIDInodeMap & nslistmap) noexcept;
 
 	void check_netns_err_listeners() noexcept;
-	void check_netns_api_listeners() noexcept;
-
+	void check_netns_api_listeners(const bool sendstatus) noexcept;
 };	
 
 

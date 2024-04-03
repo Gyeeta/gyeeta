@@ -1468,6 +1468,37 @@ bool ALERT_STAT_INFO::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnot
 	return (i == nelems);
 }	
 
+bool MS_REG_PARTHA::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
+{
+	static constexpr size_t 	fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
+
+	if (phdr->get_act_len() < fixed_sz) {
+		return false;
+	}	
+
+	if (pnotify->nevents_ > MAX_REG_PARTHA) {
+		return false;
+	}	
+
+	GY_CC_BARRIER();
+
+	if (phdr->get_act_len() != fixed_sz + pnotify->nevents_ * sizeof(MS_REG_PARTHA)) {
+		return false;
+	}	
+
+	MS_REG_PARTHA			*pone = (MS_REG_PARTHA *)(pnotify + 1);
+	auto				nelems = pnotify->nevents_, i = 0u;
+
+	for (i = 0; i < nelems; ++i, ++pone) {
+		pone->hostname_[sizeof(pone->hostname_) - 1] 		= 0;
+		pone->cluster_name_[sizeof(pone->cluster_name_) - 1] 	= 0;
+		pone->region_name_[sizeof(pone->region_name_) - 1]	= 0;
+		pone->zone_name_[sizeof(pone->zone_name_) - 1]		= 0;
+	}
+
+	return true;
+}	
+
 bool REQ_TRACE_TRAN::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
 {
 	static constexpr size_t 	fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
@@ -1523,39 +1554,66 @@ bool REQ_TRACE_TRAN::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnoti
 	return (i == nelems);
 }	
 
-bool MS_REG_PARTHA::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) noexcept
+
+bool SM_REQ_TRACE_DEF_NEW::validate(const COMM_HEADER *phdr, const EVENT_NOTIFY *pnotify) const noexcept
 {
 	static constexpr size_t 	fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
 
 	if (phdr->get_act_len() < fixed_sz) {
 		return false;
 	}	
+	
+	ssize_t				totallen = phdr->get_act_len();
+	const uint32_t			nelems = pnotify->nevents_;
+	SM_REQ_TRACE_DEF_NEW		*pone = (SM_REQ_TRACE_DEF_NEW *)(pnotify + 1);
+	uint32_t			i;
 
-	if (pnotify->nevents_ > MAX_REG_PARTHA) {
+	if (nelems > MAX_NUM_DEFS) {
 		return false;
-	}	
-
-	GY_CC_BARRIER();
-
-	if (phdr->get_act_len() != fixed_sz + pnotify->nevents_ * sizeof(MS_REG_PARTHA)) {
-		return false;
-	}	
-
-	MS_REG_PARTHA			*pone = (MS_REG_PARTHA *)(pnotify + 1);
-	auto				nelems = pnotify->nevents_, i = 0u;
-
-	for (i = 0; i < nelems; ++i, ++pone) {
-		pone->hostname_[sizeof(pone->hostname_) - 1] 		= 0;
-		pone->cluster_name_[sizeof(pone->cluster_name_) - 1] 	= 0;
-		pone->region_name_[sizeof(pone->region_name_) - 1]	= 0;
-		pone->zone_name_[sizeof(pone->zone_name_) - 1]		= 0;
 	}
 
-	return true;
+	totallen -= fixed_sz;
+
+	for (i = 0; i < nelems && totallen >= (ssize_t)sizeof(SM_REQ_TRACE_DEF_NEW); ++i) {
+		ssize_t elem_sz = pone->get_elem_size();
+
+		if (totallen < elem_sz) {
+			return false;
+		}
+
+		if (elem_sz & (8 - 1)) {
+			// Padding issue
+			return false;
+		}	
+
+		if (pone->ncap_glob_id_arr_ == 0 && pone->lencrit_ == 0) {
+			return false;
+		}
+		else if (pone->ncap_glob_id_arr_ && pone->lencrit_) {
+			// Either ncap_glob_id_arr_ or lencrit_ can be specified
+			return false;
+		}	
+
+		if (pone->ncap_glob_id_arr_ > MAX_GLOB_ID_ARR) {
+			return false;
+		}	
+		
+		pone->name_[sizeof(pone->name_) - 1] = 0;
+
+		if (pone->lencrit_) {
+			*((uint8_t *)pone + sizeof(*pone) + pone->lencrit_  - 1) = '\0';
+		}	
+
+		totallen -= elem_sz;
+
+		pone = (SM_REQ_TRACE_DEF_NEW *)((uint8_t *)pone + elem_sz);
+	}
+	
+	return (i == nelems);
 }	
 
-} // namespace comm
 
+} // namespace comm
 
 } // namespace gyeeta
 

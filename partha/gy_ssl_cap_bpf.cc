@@ -252,6 +252,15 @@ int GY_SSLCAP::attach_uprobes(pid_t pid, char (&errorbuf)[256])
 		return -1;
 	}	
 
+	/*
+	 * TODO Add support for these libs...
+	 */
+	if (libtype == SSL_LIB_GNUTLS || libtype == SSL_LIB_BORINGSSL) {
+		snprintf(errorbuf, sizeof(errorbuf), "BPF : SSL Probes for %s library not supported yet : Disabling TLS Probe for PID %d", 
+				libtype == SSL_LIB_GNUTLS ? "gnutls lib" : "BoringSSL lib", pid);
+		return -1;
+	}
+
 	auto				hashbuf = pssllib->get_hash_buf();
 	StringPiece			hashview = StringPiece(hashbuf.get());
 
@@ -461,9 +470,6 @@ int GY_SSLCAP::attach_uprobes(pid_t pid, char (&errorbuf)[256])
 		vec.emplace_back(plink);
 
 	}	
-	else if (libtype == SSL_LIB_GNUTLS || libtype == SSL_LIB_BORINGSSL) {
-		// TODO
-	}
 
 	SCOPE_GY_MUTEX		sc(statemutex_);
 

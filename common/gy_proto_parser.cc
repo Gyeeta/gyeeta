@@ -265,10 +265,11 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 {
 	GY_STRNCPY(comm_, listenshr->comm_, sizeof(comm_));
 
-	orig_proto_ = listenshr->api_proto_.load(mo_relaxed);
+	orig_proto_ = listenshr->api_proto_.load(mo_acquire);
 
 	if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_UNKNOWN) {
 		orig_ssl_ = listenshr->api_is_ssl_.load(mo_relaxed);
+		listenshr->api_cap_started_.store(CAPSTAT_ACTIVE, std::memory_order_release);
 	}
 }	
 
@@ -282,7 +283,7 @@ SVC_INFO_CAP::~SVC_INFO_CAP() noexcept
 void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
 {
 	try {
-		stop_parser_tusec_.store(tusec, mo_relaxed);
+		stopped_parser_tusec_.store(tusec, mo_relaxed);
 
 		svcweak_.reset();
 		sessmap_.clear();
@@ -311,6 +312,8 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 		if (!listenshr) {
 			return;
 		}	
+
+		listenshr->api_svcweak_ = weak_from_this();
 
 		if (proto_ == PROTO_UNINIT) {
 			if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_UNKNOWN) {
@@ -1036,10 +1039,11 @@ void SVC_INFO_CAP::analyze_detect_status()
 				}	
 
 				svcshr->api_proto_.store(apistat.proto_, mo_relaxed);
+				svcshr->api_cap_started_.store(CAPSTAT_ACTIVE, mo_relaxed);
 
 				proto_ = apistat.proto_;
 
-				GY_CC_BARRIER();
+				std::atomic_thread_fence(std::memory_order_release);
 
 				// detect/apistat no longer valid after this...
 				protodetect_.reset();
@@ -1059,11 +1063,11 @@ void SVC_INFO_CAP::analyze_detect_status()
 		}	
 
 		if (sslreq == SSL_REQ_E::SSL_REJECTED) {
-			if (stop_parser_tusec_.load(mo_relaxed) == 0) {
+			if (stopped_parser_tusec_.load(mo_relaxed) == 0) {
 
 				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture being stopped as Protocol Detected as TLS Encrypted for Listener %s Port %hu ID %lx : "
-					"But SSL Capture cannot be enabled which may be because of unsupported binary (Golang, Java based) or an unsupported SSL Library\n", 
-					comm_, ns_ip_port_.ip_port_.port_, glob_id_);
+					"But SSL Capture cannot be enabled which may be because of unsupported binary (Golang, Java based) or an unsupported SSL Library : Reason seen is %s\n", 
+					comm_, ns_ip_port_.ip_port_.port_, glob_id_, bool(api_cap_err_) ? api_cap_err_.get() : "unspecified");
 
 				schedule_stop_capture();
 			}
@@ -1087,7 +1091,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 		auto				sslreq = ssl_req_.load(mo_relaxed);
 
 		// No confirms or only upto two confirms
-		if (stop_parser_tusec_.load(mo_relaxed) == 0) {
+		if (stopped_parser_tusec_.load(mo_relaxed) == 0) {
 			if (detect.nconfirm_ > 0) {
 				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture : Service Protocol Detection failed due to inadequate protocol detects : "
 					"Could only detect %u connections out of %u as \'%s\' for Listener %s Port %hu ID %lx : "
@@ -1103,6 +1107,15 @@ void SVC_INFO_CAP::analyze_detect_status()
 
 			}
 
+			const char			ebuf[] = "Service Protocol Detection failed or Protocol not currently supported";
+			char				*pebuf = new char[sizeof(ebuf)];
+
+			std::memcpy(pebuf, ebuf, sizeof(ebuf));
+
+			GY_CC_BARRIER();
+
+			api_cap_err_.reset(pebuf);
+
 			schedule_stop_capture();
 		}
 		
@@ -1110,7 +1123,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 		return;
 	}
 
-	uint64_t			tstopusec = stop_parser_tusec_.load(mo_relaxed);
+	uint64_t			tstopusec = stopped_parser_tusec_.load(mo_relaxed);
 
 	if (tstopusec > 0 && tstopusec + 30 * GY_USEC_PER_SEC > tcurr * GY_USEC_PER_SEC) {
 		protodetect_.reset();
@@ -2417,23 +2430,7 @@ void SVC_INFO_CAP::schedule_stop_capture() noexcept
 		return;
 	}	
 
-	GlobIDInodeMap			delidmap;
-
-	ino_t				inode = ns_ip_port_.inode_;
-	uint16_t			port = ns_ip_port_.ip_port_.port_;
-	
-	// Send delete msg
-	try {
-		auto			[it, success] = delidmap.try_emplace(inode);
-		auto			& vec = it->second;		
-		
-		vec.emplace_back(glob_id_, port);
-
-		psvcnet->sched_del_listeners(0, gy_to_charbuf<128>("Service Network Capture Delete Listener %s %lx", comm_, glob_id_).get(), std::move(delidmap), true /* onlyapi */);
-	}
-	catch(...) {
-		return;
-	}	
+	psvcnet->sched_del_one_listener(0, glob_id_, ns_ip_port_.get_ns_inode(), ns_ip_port_.get_port(), true /* onlyapi */);
 }
 
 void SVC_INFO_CAP::schedule_ssl_probe()
@@ -2480,6 +2477,11 @@ void SVC_PARSE_STATS::operator -= (const SVC_PARSE_STATS & other) noexcept
 	nreqbytes_		-= other.nreqbytes_;
 	nresppkts_		-= other.nresppkts_;
 	nrespbytes_		-= other.nrespbytes_;
+
+	nrequests_		-= other.nrequests_;
+	ncli_errors_		-= other.ncli_errors_;
+	nser_errors_		-= other.nser_errors_;
+
 	ndroppkts_		-= other.ndroppkts_;
 	ndropbytes_		-= other.ndropbytes_;
 	ndropbytesin_		-= other.ndropbytesin_;
@@ -2503,7 +2505,8 @@ void SVC_PARSE_STATS::operator -= (const SVC_PARSE_STATS & other) noexcept
 
 void SVC_PARSE_STATS::print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) const noexcept
 {
-	strbuf << "Stats for "sv << (tcurrusec - tlastusec)/GY_USEC_PER_SEC << " sec : Packets "sv << npkts_ << ", Bytes "sv << nbytes_ << "("sv << (nbytes_ >> 20) 
+	strbuf << "Stats for "sv << (tcurrusec - tlastusec)/GY_USEC_PER_SEC << " sec : Requests "sv << nrequests_ 
+		<< ", Client Errors "sv << ncli_errors_ << ", Server Errors "sv << nser_errors_ << ", Packets "sv << npkts_ << ", Bytes "sv << nbytes_ << "("sv << (nbytes_ >> 20) 
 		<< " MB), Request Pkts "sv << nreqpkts_ << ", Request Bytes "sv << nreqbytes_ << " ("sv << (nreqbytes_ >> 20) << " MB), Response Pkts "sv << nresppkts_ 
 		<< ", Response Bytes "sv << nrespbytes_ << " ("sv << (nrespbytes_ >> 20) << " MB), Drop Pkts "sv << ndroppkts_ << ", Drop Bytes "sv << ndropbytes_ 
 		<< " ("sv << (ndropbytes_ >> 20) << " MB), Drop Req Bytes "sv << ndropbytesin_ << ", Drop Resp Bytes "sv << ndropbytesout_ << ", Reordered Pkts "sv << nrdrpkts_ 
@@ -2569,7 +2572,7 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 			glob_id = psvc->glob_id_;
 		}	
 
-		if (gy_unlikely(psvc->stop_parser_tusec_.load(mo_relaxed) > 0)) {
+		if (gy_unlikely(psvc->stopped_parser_tusec_.load(mo_relaxed) > 0)) {
 			return false;
 		}	
 
@@ -2743,12 +2746,17 @@ bool API_PARSE_HDLR::handle_ssl_rejected(MSG_SVC_SSL_CAP & msg) noexcept
 		if (it == svcinfomap_.end() || !it->second) {
 			return false;
 		}	
-	
-		it->second->ssl_req_.store(SSL_REQ_E::SSL_REJECTED, mo_relaxed);
 
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "SSL Probes disabled for Service %s ID %lx\n", it->second->comm_, it->second->glob_id_);
+		auto				& svcshr = it->second;
+	
+		svcshr->ssl_req_.store(SSL_REQ_E::SSL_REJECTED, mo_relaxed);
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "SSL Probes disabled for Service %s ID %lx due to %s\n", 
+			svcshr->comm_, svcshr->glob_id_, bool(msg.msguniq_) ? msg.msguniq_.get() : "unspecified reason");
 		
-		// TODO send notification to madhava
+		GY_CC_BARRIER();
+
+		svcshr->api_cap_err_ = std::move(msg.msguniq_);
 
 		stats_.nsvcssl_fail_++;
 
@@ -2758,7 +2766,6 @@ bool API_PARSE_HDLR::handle_ssl_rejected(MSG_SVC_SSL_CAP & msg) noexcept
 		return false;
 	}	
 }	
-
 
 bool API_PARSE_HDLR::handle_parse_no_msg() noexcept
 {
@@ -2823,7 +2830,7 @@ void API_PARSE_HDLR::chk_svc_info()
 			continue;
 		}	
 
-		if (gy_unlikely(psvc->stop_parser_tusec_.load(mo_relaxed) > 0)) {
+		if (gy_unlikely(psvc->stopped_parser_tusec_.load(mo_relaxed) > 0)) {
 			MSG_DEL_SVCCAP		msg(psvc->glob_id_);
 
 			handle_svc_del(msg, &oit);

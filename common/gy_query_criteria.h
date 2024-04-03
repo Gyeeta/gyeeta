@@ -1879,7 +1879,7 @@ start1 :
 	}	
 	
 	/*
-	 * Iterate over all the criteria. The FCB should return CB_BREAK_LOOP to terminate the walk.
+	 * Iterate over all the criteria. The FCB(CRITERION_ONE & crit, CRITERIA_ONE_GROUP & grp) should return CB_BREAK_LOOP to terminate the walk.
 	 */
 	template <typename FCB>
 	size_t walk_all_criteria(FCB & fcb)

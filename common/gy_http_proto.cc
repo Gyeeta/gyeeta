@@ -54,7 +54,7 @@ HTTP1_SESSINFO::HTTP1_SESSINFO(HTTP1_PROTO & prot, SVC_SESSION & svcsess, PARSE_
 	: HTTP1_PROTO(prot), 
 	tran_(svcsess.common_.tlastpkt_usec_, svcsess.common_.tconnect_usec_, svcsess.common_.cli_ipport_, svcsess.common_.ser_ipport_, 
 			svcsess.common_.glob_id_, svcsess.proto_, svcsess.psvc_ ? svcsess.psvc_->comm_ : nullptr), 
-	tdstrbuf_(prot.api_max_len_ - 1), svcsess_(svcsess), is_https_(hdr.src_ == SRC_UPROBE_SSL)
+	tdstrbuf_(prot.api_max_len_ - 1), svcsess_(svcsess), psvc_(svcsess.psvc_), is_https_(hdr.src_ == SRC_UPROBE_SSL)
 {
 	std::memset(tdstrbuf_.get(), 0, 128);
 	
@@ -373,6 +373,7 @@ void HTTP1_SESSINFO::reset_for_new_req() noexcept
 	errorbuf_.reset();
 	last_resp_status_ = 0;
 	resp_error_added_ = false;
+	is_serv_err_ = false;
 }
 
 void HTTP1_SESSINFO::reset_stats_on_resp(bool clear_req) noexcept
@@ -1626,7 +1627,9 @@ lbl_idle :
 				resp_error_added_ = false;
 	
 				if (is_error_response(last_resp_status_)) {
+
 					tran_.errorcode_ = last_resp_status_;
+					is_serv_err_ = is_server_error(last_resp_status_);
 
 					while (pnext < pend && (' ' == *pnext)) pnext++;
 
@@ -1981,9 +1984,24 @@ bool HTTP1_SESSINFO::print_req() noexcept
 			ustrbuf << PARSE_FIELD_LEN(EFIELD_APPNAME, useragentbuf_.size() + 1) << std::string_view(useragentbuf_.data(), useragentbuf_.size() + 1);
 		}	
 
-		if (ptran->errorcode_ != 0 && (errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + errorbuf_.size() + 1)) {
-			next++;
-			ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, errorbuf_.size() + 1) << std::string_view(errorbuf_.data(), errorbuf_.size() + 1);
+		if (psvc_) {
+			psvc_->stats_.nrequests_++;
+		}	
+
+		if (ptran->errorcode_ != 0) {
+			if (errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + errorbuf_.size() + 1) {
+				next++;
+				ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, errorbuf_.size() + 1) << std::string_view(errorbuf_.data(), errorbuf_.size() + 1);
+			}
+
+			if (psvc_) {
+				if (is_serv_err_) {
+					psvc_->stats_.nser_errors_++;
+				}
+				else {
+					psvc_->stats_.ncli_errors_++;
+				}	
+			}	
 		}	
 
 		if (last_resp_status_ && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + sizeof(int)) {

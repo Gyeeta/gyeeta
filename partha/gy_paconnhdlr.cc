@@ -201,13 +201,13 @@ int PACONN_HANDLER::handle_l1(GY_THREAD *pthr, bool is_req_rsp)
 		
 		if (is_req_rsp) {
 			pool_szarr[0] 	= 32767;
-			pool_maxarr[0]	= 128;
+			pool_maxarr[0]	= 32;
 			
 			pool_szarr[1]	= 4096;
-			pool_maxarr[1]	= 1024;
+			pool_maxarr[1]	= 256;
 
 			pool_szarr[2] 	= 512;
-			pool_maxarr[2]	= 1024;
+			pool_maxarr[2]	= 256;
 
 			npoolarr 	= 3;
 		}
@@ -612,6 +612,36 @@ int PACONN_HANDLER::handle_l1(GY_THREAD *pthr, bool is_req_rsp)
 								}
 
 								break;
+
+							case NOTIFY_REQ_TRACE_SET :
+
+								if ((!pconn1->is_registered()) || (pconn1->host_type_ != HOST_MADHAVA)) {
+									statsmap["Invalid Message Error"]++; 
+									GY_THROW_EXCEPTION("Invalid Message received #%u. Closing connection", __LINE__);
+								}
+								else {
+									auto		 	*preq = (REQ_TRACE_SET *)(pevtnot + 1);
+									int			nevents = pevtnot->nevents_;
+
+									statsmap["Madhava Req Trace Set"] += nevents;
+
+									bret = preq->validate(&hdr, pevtnot);
+									if (bret == false) {
+										statsmap["Invalid Message Error"]++; 
+										GY_THROW_EXCEPTION("Invalid Message received #%u. Closing connection", __LINE__);
+									}
+
+									auto			psock = TCP_SOCK_HANDLER::get_singleton();
+
+									if (psock) {
+										psock->handle_api_trace_set(preq, nevents);
+									}
+
+									// No response needs to be sent
+								}
+
+								break;
+
 
 							case NOTIFY_MP_RESET_STATS :
 								// nevents_ is always 1 here
