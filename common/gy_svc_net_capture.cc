@@ -329,31 +329,38 @@ void SVC_NET_CAPTURE::add_err_listeners(SvcInodeMap & nslistmap) noexcept
 
 void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 {
+	using namespace comm;
+
 	try {
 		static_assert(MAX_SVC_API_CAP < 256);
+
+		INLINE_STACK_VECTOR<REQ_TRACE_STATUS, REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM * sizeof(REQ_TRACE_STATUS)>	reqvec;
 
 		STRING_BUFFER<1024>		strbuf;
 		SVC_INFO_CAP			*capcachearr[MAX_SVC_API_CAP * 2];
 		uint32_t			naddsvc = 0, ndelsvc = 0, ncapsvc = ncap_api_svc_.load(mo_relaxed), ncapcache = 0;
+		const char 			*pgloberr = nullptr;
+
+		assert(gy_get_thread_local().get_thread_stack_freespace() >= 256 * 1024);
 
 		if (allow_api_cap_.load(mo_relaxed) == false) {
-			WARNPRINT_OFFLOAD("Cannot start Network API Capture as Capture disabled which may be because of inadequate hardware resources or config option...\n");
-			return;
+			pgloberr = "Cannot start Request Trace capture as API Capture disabled which may be because of inadequate hardware resources or config option";
+
+			WARNPRINT_OFFLOAD("%s...\n", pgloberr);
+			goto senderr;
 		}
 
 		if (!apihdlr_) {
 			init_api_cap_handler();
 		}	
 
-		GY_SCOPE_EXIT {
-			ncap_api_svc_.store(ncapsvc, mo_release);
-		};
-
 		for (auto & [inode, vecone] : nslistmap) {
 
 			if (apicallmap_.size() >= MAX_NETNS_CAP_API) {
+				pgloberr = "Cannot add more listeners for Request Trace API Capture as max Network Namespace limit breached";
+
 				WARNPRINT_OFFLOAD("Cannot add more listeners Network API Capture as max Network Namespace limit breached : %lu\n", apicallmap_.size());
-				return;
+				break;
 			}
 
 			strbuf.reset();
@@ -401,7 +408,6 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 
 					}	
 					else if (psvc) {
-						plistener->api_cap_started_.store(CAPSTAT_STARTING, mo_release);
 						continue;
 					}	
 
@@ -483,6 +489,26 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while adding listener to API Network Capture list due to %s\n", GY_GET_EXCEPT_STRING);
 			);
 		}
+
+		ncap_api_svc_.store(ncapsvc, mo_release);
+
+senderr :
+		for (auto & [inode, vecone] : nslistmap) {
+			for (std::shared_ptr<TCP_LISTENER> & listenshr : vecone) {
+				if (!listenshr) {
+					continue;
+				}
+
+				if (reqvec.size() < REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM) {
+					reqvec.emplace_back(listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, CAPSTAT_FAILED, false, PROTO_UNINIT, 
+							pgloberr ? pgloberr : "Failed to start Request Trace API Capture which may be due to Max Service or Port Limit breach");
+				}
+			}
+		}
+
+		if (reqvec.size()) {
+			send_api_cap_status(reqvec.data(), reqvec.size());
+		}	
 
 	}
 	GY_CATCH_EXCEPTION(
@@ -663,15 +689,18 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 					}
 
 					if (listenshr) {
+						PROTO_CAP_STATUS_E			status = (perrstr ? CAPSTAT_FAILED : CAPSTAT_UNINIT);
+
 						SCOPE_GY_MUTEX				scope(listenshr->svcweak_lock_);
 
 						listenshr->api_svcweak_.reset();
-						listenshr->api_cap_started_.store(CAPSTAT_UNINIT, mo_relaxed);
+						listenshr->api_cap_started_.store(status, mo_relaxed);
 						listenshr->tapi_cap_stop_.store(0L, mo_relaxed);
 						
 						scope.unlock();
 
-						reqvec.emplace_back(listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, CAPSTAT_UNINIT, perrstr, nrequests, nerrors);
+						reqvec.emplace_back(listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, status, listenshr->api_is_ssl_.load(mo_relaxed) == true,
+									listenshr->api_proto_.load(mo_relaxed), perrstr, nrequests, nerrors);
 					}
 
 					ndelsvc += nsone.port_listen_tbl_.delete_elem_locked(psvc);
@@ -938,7 +967,8 @@ void SVC_NET_CAPTURE::check_netns_api_listeners(const bool sendstatus) noexcept
 						nerrors = svcinfocap->stats_.ncli_errors_ + svcinfocap->stats_.nser_errors_;
 					}	
 
-					reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, CAPSTAT_UNINIT, nrequests, nerrors);
+					reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, CAPSTAT_UNINIT, lshr->api_is_ssl_.load(mo_relaxed) == true,
+								lshr->api_proto_.load(mo_relaxed), nullptr, nrequests, nerrors);
 					
 					if (!forcerestart && (1 >= pnetone->port_listen_tbl_.count_duplicate_elems(psvcone->serport_, get_uint32_hash(psvcone->serport_), 2))) {
 						forcerestart = true;
@@ -952,8 +982,8 @@ void SVC_NET_CAPTURE::check_netns_api_listeners(const bool sendstatus) noexcept
 					nerrors = svcinfocap->stats_.ncli_errors_ + svcinfocap->stats_.nser_errors_;
 				}	
 
-
-				reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, lshr->api_cap_started_.load(mo_relaxed), nrequests, nerrors);
+				reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, lshr->api_cap_started_.load(mo_relaxed), lshr->api_is_ssl_.load(mo_relaxed) == true,
+								lshr->api_proto_.load(mo_relaxed), nullptr, nrequests, nerrors);
 			}	
 
 			pnetone->printbuf_ << "[Svc \'"sv << lshr->comm_ << "\' Port " << psvcone->serport_ << "], "sv;

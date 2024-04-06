@@ -1010,14 +1010,18 @@ public :
 	struct MREQ_TRACE_STATUS
 	{
 		uint64_t				glob_id_		{0};
+		GY_MACHINE_ID				machid_;
 		time_t					tstatus_		{0};
 		uint16_t				port_			{0};
+		PROTO_TYPES				proto_			{PROTO_UNINIT};
 		PROTO_CAP_STATUS_E			status_			{CAPSTAT_UNINIT};
+		bool					is_ssl_			{false};
 		char					comm_[TASK_COMM_LEN]	{};
-		char					msgstr_[comm::COMM_MAX_ERROR_LEN];
+		char					msgstr_[256];
 		
-		MREQ_TRACE_STATUS(uint64_t glob_id, time_t tstatus, uint16_t port, PROTO_CAP_STATUS_E status, const char *comm, const char *msgstr) noexcept
-			: glob_id_(glob_id), tstatus_(tstatus), port_(port), status_(status)
+		MREQ_TRACE_STATUS(uint64_t glob_id, const GY_MACHINE_ID & machid, time_t tstatus, uint16_t port, PROTO_CAP_STATUS_E status, const char *comm, const char *msgstr,
+					PROTO_TYPES proto = PROTO_UNINIT, bool is_ssl = false) noexcept
+			: glob_id_(glob_id), machid_(machid), tstatus_(tstatus), port_(port), proto_(proto), status_(status), is_ssl_(is_ssl)
 		{
 			GY_STRNCPY(comm_, comm, sizeof(comm_));
 
@@ -1028,6 +1032,8 @@ public :
 				*msgstr_ = 0;
 			}	
 		}	
+
+		MREQ_TRACE_STATUS() noexcept		= default;
 	};	
 
 	class REQ_TRACE_SVC
@@ -1035,36 +1041,35 @@ public :
 	public :
 		uint64_t				glob_id_		{0};
 		NS_IP_PORT				ns_ip_port_;
+		GY_MACHINE_ID				machid_;
 		std::weak_ptr<MTCP_LISTENER>		weaksvc_;
 		std::shared_ptr<MREQ_TRACE_SVC>		rtraceshr_;
+		uint32_t				reqdefid_		{0};
 		char					comm_[TASK_COMM_LEN]	{};
 
-		REQ_TRACE_SVC(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, std::weak_ptr<MTCP_LISTENER> weaksvc, std::shared_ptr<MREQ_TRACE_SVC> rtraceshr, 
-				const char *comm) noexcept
-			: glob_id_(glob_id), ns_ip_port_(ns_ip_port), weaksvc_(std::move(weaksvc)), rtraceshr_(std::move(rtraceshr))
+		REQ_TRACE_SVC(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const GY_MACHINE_ID & machid, std::weak_ptr<MTCP_LISTENER> weaksvc, \
+				std::shared_ptr<MREQ_TRACE_SVC> rtraceshr, uint32_t reqdefid, const char *comm) noexcept
+			: glob_id_(glob_id), ns_ip_port_(ns_ip_port), machid_(machid), weaksvc_(std::move(weaksvc)), 
+			rtraceshr_(std::move(rtraceshr)), reqdefid_(reqdefid)
 		{
 			GY_STRNCPY(comm_, comm, sizeof(comm_));
 		}	
+
+		REQ_TRACE_SVC(const REQ_TRACE_SVC & other)			= default;
+
+		REQ_TRACE_SVC & operator= (const REQ_TRACE_SVC & other)		= default;
 	};
 
-	class REQ_TRACE_SVC_DEFS
-	{
-	public :
-		std::vector<uint32_t>			defvec_;
-		time_t					tmaxexp_		{0};
-	};	
-
-	class REQ_TRACE_STAT_HDLR
+	class REQ_TRACE_ELEMS
 	{
 	public :
 		using					SvcMap = folly::F14NodeMap<uint64_t, REQ_TRACE_SVC, GY_JHASHER<uint64_t>>;
 		using					ListMap = folly::F14NodeMap<uint32_t, SvcMap, GY_JHASHER<uint32_t>>;
 		using					StatList = std::list<MREQ_TRACE_STATUS>;
 
-		GY_MUTEX				mutex_;
+		SharedMutex				rwmutex_;
 
 		ListMap					listmap_;	
-		SvcMap					svcmap_;
 		StatList				statlist_;
 	};	
 
@@ -1650,6 +1655,202 @@ public :
 		minfo.walk_conn_list(lwalk);
 	}	
 
+	
+	template <typename FiltCB, SUBSYS_CLASS_E subsys, typename SubsysFields>	// FiltCB of type filcb(MTCP_LISTENER & listener, PARTHA_INFO & rawpartha)
+	size_t check_svc_subsys_filter(const CRITERIA_SET & critset, FiltCB & filtcb, time_t tcurr = time(nullptr), size_t maxrecs = ~0ul - 1)
+	{
+		size_t				nrecs = 0;
+
+		static_assert(subsys == SUBSYS_SVCSTATE || subsys == SUBSYS_EXTSVCSTATE || subsys == SUBSYS_SVCINFO, "Only valid for svc subsystems");
+
+		if (0 == critset.get_total_ncriteria() || !critset.has_subsystem(subsys)) {
+			return 0;
+		}	
+
+		const auto checksvc = [&](MTCP_LISTENER & listener) -> bool
+		{
+			const auto			prawpartha = listener.parthashr_.get();
+
+			if (!prawpartha) {
+				return false;
+			}
+
+			/*
+			 * All 3 sybsys SUBSYS_SVCSTATE, SUBSYS_EXTSVCSTATE and SUBSYS_SVCINFO have the same constructor params...
+			 */
+			SubsysFields			subsysfields(*prawpartha, listener, gmadhava_id_str_, tcurr);
+
+			auto 				cret = subsysfields.filter_match(critset);
+
+			if (cret == CRIT_FAIL) {
+				return false;
+			}
+
+			CB_RET_E			cbret;
+
+			filtcb(listener, *prawpartha);
+
+			nrecs++;
+
+			return true;
+		};
+
+		const auto listl = [&](MSOCKET_HDLR::MTCP_LISTENER_ELEM_TYPE *pdatanode, void *arg)
+		{
+			const auto			plistener = pdatanode->get_cref().get();
+
+			if (plistener) {
+				checksvc(*plistener);
+			}	
+
+			if (nrecs >= maxrecs) {
+				return CB_BREAK_LOOP;
+			}	
+
+			return CB_OK;
+		};	
+
+		/*
+		 * We first search if only svcid filters specified. If no, we check if multihost specified.
+		 * If multihost, check if the host fiters are set. If yes, we iterate over the partha_tbl_ first. If multihost and no host filters set,
+		 * we iterate over the entire glob_listener_tbl_ :(
+		 */
+		if (critset.is_only_l1() && critset.is_l1_oper_or() && critset.has_subsystem(subsys, true /* match_all */)) {
+			const auto 		& l1_grp = critset.l1_grp_;
+			uint32_t		neval = 0;
+
+			// First validate
+			for (uint32_t i = 0; i < l1_grp.ncrit_; ++i) {
+				const auto		pcrit = l1_grp.pcritarr_ + i;
+				
+				if (SUBSYS_SVCINFO != pcrit->get_subsys()) {
+					neval = 0;
+					break;
+				}
+
+				if (FIELD_SVCID != pcrit->get_field_crc()) {
+					neval = 0;
+					break;
+				}	
+
+				if (!((COMP_EQ == pcrit->get_comparator()) || (COMP_IN == pcrit->get_comparator()))) {
+					neval = 0;
+					break;
+				}	
+
+				if (false == pcrit->is_value_string() || true == pcrit->is_value_expression()) {
+					neval = 0;
+					break;
+				}
+
+				neval++;
+			}	
+		
+			if (neval) {
+				RCU_LOCK_SLOW			slowlock;
+
+				PARTHA_INFO_ELEM		*pelem = nullptr;
+
+				for (uint32_t i = 0; i < l1_grp.ncrit_; ++i) {
+					const auto		pcrit = l1_grp.pcritarr_ + i;
+					auto [pstrarr, nstr] 	= pcrit->get_str_values();
+
+					if (!pstrarr) {
+						continue;
+					}	
+
+					for (uint32_t i = 0; i < nstr; i++) {
+						uint64_t			glob_id;
+						int				ret;
+						
+						if (pstrarr[i].size() != 16) {
+							continue;
+						}	
+
+						if (!string_to_number(pstrarr[i].get(), glob_id, nullptr, 16)) {
+							continue;
+						}	
+
+						const uint32_t			lhash = get_uint64_hash(glob_id);
+						MTCP_LISTENER_ELEM_TYPE		*plistelem;
+						MTCP_LISTENER			*plistener;
+					
+						plistelem = glob_listener_tbl_.lookup_single_elem_locked(glob_id, lhash);
+
+						if (gy_unlikely(plistelem == nullptr)) {
+							continue;
+						}	
+						
+						plistener = plistelem->get_cref().get();
+
+						if (gy_unlikely(plistener == nullptr)) {
+							continue;
+						}	
+
+						checksvc(*plistener);
+
+						if (nrecs >= maxrecs) {
+							goto done;
+						}	
+					}
+				}	
+
+				goto done;
+			}	
+		}
+
+		if (critset.has_subsystem(SUBSYS_HOST)) {
+
+			const auto lampar = [&](PARTHA_INFO_ELEM *pelem, void *arg) -> CB_RET_E
+			{
+				auto				prawpartha = pelem->get_cref().get();
+
+				if (gy_unlikely(prawpartha == nullptr)) {
+					return CB_OK;
+				}	
+
+				auto 			cret = HostFields(*prawpartha, gmadhava_id_str_).filter_match(critset);
+
+				if (cret == CRIT_FAIL) {
+					return CB_OK;
+				}
+
+				prawpartha->listen_tbl_.walk_hash_table_const(listl);
+				
+				if (nrecs >= maxrecs) {
+					return CB_BREAK_LOOP;
+				}	
+
+				return CB_OK;
+			};	
+
+			partha_tbl_.walk_hash_table_const(lampar);
+		}	
+		else {
+			// We need to scan the entire glob_listener_tbl_
+
+			const auto lamsvc = [&](MTCP_LISTENER_ELEM_TYPE *pelem, void *arg) -> CB_RET_E
+			{
+				auto				plistener = pelem->get_cref().get();
+
+				if (gy_unlikely(plistener == nullptr)) {
+					return CB_OK;
+				}	
+
+				checksvc(*plistener);
+
+				if (nrecs >= maxrecs) {
+					return CB_BREAK_LOOP;
+				}	
+
+				return CB_OK;
+			};	
+
+			glob_listener_tbl_.walk_hash_table_const(lamsvc);
+		}	
+done :
+		return nrecs;
+	}
 
 
 	/*
@@ -1724,6 +1925,7 @@ public :
 	PARTHA_TRACE_MAP			trace_map_arr_[MAX_L2_TRACE_THREADS];
 	int					trace_epoll_fd_[MAX_L2_TRACE_THREADS] {};
 	MREQ_TRACE_DEFS				tracedefs_;
+	REQ_TRACE_ELEMS				trace_elems_;
 
 	COND_VAR <SCOPE_GY_MUTEX>		barcond_;
 	std::atomic<size_t>			nblocked_acc_		{0};
@@ -1943,6 +2145,8 @@ public :
 	bool 	handle_new_req_trace_def(comm::SM_REQ_TRACE_DEF_NEW *pdef, int nevents, uint8_t *pendptr);
 	bool 	handle_req_trace_def_disable(comm::SM_REQ_TRACE_DEF_DISABLE *pdef, int nevents, uint8_t *pendptr);
 	int	check_new_req_trace_svcs() noexcept;
+	int	cleanup_req_trace_elems() noexcept;
+	bool 	handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_STATUS *pstat, int nevents, uint8_t *pendptr);
 
 	bool	handle_node_query(const std::shared_ptr<MCONNTRACK> & connshr, const comm::QUERY_CMD *pquery, char *pjson, char *pendptr, \
 			POOL_ALLOC_ARRAY *pthrpoolarr, STATS_STR_MAP & statsmap, PGConnPool & dbpool);
@@ -2130,6 +2334,8 @@ public :
 	const char * get_views_cleanup_procs() const noexcept;
 
 };
+
+
 
 } // namespace madhava
 } // namespace gyeeta

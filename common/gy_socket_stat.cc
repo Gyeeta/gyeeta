@@ -3778,6 +3778,7 @@ int TCP_SOCK_HANDLER::handle_api_trace_set(const comm::REQ_TRACE_SET *preq, int 
 	try {
 		GlobIDInodeMap			delidmap;
 		int64_t				nadd = 0, ndel;
+		time_t				tcurr = time(nullptr);
 		bool				isnocaperr = false;
 		
 		RCU_LOCK_SLOW			slowlock;
@@ -3791,10 +3792,10 @@ int TCP_SOCK_HANDLER::handle_api_trace_set(const comm::REQ_TRACE_SET *preq, int 
 				return CB_OK;
 			}
 			
-			if (ptmp->enable_cap_) {
-				if (bool(svcnetcap_) && svcnetcap_->is_svc_cap_allowed(true /* isapicall */)) {
+			plistener->tapi_cap_stop_.store(ptmp->tend_, mo_release);
 
-					plistener->tapi_cap_stop_.store(ptmp->tend_, mo_relaxed);
+			if (ptmp->tend_ > tcurr + 60) {
+				if (bool(svcnetcap_) && svcnetcap_->is_svc_cap_allowed(true /* isapicall */)) {
 
 					nadd += svcnetcap_->sched_add_listener(0, gy_to_charbuf<128>("API Capture for Svc %s %016lx", plistener->comm_, plistener->glob_id_).get(),
 						plistener->ns_ip_port_.get_ns_inode(), plistener->shared_from_this(), true /* isapicall */);
@@ -3808,8 +3809,8 @@ int TCP_SOCK_HANDLER::handle_api_trace_set(const comm::REQ_TRACE_SET *preq, int 
 				}	
 			}
 			else {
-				auto		[it, success] = delidmap.try_emplace(plistener->ns_ip_port_.get_ns_inode());
-				auto		& vec = it->second;		
+				auto			[it, success] = delidmap.try_emplace(plistener->ns_ip_port_.get_ns_inode());
+				auto			& vec = it->second;		
 					
 				vec.emplace_back(plistener->glob_id_, plistener->ns_ip_port_.get_port());
 			}	

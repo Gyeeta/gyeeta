@@ -89,7 +89,9 @@ int main()
 		memuse("After copy and before destruction", arena);
 
 		memuse("Copied Map stats", u2.get_arena());
+
 	}
+
 	{
 		IRPRINT("\n\n");
 

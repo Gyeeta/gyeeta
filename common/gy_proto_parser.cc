@@ -268,7 +268,12 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 	orig_proto_ = listenshr->api_proto_.load(mo_acquire);
 
 	if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_UNKNOWN) {
-		orig_ssl_ = listenshr->api_is_ssl_.load(mo_relaxed);
+		if (true == listenshr->api_is_ssl_.load(mo_relaxed)) {
+			orig_ssl_ = true;
+		}
+		else {
+			orig_ssl_ = false;
+		}	
 		listenshr->api_cap_started_.store(CAPSTAT_ACTIVE, std::memory_order_release);
 	}
 }	

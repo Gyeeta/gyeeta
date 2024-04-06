@@ -8,6 +8,7 @@
 #include		"gy_file_api.h"
 #include		"gy_file_api.h"
 #include		"gy_pkt_pool.h"
+#include		"gy_stack_container.h"
 
 #include 		<unistd.h>
 #include 		<cstdlib>
@@ -62,6 +63,20 @@ struct THR_LOCAL
 		INFOFDUNLOCKPRINT(STDOUT_FILENO, "Thread Local storage destructor called for thread %s\n", name.c_str());
 	}	
 };
+
+[[gnu::noinline]] static void create_stack_map()
+{
+	using Stackmap 		= INLINE_STACK_HASH_MAP<std::string, std::string, (sizeof(std::string) * 2 + 8) * 128>;
+
+	Stackmap		u(4096 /* initial bucket count */);
+
+	u["RED"] 	= "#FF0000";
+
+	GY_CC_BARRIER();
+
+	INFOPRINTCOLOR(GY_COLOR_GREEN, "Within Inline Stack Map of size %lu : Current stack remaining bytes %lu\n", 
+			sizeof(u), gy_get_thread_local().get_thread_stack_freespace());
+}	
 
 static void display_thread_attributes(char *prefix)
 {
@@ -120,6 +135,35 @@ void test_func()
 
 	display_thread_attributes(gy_get_thread_local().get_name());
 
+	create_stack_map();
+
+	INFOPRINTCOLOR(GY_COLOR_GREEN, "After Inline Stack Map Function call : Current stack remaining bytes %lu\n\n", 
+			gy_get_thread_local().get_thread_stack_freespace());
+
+	
+	if (time(nullptr) > 1000) {
+		const auto testfn = [&]() 
+		{
+			using Stackmap 		= INLINE_STACK_HASH_MAP<std::string, std::string, (sizeof(std::string) * 2 + 8) * 1024>;
+
+			Stackmap		u(4096 /* initial bucket count */);
+
+			u["RED"] 	= "#FF0000";
+
+			GY_CC_BARRIER();
+
+			INFOPRINTCOLOR(GY_COLOR_GREEN, "Within Inline Stack Map conditional block of size %lu : Current stack remaining bytes %lu\n", 
+					sizeof(u), gy_get_thread_local().get_thread_stack_freespace());
+		};
+
+		if (time(nullptr) > 10001) {
+			INFOPRINTCOLOR(GY_COLOR_GREEN, "Before Inline Stack Map lambda call : Current stack remaining bytes %lu\n\n", 
+				gy_get_thread_local().get_thread_stack_freespace());
+		
+			testfn();
+		}	
+	}	
+
 	char				*pdata = nullptr, *pdata2;
 	bool				is_malloc, is_malloc2;
 	uint32_t			mallcnt = 0;
@@ -139,6 +183,8 @@ void test_func()
 
 	INFOPRINTCOLOR(GY_COLOR_GREEN_UNDERLINE, "%s : Current stack remaining bytes %lu : Now starting direct stack allocation loops...\n\n\n", 
 		gy_get_thread_local().get_name(), gy_get_thread_local().get_thread_stack_freespace());
+
+	size_t			currstacksz = gy_get_thread_local().get_thread_stack_freespace();
 
 	for (int i = 0; i < 400; i++) {
 		GY_MT_COLLECT_PROFILE(100, "Direct Stack Alloc test");					
@@ -167,6 +213,11 @@ void test_func()
 
 		pfol2->tid = 1;
 		pfol2->counter = 1;
+
+		if (i == 0) {
+			INFOPRINTCOLOR(GY_COLOR_GREEN, "Within Direct Stack Alloc test : Current stack remaining bytes %lu : Bytes used = %ld\n", 
+					gy_get_thread_local().get_thread_stack_freespace(), currstacksz - gy_get_thread_local().get_thread_stack_freespace());
+		}	
 	}
 
 	INFOPRINTCOLOR(GY_COLOR_GREEN_UNDERLINE, "%s : Current stack remaining bytes %lu : Now starting Variable Length Array loops...\n\n\n", 

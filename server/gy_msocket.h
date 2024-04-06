@@ -461,6 +461,15 @@ public :
 	{
 		return cap_glob_id_vec_.size() > 0;
 	}	
+
+	const CRITERIA_SET * get_filter() const noexcept
+	{
+		if (filcrit_) {
+			return std::addressof(*filcrit_);
+		}	
+
+		return nullptr;
+	}	
 };	
 
 class MREQ_TRACE_DEFS
@@ -1297,12 +1306,22 @@ public :
 		time_t					tlaststat_		{0};
 		time_t					tstart_			{0};
 		time_t					tend_			{0};
+		uint32_t				curr_trace_defid_	{0};
+		gy_atomic<PROTO_TYPES>			api_proto_		{PROTO_UNINIT};
 		gy_atomic<PROTO_CAP_STATUS_E>		api_cap_status_		{CAPSTAT_UNINIT};
 		gy_atomic<bool>				api_is_ssl_		{false};
-		gy_atomic<PROTO_TYPES>			api_proto_		{PROTO_UNINIT};
 		
 		MREQ_TRACE_SVC(uint64_t glob_id) noexcept : glob_id_(glob_id)
 		{}	
+
+		void reset_restart() noexcept
+		{
+			tlaststat_ = 0;
+			tstart_ = 0;
+			tend_ = 0;
+
+			api_cap_status_.store(CAPSTAT_UNINIT, mo_relaxed);
+		}	
 	};
 
 
@@ -1380,8 +1399,9 @@ public :
 		}	
 
 		MTCP_LISTENER(const NS_IP_PORT & ns_ip_port, bool is_any_ip, uint64_t glob_id, uint64_t aggr_glob_id, \
-				std::shared_ptr <ParthaInfo> parthashr, const GY_MACHINE_ID & partha_machine_id, uint64_t madhava_id, std::weak_ptr<MadhavaInfo> madhava_weak, \
-				const char *comm, const char *cmdline, uint32_t cmdline_len = 0)
+				std::shared_ptr <ParthaInfo> parthashr, const GY_MACHINE_ID & partha_machine_id, uint64_t madhava_id, \
+				std::weak_ptr<MadhavaInfo> madhava_weak, const char *comm, const char *cmdline, uint32_t cmdline_len = 0)
+
 			: ns_ip_port_(ns_ip_port), glob_id_(glob_id), aggr_glob_id_(aggr_glob_id), parthashr_(std::move(parthashr)),
 			partha_machine_id_(partha_machine_id), madhava_id_(madhava_id), madhava_weak_(std::move(madhava_weak)), 
 			cli_aggr_task_tbl_(std::in_place, 8, 8, 1024, true, false),
@@ -1480,6 +1500,15 @@ public :
 			}	
 
 			return strbuf.buffer();
+		}	
+
+		PROTO_CAP_STATUS_E get_trace_cap_status(std::memory_order order = mo_relaxed) const noexcept
+		{
+			if (rtraceshr_) {
+				return rtraceshr_->api_cap_status_.load(order);
+			}	
+
+			return CAPSTAT_UNINIT;
 		}	
 
 		friend inline bool operator== (const std::shared_ptr<MTCP_LISTENER> &lhs, const uint64_t glob_id) noexcept

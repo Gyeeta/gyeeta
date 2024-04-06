@@ -210,6 +210,7 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 		});
 
 		auto 			schedshrhigh = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_HIGH_PRIO);
+		auto 			schedshrlong2 = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION);
 	
 		tcurr = time(nullptr); 
 		tnxt = (tcurr / 30) * 30;
@@ -217,6 +218,11 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 		schedshrhigh->add_schedule(60'230 + 3000 + 30'000 - (tcurr - tnxt) * 1000, 30'000, 0, "Cleanup the TCP Conn Table and Partha Unknown conns", 
 		[this] { 
 			cleanup_tcp_conn_table();
+		});
+
+		schedshrlong2->add_schedule(60'100, 45'000, 0, "Cleanup the Request Trace elements", 
+		[this] { 
+			cleanup_req_trace_elems();
 		});
 
 		INFOPRINT("Madhava Listener Initialization Completed successfully...\n");
@@ -3377,6 +3383,26 @@ int MCONN_HANDLER::handle_l1(GY_THREAD *pthr)
 								break;
 
 
+							case NOTIFY_REQ_TRACE_STATUS :
+								if ((!pconn1->is_registered()) || (pconn1->host_type_ != HOST_PARTHA)) {
+									statsmap["Invalid Message Error"]++; 
+									GY_THROW_EXCEPTION("Invalid Message received #%u. Closing connection", __LINE__);
+								}
+								else {
+									auto	 		*pstat = (REQ_TRACE_STATUS *)(pevtnot + 1);
+
+									bret = pstat->validate(&hdr, pevtnot);
+									if (bret == false) {
+										statsmap["Invalid Message Error"]++; 
+										GY_THROW_EXCEPTION("Invalid Message received #%u. Closing connection", __LINE__);
+									}
+
+									schedule_db_array(prdbuf, hdr.total_sz_, hdr.data_type_, TTYPE_L2_MISC);
+								}
+
+								break;
+
+
 
 							default :
 								break;
@@ -5272,6 +5298,21 @@ int MCONN_HANDLER::handle_l2_misc(L2_PARAMS & param, POOL_ALLOC_ARRAY *pthrpoola
 
 								break;
 
+
+							case NOTIFY_REQ_TRACE_STATUS :
+								try {
+									auto		 	*pstat = (REQ_TRACE_STATUS *)(pevtnot + 1);
+									int			nevents = pevtnot->nevents_;
+
+									handle_req_trace_status(dbarr.shrconn_->get_partha_shared(), pstat, nevents, pendptr);
+								}
+								GY_CATCH_EXCEPTION(
+									ERRORPRINT_OFFLOAD("Exception occurred while handling Req Trace Status Notify : %s\n", GY_GET_EXCEPT_STRING);
+								);
+
+								break;
+
+
 							default :
 								break;	
 							}
@@ -6099,7 +6140,7 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 
 		if (pone->ncap_glob_id_arr_ > 0) {
 			auto 			[mit, isok] = defmap.try_emplace(pone->reqdefid_, pone->reqdefid_, (uint64_t *)(pone + 1), pone->ncap_glob_id_arr_, 
-										pone->name_, tcurr, pone->tend_);
+										pone->name_, pone->tend_);
 			
 			if (!isok) {
 				mit->second = MREQ_TRACE_DEF(pone->reqdefid_, (uint64_t *)(pone + 1), pone->ncap_glob_id_arr_, pone->name_, pone->tend_);
@@ -6110,7 +6151,7 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 										std::string_view((const char *)(pone + 1), pone->lencrit_), pone->tend_);
 			
 			if (!isok) {
-				mit->second = MREQ_TRACE_DEF(pone->reqdefid_, pone->name_, std::string_view((const char *)(pone + 1), pone->lencrit_), tcurr, pone->tend_);
+				mit->second = MREQ_TRACE_DEF(pone->reqdefid_, pone->name_, std::string_view((const char *)(pone + 1), pone->lencrit_), pone->tend_);
 			}	
 		}	
 	}
@@ -6125,76 +6166,545 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 				}, false);
 }	
 
+
 int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
 {
 	try {
-		using namespace	comm;
-
-		using REQ_TRACE_SET_VEC		= GY_STACK_VECTOR<comm::REQ_TRACE_SET, 32 * 1024>;
-		using REQ_TRACE_SET_VEC_ARENA	= REQ_TRACE_SET_VEC::allocator_type::arena_type;
-		using REQ_TRACE_SET_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, REQ_TRACE_SET_VEC, 8192>;
+		using REQ_TRACE_SET_SET		= GY_STACK_HASH_SET<comm::REQ_TRACE_SET, 32 * 1024, comm::REQ_TRACE_SET::RHash>;
+		using REQ_TRACE_SET_SET_ARENA	= REQ_TRACE_SET_SET::allocator_type::arena_type;
+		using REQ_TRACE_SET_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, REQ_TRACE_SET_SET, 8192>;
 		using REQ_TRACE_SET_MAP_ARENA	= REQ_TRACE_SET_MAP::allocator_type::arena_type;
 
-		REQ_TRACE_SET_VEC_ARENA		rsetvecarena;
+		REQ_TRACE_SET_SET_ARENA		rsetarena;
 		REQ_TRACE_SET_MAP_ARENA		rsetmaparena;
 		REQ_TRACE_SET_MAP		rsetmap(rsetmaparena);
 
+		using REQ_TRACE_SVC_VEC		= GY_STACK_VECTOR<REQ_TRACE_SVC, 32 * 1024>;
+		using REQ_TRACE_SVC_VEC_ARENA	= REQ_TRACE_SVC_VEC::allocator_type::arena_type;
+
+		REQ_TRACE_SVC_VEC_ARENA		rvecarena;
+		REQ_TRACE_SVC_VEC		rvec(rvecarena);
+
 		assert(gy_get_thread_local().get_thread_stack_freespace() > 100 * 1024);
 
-		auto				& defmap = tracedefs_.defmap_;
 		SharedMutex::ReadHolder		rscope(tracedefs_.def_rwmutex_);
-		
-		const uint64_t			min_cusec = tracedefs_.lastchkcusec_;
 
-		auto fixedsvc = [&](const MREQ_TRACE_DEF & def)
+		auto				& defmap = tracedefs_.defmap_;
+		
+		const time_t			tcurr = time(nullptr);
+		const uint64_t			min_cusec = tracedefs_.lastchkcusec_.load(mo_relaxed), curr_cusec = get_usec_clock();
+
+		auto setsvc = [&](const MREQ_TRACE_DEF & def, MTCP_LISTENER & listener)
 		{
-			MTCP_LISTENER_ELEM_TYPE		*plistelem;
-			MTCP_LISTENER			*plistener;
-			
-			for (uint64_t glob_id : def.cap_glob_id_vec_) {
-
-				plistelem = glob_listener_tbl_.lookup_single_elem_locked(glob_id, lhash);
-
-				if (plistelem == nullptr) {
-					continue;
-				}	
-		
-				plistener = plistelem->get_cref().get();
-
-				if (gy_unlikely(plistener == nullptr)) {
-					continue;
-				}	
-				
+			if (!listener.rtraceshr_ || !listener.parthashr_) {
+				return;
 			}	
-		};	
 
-		auto filteredsvc = [&](const MREQ_TRACE_DEF & def)
+			auto			st = listener.rtraceshr_->api_cap_status_.load(mo_acquire);
+
+			if (st == CAPSTAT_FAILED && listener.rtraceshr_->tlaststat_ > tcurr - 600 && def.tend_ > tcurr + 5) {
+				NOTEPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Ignoring New Request Trace command for listener \'%s' 0x%016lx for host %s as recent trace request failed : "
+						"Please retry later...\n", listener.comm_, listener.glob_id_, listener.parthashr_->hostname_);
+				return;
+			}	
+
+			if (st == CAPSTAT_UNINIT) {
+				listener.rtraceshr_->tlaststat_ = tcurr;
+				listener.rtraceshr_->curr_trace_defid_ = def.reqdefid_;
+
+				listener.rtraceshr_->api_cap_status_.store(CAPSTAT_STARTING, mo_relaxed);
+			}
+
+			auto 			[it, success] = rsetmap.try_emplace(listener.parthashr_, rsetarena);
+			auto 			& rset = it->second;
+			
+			rset.emplace(listener.glob_id_, listener.ns_ip_port_, listener.comm_, def.tend_);
+
+			rvec.emplace_back(listener.glob_id_, listener.ns_ip_port_, listener.partha_machine_id_, listener.weak_from_this(), 
+						listener.rtraceshr_, def.reqdefid_, listener.comm_);
+		};
+
+		auto checkfilt = [&](const MREQ_TRACE_DEF & def)
 		{
+			const auto			*pcrit = def.get_filter();
 
+			if (!pcrit) {
+				return;
+			}	
+			
+			auto filtcb = [&](MTCP_LISTENER & listener, PARTHA_INFO & rawpartha)
+			{
+				setsvc(def, listener);				
+			};	
+
+			check_svc_subsys_filter<decltype(filtcb), SUBSYS_SVCINFO, SvcInfoFields>(*pcrit, filtcb, tcurr);
 		};	
 
 		RCU_LOCK_SLOW			slowlock;
 		
-		for (const auto & [did, def] : defmap_) {
-			if (def.cstartus_ < min_clock_usec) {
+		for (const auto & [did, def] : defmap) {
+
+			MTCP_LISTENER_ELEM_TYPE		*plistelem;
+			MTCP_LISTENER			*plistener;
+
+			if (def.cstartus_ < min_cusec) {
+				continue;
+			}	
+
+			if (def.tend_ < tcurr + 10) {
 				continue;
 			}	
 			
 			if (def.is_fixed_svcs()) {
-				fixedsvc(def);		
+				for (uint64_t glob_id : def.cap_glob_id_vec_) {
+
+					plistelem = glob_listener_tbl_.lookup_single_elem_locked(glob_id, get_uint64_hash(glob_id));
+
+					if (plistelem == nullptr) {
+						continue;
+					}	
+			
+					plistener = plistelem->get_cref().get();
+
+					if (gy_unlikely(plistener == nullptr)) {
+						continue;
+					}	
+					
+					setsvc(def, *plistener);
+				}	
 			}	
 			else {
-				filteredsvc(def);
+				checkfilt(def);
 			}	
 		}	
 
+		slowlock.unlock();
 
+		tracedefs_.lastchkcusec_.store(curr_cusec, mo_relaxed);
+
+		rscope.unlock();
+
+		int				nmsg = 0;
+
+		const auto sendpar = [&](PARTHA_INFO *prawpartha, const REQ_TRACE_SET_SET & rset) -> bool
+		{
+			auto				connshr = prawpartha->get_last_conn(comm::CLI_TYPE_RESP_REQ);
+			if (!connshr) {
+				return false;
+			}
+
+			size_t				nsz = rset.size(), tsz = 0;
+
+			if (nsz > REQ_TRACE_SET::MAX_REQ_TRACE_ELEM) {
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Too Many Req Trace Set Messages %lu to be sent to Partha %s : Limiting to %lu\n",
+					nsz, prawpartha->hostname_, REQ_TRACE_SET::MAX_REQ_TRACE_ELEM);
+
+				nsz = REQ_TRACE_SET::MAX_REQ_TRACE_ELEM;
+			}	
+
+			size_t				fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + nsz * sizeof(REQ_TRACE_SET);
+
+			void				*palloc = ::malloc(fixed_sz);
+			if (!palloc) {
+				return false;
+			}	
+
+			COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);
+			EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1);
+			REQ_TRACE_SET			*pres = reinterpret_cast<REQ_TRACE_SET *>(pnot + 1);
+			
+			new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, fixed_sz, connshr->get_comm_magic());
+			new (pnot) EVENT_NOTIFY(comm::NOTIFY_REQ_TRACE_SET, nsz);
+
+			for (const auto & elem : rset) {
+				new (pres) REQ_TRACE_SET(elem);
+
+				pres++;
+
+				if (++tsz == nsz) {
+					break;
+				}	
+			}
+
+			nmsg += nsz;
+
+			return schedule_l1_send_data(connshr, comm::COMM_EVENT_NOTIFY, EPOLL_IOVEC_ARR(2, false, palloc, fixed_sz, ::free, gpadbuf, phdr->get_pad_len(), nullptr));
+		};
+
+		for (const auto & [parshr, rset] : rsetmap) {
+			sendpar(parshr.get(), rset);
+		}
+
+		
+		SharedMutex::WriteHolder	wscope(trace_elems_.rwmutex_);
+
+		for (auto && relem : rvec) {
+			
+			uint64_t			glob_id = relem.glob_id_;
+			uint32_t			defid = relem.reqdefid_;
+
+			trace_elems_.statlist_.emplace(trace_elems_.statlist_.end(), glob_id, relem.machid_, tcurr, relem.ns_ip_port_.get_port(), 
+							CAPSTAT_STARTING, relem.comm_, "Initiated Request Trace Start");  
+
+			auto				[it, succ] = trace_elems_.listmap_.try_emplace(defid);
+			auto				& smap = it->second;
+
+			auto				[it2, succ2] = smap.try_emplace(glob_id, std::move(relem));
+
+			if (!succ2) {
+				it2->second = std::move(relem);
+			}	
+		}	
+
+		wscope.unlock();
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sent %d New Request Trace Messages to %lu Partha hosts...\n", nmsg, rsetmap.size());
+
+		return 0;
 	}
 	GY_CATCH_EXPRESSION(
 		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while checking Listeners for new Request Trace Defs : %s\n\n", GY_GET_EXCEPT_STRING);
 		return -1;
 	);
 }	
+
+bool MCONN_HANDLER::handle_req_trace_def_disable(SM_REQ_TRACE_DEF_DISABLE *pdef, int nevents, uint8_t *pendptr)
+{
+	auto				pone = pdef;
+	auto				& defmap = tracedefs_.defmap_;
+	uint64_t			cusec = get_usec_clock();
+	
+	/*
+	 * Set the def tend_ and let the cleanup_req_trace_elems() do the heavy lifting...
+	 */
+	SharedMutex::WriteHolder	wscope(tracedefs_.def_rwmutex_);
+
+	for (int i = 0; i < nevents && (uint8_t *)pone < pendptr; ++i, pone = (decltype(pone))((uint8_t *)pone + pone->get_elem_size())) {
+		auto			it = defmap.find(pone->reqdefid_);
+
+		if (it == defmap.end()) {
+			continue;
+		}	
+
+		it->second.tend_ = pone->tend_;
+	}
+
+	tracedefs_.lastupdcusec_.store(cusec, mo_relaxed);
+
+	wscope.unlock();
+	
+	return true;
+}	
+
+int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
+{
+	try {
+		using ReqTraceSetMap		= GY_STACK_HASH_MAP<uint64_t, comm::REQ_TRACE_SET, 32 * 1024, HASH_SAME_AS_KEY<uint64_t>>;
+		using ReqTraceSetMapArena	= ReqTraceSetMap::allocator_type::arena_type;
+		using REQ_TRACE_SET_MAP		= GY_STACK_HASH_MAP<std::shared_ptr<PARTHA_INFO>, ReqTraceSetMap, 8192>;
+		using REQ_TRACE_SET_MAP_ARENA	= REQ_TRACE_SET_MAP::allocator_type::arena_type;
+
+		using REQID_MAP			= INLINE_STACK_HASH_MAP<uint32_t, time_t, 8 * 1024, HASH_SAME_AS_KEY<uint32_t>>;
+		using SVCTIME_MAP		= INLINE_STACK_HASH_MAP<uint64_t, time_t, 24 * 1024, HASH_SAME_AS_KEY<uint64_t>>;
+
+		ReqTraceSetMapArena		rmaparena;
+		REQ_TRACE_SET_MAP_ARENA		rsetmaparena;
+		REQ_TRACE_SET_MAP		rsetmap(rsetmaparena);
+
+		REQID_MAP			reqidmap;
+		SVCTIME_MAP			svcmap;
+
+		assert(gy_get_thread_local().get_thread_stack_freespace() > 100 * 1024);
+
+		SharedMutex::ReadHolder		rscope(tracedefs_.def_rwmutex_);
+
+		const time_t			tcurr = time(nullptr);
+		
+		for (const auto & [did, def] : tracedefs_.defmap_) {
+			reqidmap.try_emplace(did, def.tend_);
+		}	
+
+		rscope.unlock();
+
+		auto setsvc = [&](const std::shared_ptr<PARTHA_INFO> & parthashr, uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm, time_t tend)
+		{
+			auto 			[it, success] = rsetmap.try_emplace(parthashr, rmaparena);
+			auto 			& rmap = it->second;
+			
+			auto			[rit, rtrue] = rmap.try_emplace(glob_id, glob_id, ns_ip_port, comm, tend);
+
+			if (!rtrue) {
+				if (rit->second.tend_ < tend) {
+					rit->second.tend_ = tend;
+				}	
+			}	
+		};
+		
+		SharedMutex::WriteHolder	wscope(trace_elems_.rwmutex_);
+
+		for (auto it = trace_elems_.listmap_.begin(); it != trace_elems_.listmap_.end();) {
+			auto				& smap = it->second;
+			time_t				tend = LONG_MAX - 1;
+			bool				todel = false;
+
+			if (auto rt = reqidmap.find(it->first); rt != reqidmap.end()) {
+				if (rt->second) {
+					tend = rt->second;
+				}	
+
+				if (tend < tcurr + 45 || smap.empty()) {
+					todel = true;
+				}	
+			}	
+			else {
+				todel = true;
+			}	
+
+			for (auto sit = smap.begin(); sit != smap.end();) {
+				auto			listenshr = sit->second.weaksvc_.lock();
+				bool			notupd = false;
+
+				if (!listenshr || !listenshr->parthashr_ || !listenshr->rtraceshr_) {
+					sit = smap.erase(sit);
+					continue;
+				}	
+
+				if (listenshr->rtraceshr_->tlaststat_ < tcurr - 600) {
+					notupd = true;
+				}	
+				else {
+					++sit;
+				}	
+
+				if (!todel && !notupd) {
+					auto 			[st, sok] = svcmap.try_emplace(listenshr->glob_id_, tend);
+
+					if (!sok) {
+						if (st->second < tend) {
+							st->second = tend;
+						}	
+					}
+
+					continue;
+				}	
+
+				setsvc(listenshr->parthashr_, listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, notupd ? tcurr : tend);
+				
+				listenshr->rtraceshr_->tlaststat_ = tcurr;
+				listenshr->rtraceshr_->api_cap_status_.store(CAPSTAT_UNINIT, mo_release);
+
+				if (notupd) {
+					sit = smap.erase(sit);
+					continue;
+				}	
+			}	
+
+			if (!todel) {
+				++it;
+			}
+			else {
+				it = trace_elems_.listmap_.erase(it);
+			}	
+		}
+
+		time_t				tmindel = (trace_elems_.statlist_.size() < 512 ? tcurr - GY_SEC_PER_DAY * 2 : tcurr - GY_SEC_PER_DAY);
+
+		for (auto it = trace_elems_.statlist_.begin(); it != trace_elems_.statlist_.end();) {
+			if (it->tstatus_ < tmindel) {
+				it = trace_elems_.statlist_.erase(it);
+				continue;
+			}	
+
+			break;
+		}	
+
+		if (trace_elems_.statlist_.size() > 10000) {
+			trace_elems_.statlist_.resize(10000);
+		}
+
+		wscope.unlock();
+
+		int				nmsg = 0;
+
+		const auto sendpar = [&](PARTHA_INFO *prawpartha, const ReqTraceSetMap & rmap) -> bool
+		{
+			auto				connshr = prawpartha->get_last_conn(comm::CLI_TYPE_RESP_REQ);
+			if (!connshr) {
+				return false;
+			}
+
+			size_t				nsz = rmap.size(), tsz = 0;
+
+			if (nsz > REQ_TRACE_SET::MAX_REQ_TRACE_ELEM) {
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Too Many Req Trace Set Cleanup Messages %lu to be sent to Partha %s : Limiting to %lu\n",
+					nsz, prawpartha->hostname_, REQ_TRACE_SET::MAX_REQ_TRACE_ELEM);
+
+				nsz = REQ_TRACE_SET::MAX_REQ_TRACE_ELEM;
+			}	
+
+
+			size_t				fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + nsz * sizeof(REQ_TRACE_SET);
+
+			void				*palloc = ::malloc(fixed_sz);
+			if (!palloc) {
+				return false;
+			}	
+
+			COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);
+			EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1);
+			REQ_TRACE_SET			*pres = reinterpret_cast<REQ_TRACE_SET *>(pnot + 1);
+			
+			new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, fixed_sz, connshr->get_comm_magic());
+			new (pnot) EVENT_NOTIFY(comm::NOTIFY_REQ_TRACE_SET, rmap.size());
+
+			for (const auto & [glob_id, elem] : rmap) {
+				new (pres) REQ_TRACE_SET(elem);
+
+				// Reset tend_ to the max seen across all defs...
+				if (auto st = svcmap.find(pres->glob_id_); st != svcmap.end()) {
+					if (pres->tend_ < st->second) {
+						pres->tend_ = st->second;
+					}	
+				}	
+
+				pres++;
+
+				if (++tsz == nsz) {
+					break;
+				}	
+			}
+
+			nmsg += nsz;
+
+			return schedule_l1_send_data(connshr, comm::COMM_EVENT_NOTIFY, EPOLL_IOVEC_ARR(2, false, palloc, fixed_sz, ::free, gpadbuf, phdr->get_pad_len(), nullptr));
+		};
+
+		for (const auto & [parshr, rmap] : rsetmap) {
+			sendpar(parshr.get(), rmap);
+		}
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sent %d Cleanup Request Trace Messages to %lu Partha hosts...\n", nmsg, rsetmap.size());
+
+		return 0;
+	}
+	GY_CATCH_EXPRESSION(
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while cleaning Req Trace Elements : %s\n\n", GY_GET_EXCEPT_STRING);
+		return -1;
+	);
+}
+
+bool MCONN_HANDLER::handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> & partha_shr, REQ_TRACE_STATUS *pstat, int nevents, uint8_t *pendptr)
+{
+	auto				*prawpartha = partha_shr.get();
+
+	if (!prawpartha) {
+		return false;
+	}	
+
+	auto				*pone = pstat;
+	time_t				tcurr = time(nullptr);
+	
+	REQ_TRACE_STATUS		*plistarr[REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM];
+	int				nlistarr = 0;
+	
+	RCU_LOCK_SLOW			slowlock;
+
+	for (int i = 0; i < nevents && (uint8_t *)pone < pendptr; ++i, pone = (decltype(pone))((uint8_t *)pone + pone->get_elem_size())) {
+		MTCP_LISTENER_ELEM_TYPE		*plistenelem;
+	
+		plistenelem = prawpartha->listen_tbl_.lookup_single_elem_locked(pone->glob_id_, get_uint64_hash(pone->glob_id_));
+		
+		if (!plistenelem) {
+			continue;
+		}	
+
+		auto				plistener = plistenelem->get_cref().get();
+
+		if (!plistener || !plistener->rtraceshr_) {
+			continue;
+		}	
+
+		auto				& rtraceshr = plistener->rtraceshr_;
+
+
+		auto				oldstatus = rtraceshr->api_cap_status_.load(mo_acquire);
+
+		if (pone->status_ != oldstatus) {
+			if (pone->status_ != CAPSTAT_STARTING && nlistarr < (int)REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM) {
+				plistarr[nlistarr++] = pone;
+			}
+
+			rtraceshr->api_cap_status_.store(pone->status_, mo_release);
+		}	
+
+		rtraceshr->nrequests_	= pone->nrequests_;
+		rtraceshr->nerrors_	= pone->nerrors_;
+		rtraceshr->tlaststat_ 	= tcurr;
+
+		rtraceshr->api_proto_.store(pone->proto_, mo_relaxed);
+		rtraceshr->api_is_ssl_.store(pone->is_ssl_, mo_relaxed);
+	}
+
+	slowlock.unlock();
+
+	if (nlistarr > 0) {
+		std::list<MREQ_TRACE_STATUS>	tlist;
+		int				nstop = 0;
+
+		for (int i = 0; i < nlistarr; ++i) {
+			REQ_TRACE_STATUS		*pstat = plistarr[i];
+			char				msg[256];
+			
+			*msg = 0;
+
+			if (pstat->errstr_[0]) {
+				GY_STRNCPY(msg, pstat->errstr_, sizeof(msg));
+			}	
+			else {
+				if (pstat->status_ == CAPSTAT_UNINIT) {
+					GY_STRNCPY(msg, "Request Trace has been stopped", sizeof(msg));
+				}	
+				else if (pstat->status_ == CAPSTAT_FAILED) {
+					GY_STRNCPY(msg, "Request Trace Failed due to an unspecified reason", sizeof(msg));
+				}	
+				else if (pstat->status_ == CAPSTAT_ACTIVE) {
+					GY_STRNCPY(msg, "Request Trace is now active", sizeof(msg));
+				}	
+			}	
+		
+			tlist.emplace(tlist.end(), pstat->glob_id_, prawpartha->machine_id_, tcurr, pstat->ns_ip_port_.get_port(), 
+							pstat->status_, pstat->comm_, msg, pstat->proto_, pstat->is_ssl_);  
+		}
+
+		SharedMutex::WriteHolder	wscope(trace_elems_.rwmutex_);
+
+		trace_elems_.statlist_.splice(trace_elems_.statlist_.end(), std::move(tlist));
+
+		for (int i = 0; i < nlistarr; ++i) {
+			REQ_TRACE_STATUS		*pstat = plistarr[i];
+
+			if (pstat->status_ == CAPSTAT_UNINIT || pstat->status_ == CAPSTAT_FAILED) { 
+				for (auto && [defid, smap] : trace_elems_.listmap_) {
+					auto			it = smap.find(pstat->glob_id_);
+					
+					if (it != smap.end()) {
+						smap.erase(it);
+					}	
+				}	
+
+				nstop++;
+			}
+		}	
+		
+		wscope.unlock();
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Received %d newly updated Req Trace Status messages from host %s : %d service trace stopped\n", 
+					nlistarr, prawpartha->hostname_, nstop);
+	}
+
+	return true;
+}	
+
 
 MA_SETTINGS_C * MCONN_HANDLER::get_settings() const noexcept
 {
@@ -7926,7 +8436,7 @@ std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::sh
 	if (listenshr) {
 		auto				plistener = listenshr.get();
 		const auto			& ser_parthashr = plistener->parthashr_;
-		const bool			is_trace_active = (CAPSTAT_ACTIVE == plistener->api_cap_status_.load(mo_relaxed));
+		const bool			is_trace_active = (CAPSTAT_ACTIVE == plistener->get_trace_cap_status());
 		bool				traceadd = false;
 
 		bret = false;
@@ -8021,7 +8531,7 @@ std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::sh
 
 
 	auto				plistener = plistenelem->get_cref().get();
-	const bool			is_trace_active = (plistener && (CAPSTAT_ACTIVE == plistener->api_cap_status_.load(mo_relaxed)));
+	const bool			is_trace_active = (plistener && (CAPSTAT_ACTIVE == plistener->get_trace_cap_status()));
 	PAIR_IP_PORT			stuple(pone->cli_, pone->ser_), corigtup;
 	const uint32_t			shash = stuple.get_hash();
 
@@ -8879,7 +9389,7 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 			auto			plistener = listenshr.get();
 			const auto		& ser_parthashr = plistener->parthashr_;
 			auto			pclihost = cli_shr_host.get();
-			const bool		is_trace_active = (CAPSTAT_ACTIVE == plistener->api_cap_status_.load(mo_relaxed));
+			const bool		is_trace_active = (CAPSTAT_ACTIVE == plistener->get_trace_cap_status());
 
 			if (!conn_closed) {
 				auto 			[it, success] = parclimap.try_emplace(std::move(cli_shr_host), parclivecarena);
@@ -9705,7 +10215,7 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 			continue;
 		}	
 
-		const bool			is_trace_active = (CAPSTAT_ACTIVE == plistener->api_cap_status_.load(mo_relaxed));
+		const bool			is_trace_active = (CAPSTAT_ACTIVE == plistener->get_trace_cap_status());
 		const auto			& ser_parthashr = plistener->parthashr_;
 
 		if (!conn_closed) {	
@@ -12994,6 +13504,10 @@ bool MCONN_HANDLER::partha_listener_info(const std::shared_ptr<PARTHA_INFO> & pa
 
 				if (pone->aggr_glob_id_) {
 					plistener->aggr_glob_id_ = pone->aggr_glob_id_;
+				}	
+
+				if (plistener->rtraceshr_) {
+					plistener->rtraceshr_->reset_restart();
 				}	
 
 				plistener->comm_len_ = GY_STRNCPY_LEN(plistener->comm_, pone->comm_, sizeof(plistener->comm_));

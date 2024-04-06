@@ -2033,7 +2033,7 @@ start1 :
 
 	bool is_l1_oper_or() const noexcept
 	{
-		return l1_oper_ == OPER_OR;
+		return ((l1_oper_ == OPER_OR) || (l1_grp_.ncrit_ == 1));
 	}	
 
 	bool has_subsystem(SUBSYS_CLASS_E subsys, bool match_all = false) const noexcept

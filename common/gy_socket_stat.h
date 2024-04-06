@@ -591,8 +591,8 @@ public :
 	
 	gy_atomic<PROTO_CAP_STATUS_E>			api_cap_started_		{CAPSTAT_UNINIT};
 	gy_atomic<time_t>				tapi_cap_stop_			{0};
-	std::atomic<tribool>				api_is_ssl_			{indeterminate};
 	gy_atomic<PROTO_TYPES>				api_proto_			{PROTO_UNINIT};
+	std::atomic<tribool>				api_is_ssl_			{indeterminate};
 
 	GY_MUTEX					svcweak_lock_;
 	std::weak_ptr<SVC_INFO_CAP>			api_svcweak_;

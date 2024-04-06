@@ -3298,20 +3298,12 @@ struct alignas(8) REQ_TRACE_SET
 	NS_IP_PORT			ns_ip_port_;
 	time_t				tend_			{0};
 	char				comm_[TASK_COMM_LEN]	{};
-	bool				enable_cap_		{false};
 
 	static constexpr size_t		MAX_REQ_TRACE_ELEM	{128};
 
-	// To enable capture
+	// Used to enable/disable Req Trace
 	REQ_TRACE_SET(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm, time_t tend) noexcept
-		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), tend_(tend), enable_cap_(true)
-	{
-		GY_STRNCPY_0(comm_, comm, sizeof(comm_));
-	}	
-
-	// To disable capture
-	REQ_TRACE_SET(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm) noexcept
-		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), enable_cap_(false)
+		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), tend_(tend)
 	{
 		GY_STRNCPY_0(comm_, comm, sizeof(comm_));
 	}	
@@ -3325,6 +3317,19 @@ struct alignas(8) REQ_TRACE_SET
 	{	
 		return (phdr->get_act_len() >= sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + pnotify->nevents_ * sizeof(REQ_TRACE_SET) && pnotify->nevents_ <= MAX_REQ_TRACE_ELEM);
 	}	
+
+	bool operator==(const REQ_TRACE_SET & other) const noexcept
+	{
+		return other.glob_id_ == glob_id_ && other.tend_ == tend_;
+	}	
+
+	struct RHash
+	{
+		size_t operator()(const REQ_TRACE_SET & one) const noexcept
+		{
+			return one.glob_id_;
+		}	
+	};	
 };	
 
 struct alignas(8) REQ_TRACE_STATUS
@@ -3334,16 +3339,18 @@ struct alignas(8) REQ_TRACE_STATUS
 	uint64_t			nrequests_			{0};
 	uint64_t			nerrors_			{0};
 	char				comm_[TASK_COMM_LEN]		{};
+	PROTO_TYPES			proto_				{PROTO_UNINIT};
 	PROTO_CAP_STATUS_E		status_				{CAPSTAT_UNINIT};
+	bool				is_ssl_				{false};
 	char				errstr_[COMM_MAX_ERROR_LEN];
 
 	static constexpr size_t		MAX_REQ_TRACE_ELEM		{128};
 
-	REQ_TRACE_STATUS(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm, PROTO_CAP_STATUS_E status, 
-					const char *errstr = nullptr, uint64_t nrequests = 0, uint64_t nerrors = 0) noexcept
-		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), nrequests_(nrequests), nerrors_(nerrors), status_(status)
+	REQ_TRACE_STATUS(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm, PROTO_CAP_STATUS_E status, bool is_ssl = false,
+					PROTO_TYPES proto = PROTO_UNINIT, const char *errstr = nullptr, uint64_t nrequests = 0, uint64_t nerrors = 0) noexcept
+		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), nrequests_(nrequests), nerrors_(nerrors), proto_(proto), status_(status), is_ssl_(is_ssl)
 	{
-		GY_STRNCPY_0(comm_, comm, sizeof(comm_));
+		GY_STRNCPY(comm_, comm, sizeof(comm_));
 
 		if (errstr && *errstr) {
 			GY_STRNCPY(errstr_, errstr, sizeof(errstr_));
@@ -3429,13 +3436,13 @@ private :
 
 struct alignas(8) SM_REQ_TRACE_DEF_DISABLE
 {
-	uint32_t			reqdefid_		{0};
 	time_t				tend_			{0};
+	uint32_t			reqdefid_		{0};
 	
 	SM_REQ_TRACE_DEF_DISABLE() noexcept	= default;
 
 	SM_REQ_TRACE_DEF_DISABLE(uint32_t reqdefid, time_t tend) noexcept :
-		reqdefid_(reqdefid), tend_(tend)
+		tend_(tend), reqdefid_(reqdefid)
 	{}
 
 	uint32_t get_elem_size() const noexcept
