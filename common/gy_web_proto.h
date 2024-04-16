@@ -36,6 +36,7 @@ enum NODE_MSG_TYPE_E
 
 /*
  * All Query Types will be from 1001 to 5000
+ * Note that these also include CRUD commands besides normal queries...
  * XXX Ensure this is in sync with Node gyeeta_comm.js NodeQueryTypes
  */
 enum NODE_QUERY_TYPE_E
@@ -77,6 +78,9 @@ enum NODE_QUERY_TYPE_E
 	NQUERY_NM_TRACECONN			= 1033,
 	NQUERY_NM_TRACEUNIQ			= 1034,
 	NQUERY_NM_EXTTRACEREQ			= 1035,
+	NQUERY_NS_TRACEDEF			= 1036,
+	NQUERY_NM_TRACESTATUS			= 1037,
+	NQUERY_NM_TRACEHISTORY			= 1038,
 
 	NQUERY_MAX_TYPE,
 

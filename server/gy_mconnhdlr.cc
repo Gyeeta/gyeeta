@@ -220,7 +220,12 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 			cleanup_tcp_conn_table();
 		});
 
-		schedshrlong2->add_schedule(60'100, 45'000, 0, "Cleanup the Request Trace elements", 
+		schedshrlong2->add_schedule(307'600, 300'000, 0, "Recheck all listeners for new Request Trace defs", 
+		[this] { 
+			check_new_req_trace_svcs(true /* checkall */);
+		});
+
+		schedshrlong2->add_schedule(100'100, 45'000, 0, "Cleanup the Request Trace elements", 
 		[this] { 
 			cleanup_req_trace_elems();
 		});
@@ -355,9 +360,10 @@ next :
 		db_add_partitions();
 	});
 
-	db_part_scheduler_.add_schedule(5 * GY_MSEC_PER_HOUR + 901, 12 * GY_MSEC_PER_HOUR, 0, "Set DB Partitions Logged", 
+	db_part_scheduler_.add_schedule(5 * GY_MSEC_PER_HOUR + 901, 12 * GY_MSEC_PER_HOUR, 0, "Set DB Partitions Logged or Unlogged", 
 	[this] { 
 		db_set_part_logged();
+		db_set_part_unlogged();
 	});
 
 
@@ -1114,7 +1120,18 @@ bool MCONN_HANDLER::db_set_part_logged() noexcept
 		qbuf.appendconst("select public.gy_set_tbl_logged(ARRAY[");
 
 		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls); ++i) {
-			qbuf.appendfmt("\'%s\',", db_partha_partition_tbls[i]);
+			bool			unlog = false;
+
+			for (size_t j = 0; j < GY_ARRAY_SIZE(db_partha_unlogged_partition_tbls); ++j) {
+				if (0 == strcmp(db_partha_partition_tbls[i], db_partha_unlogged_partition_tbls[j])) {
+					unlog = true;
+					break;
+				}	
+			}	
+
+			if (!unlog) {
+				qbuf.appendfmt("\'%s\',", db_partha_partition_tbls[i]);
+			}	
 		}	
 
 		qbuf.set_last_char(' ');
@@ -1132,6 +1149,54 @@ bool MCONN_HANDLER::db_set_part_logged() noexcept
 	}
 	GY_CATCH_EXCEPTION(
 		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while updating Postgres DB for setting Tables Logged : %s\n", GY_GET_EXCEPT_STRING);
+		return false;
+	);
+}
+
+bool MCONN_HANDLER::db_set_part_unlogged() noexcept
+{
+	try {
+		STRING_BUFFER<4096>		qbuf;
+		bool				bret;
+		auto 				psettings = pmadhava_->psettings_;
+
+		if (GY_ARRAY_SIZE(db_partha_unlogged_partition_tbls) == 0) {
+			return true;
+		}	
+
+		if (psettings->db_logging == DB_LOGGING_NONE) {
+			// Already unlogged
+			return true;
+		}
+
+		GyPGConn			postconn(psettings->postgres_hostname, psettings->postgres_port, psettings->postgres_user, psettings->postgres_password,
+									get_dbname().get(), "madhava_tbl_unlog", get_db_init_commands().get(), false /* auto_reconnect */, 12, 2);
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Sending DB Table Unlogged Command to Postgres...\n");
+
+		EXEC_TIME			exectime("DB Table Unlog Command");
+
+		qbuf.appendconst("select public.gy_set_tbl_unlogged(ARRAY[");
+
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls); ++i) {
+			qbuf.appendfmt("\'%s\',", db_partha_partition_tbls[i]);
+		}	
+
+		qbuf.set_last_char(' ');
+
+		qbuf.appendconst("], \'^sch[0-9a-f]{32}$\');\n");
+
+		auto			cres = postconn.pqexec_blocking(qbuf.buffer());
+		
+		if (cres.is_error()) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to execute query to Postgres to set DB Partition Unlogged : Error is %s\n", cres.get_error_no_newline().get());
+			return false;
+		}	
+
+		return true;
+	}
+	GY_CATCH_EXCEPTION(
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while updating Postgres DB for setting Tables Unlogged : %s\n", GY_GET_EXCEPT_STRING);
 		return false;
 	);
 }
@@ -6143,7 +6208,7 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 										pone->name_, pone->tend_);
 			
 			if (!isok) {
-				mit->second = MREQ_TRACE_DEF(pone->reqdefid_, (uint64_t *)(pone + 1), pone->ncap_glob_id_arr_, pone->name_, pone->tend_);
+				mit->second = REQ_TRACE_DEF(pone->reqdefid_, (uint64_t *)(pone + 1), pone->ncap_glob_id_arr_, pone->name_, pone->tend_);
 			}	
 		}
 		else if (pone->lencrit_ > 0) {
@@ -6151,7 +6216,7 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 										std::string_view((const char *)(pone + 1), pone->lencrit_), pone->tend_);
 			
 			if (!isok) {
-				mit->second = MREQ_TRACE_DEF(pone->reqdefid_, pone->name_, std::string_view((const char *)(pone + 1), pone->lencrit_), pone->tend_);
+				mit->second = REQ_TRACE_DEF(pone->reqdefid_, pone->name_, std::string_view((const char *)(pone + 1), pone->lencrit_), pone->tend_);
 			}	
 		}	
 	}
@@ -6162,12 +6227,12 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 	
 	return GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION)->add_oneshot_schedule(100, "Check all Listeners for New Request Trace",
 				[this] { 
-					check_new_req_trace_svcs(); 
+					check_new_req_trace_svcs(false /* checkall */); 
 				}, false);
 }	
 
 
-int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
+int MCONN_HANDLER::check_new_req_trace_svcs(bool checkall) noexcept
 {
 	try {
 		using REQ_TRACE_SET_SET		= GY_STACK_HASH_SET<comm::REQ_TRACE_SET, 32 * 1024, comm::REQ_TRACE_SET::RHash>;
@@ -6187,17 +6252,30 @@ int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
 
 		assert(gy_get_thread_local().get_thread_stack_freespace() > 100 * 1024);
 
-		SharedMutex::ReadHolder		rscope(tracedefs_.def_rwmutex_);
+		SharedMutex::ReadHolder		rdefscope(tracedefs_.def_rwmutex_);
+
+		SharedMutex::ReadHolder		relemscope(trace_elems_.rwmutex_);
 
 		auto				& defmap = tracedefs_.defmap_;
 		
-		const time_t			tcurr = time(nullptr);
-		const uint64_t			min_cusec = tracedefs_.lastchkcusec_.load(mo_relaxed), curr_cusec = get_usec_clock();
+		const uint64_t			tcurrusec = get_usec_time();
+		const time_t			tcurr = tcurrusec/GY_USEC_PER_SEC;
+		const uint64_t			min_cusec = (!checkall ? tracedefs_.lastchkcusec_.load(mo_relaxed) : 100ul), curr_cusec = get_usec_clock();
 
-		auto setsvc = [&](const MREQ_TRACE_DEF & def, MTCP_LISTENER & listener)
+		auto setsvc = [&](const REQ_TRACE_DEF & def, MTCP_LISTENER & listener) -> bool
 		{
 			if (!listener.rtraceshr_ || !listener.parthashr_) {
-				return;
+				return false;
+			}	
+
+			auto			sit = trace_elems_.listmap_.find(def.reqdefid_);
+
+			// Check if already added
+			if (sit != trace_elems_.listmap_.end()) {
+
+				if (sit->second.find(listener.glob_id_) != sit->second.end()) {
+					return false;
+				}	
 			}	
 
 			auto			st = listener.rtraceshr_->api_cap_status_.load(mo_acquire);
@@ -6205,7 +6283,7 @@ int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
 			if (st == CAPSTAT_FAILED && listener.rtraceshr_->tlaststat_ > tcurr - 600 && def.tend_ > tcurr + 5) {
 				NOTEPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Ignoring New Request Trace command for listener \'%s' 0x%016lx for host %s as recent trace request failed : "
 						"Please retry later...\n", listener.comm_, listener.glob_id_, listener.parthashr_->hostname_);
-				return;
+				return false;
 			}	
 
 			if (st == CAPSTAT_UNINIT) {
@@ -6222,9 +6300,11 @@ int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
 
 			rvec.emplace_back(listener.glob_id_, listener.ns_ip_port_, listener.partha_machine_id_, listener.weak_from_this(), 
 						listener.rtraceshr_, def.reqdefid_, listener.comm_);
+
+			return true;
 		};
 
-		auto checkfilt = [&](const MREQ_TRACE_DEF & def)
+		auto checkfilt = [&](const REQ_TRACE_DEF & def)
 		{
 			const auto			*pcrit = def.get_filter();
 
@@ -6232,12 +6312,21 @@ int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
 				return;
 			}	
 			
-			auto filtcb = [&](MTCP_LISTENER & listener, PARTHA_INFO & rawpartha)
+			auto prefiltcb = [&, minstatetusec = tcurrusec - 300 * GY_USEC_PER_SEC](MTCP_LISTENER & listener, PARTHA_INFO & rawpartha) -> bool
 			{
-				setsvc(def, listener);				
+				if (listener.last_state_tusec_.load(mo_relaxed) < tcurrusec) {
+					return false;
+				}	
+
+				return true;
 			};	
 
-			check_svc_subsys_filter<decltype(filtcb), SUBSYS_SVCINFO, SvcInfoFields>(*pcrit, filtcb, tcurr);
+			auto postfiltcb = [&](MTCP_LISTENER & listener, PARTHA_INFO & rawpartha) -> bool
+			{
+				return setsvc(def, listener);		
+			};	
+
+			check_svc_subsys_filter<decltype(prefiltcb), decltype(postfiltcb), SUBSYS_SVCINFO, SvcInfoFields>(*pcrit, prefiltcb, postfiltcb, tcurr);
 		};	
 
 		RCU_LOCK_SLOW			slowlock;
@@ -6251,7 +6340,7 @@ int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
 				continue;
 			}	
 
-			if (def.tend_ < tcurr + 10) {
+			if (def.tend_ < tcurr + 30) {
 				continue;
 			}	
 			
@@ -6282,7 +6371,9 @@ int MCONN_HANDLER::check_new_req_trace_svcs() noexcept
 
 		tracedefs_.lastchkcusec_.store(curr_cusec, mo_relaxed);
 
-		rscope.unlock();
+		relemscope.unlock();
+
+		rdefscope.unlock();
 
 		int				nmsg = 0;
 
@@ -6419,6 +6510,7 @@ int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
 		SharedMutex::ReadHolder		rscope(tracedefs_.def_rwmutex_);
 
 		const time_t			tcurr = time(nullptr);
+		int				nsvc = 0;
 		
 		for (const auto & [did, def] : tracedefs_.defmap_) {
 			reqidmap.try_emplace(did, def.tend_);
@@ -6448,9 +6540,7 @@ int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
 			bool				todel = false;
 
 			if (auto rt = reqidmap.find(it->first); rt != reqidmap.end()) {
-				if (rt->second) {
-					tend = rt->second;
-				}	
+				tend = rt->second;
 
 				if (tend < tcurr + 45 || smap.empty()) {
 					todel = true;
@@ -6470,6 +6560,7 @@ int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
 				}	
 
 				if (listenshr->rtraceshr_->tlaststat_ < tcurr - 600) {
+					// Not updated since last 10 min : Delete
 					notupd = true;
 				}	
 				else {
@@ -6483,6 +6574,9 @@ int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
 						if (st->second < tend) {
 							st->second = tend;
 						}	
+					}
+					else {
+						nsvc++;
 					}
 
 					continue;
@@ -6583,7 +6677,8 @@ int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
 			sendpar(parshr.get(), rmap);
 		}
 
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sent %d Cleanup Request Trace Messages to %lu Partha hosts...\n", nmsg, rsetmap.size());
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Req Trace Cleanup Check : %d Services Req Trace active :  Sent %d Cleanup messages to %lu Partha hosts...\n", 
+								nsvc, nmsg, rsetmap.size());
 
 		return 0;
 	}
@@ -6624,25 +6719,24 @@ bool MCONN_HANDLER::handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> &
 			continue;
 		}	
 
-		auto				& rtraceshr = plistener->rtraceshr_;
+		auto				*prtraceshr = plistener->rtraceshr_.get();
 
-
-		auto				oldstatus = rtraceshr->api_cap_status_.load(mo_acquire);
+		auto				oldstatus = prtraceshr->api_cap_status_.load(mo_acquire);
 
 		if (pone->status_ != oldstatus) {
 			if (pone->status_ != CAPSTAT_STARTING && nlistarr < (int)REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM) {
 				plistarr[nlistarr++] = pone;
 			}
 
-			rtraceshr->api_cap_status_.store(pone->status_, mo_release);
+			prtraceshr->api_cap_status_.store(pone->status_, mo_release);
 		}	
 
-		rtraceshr->nrequests_	= pone->nrequests_;
-		rtraceshr->nerrors_	= pone->nerrors_;
-		rtraceshr->tlaststat_ 	= tcurr;
+		prtraceshr->nrequests_	= pone->nrequests_;
+		prtraceshr->nerrors_	= pone->nerrors_;
+		prtraceshr->tlaststat_ 	= tcurr;
 
-		rtraceshr->api_proto_.store(pone->proto_, mo_relaxed);
-		rtraceshr->api_is_ssl_.store(pone->is_ssl_, mo_relaxed);
+		prtraceshr->api_proto_.store(pone->proto_, mo_relaxed);
+		prtraceshr->api_is_ssl_.store(pone->is_ssl_, mo_relaxed);
 	}
 
 	slowlock.unlock();
@@ -12055,7 +12149,8 @@ bool MCONN_HANDLER::handle_listener_natip_notify(const std::shared_ptr<PARTHA_IN
 			plistener->nat_ip_port_arr_[1] = {};
 		}	
 
-		plistener->last_nat_chg_ip_tsec_ = curr_tusec;
+		plistener->last_nat_chg_ip_tsec_ 	= curr_tusec;
+		plistener->last_svcinfo_chg_tusec_ 	= curr_tusec;
 
 		auto 				relshr = plistener->related_listen_shr_.load(mo_relaxed);
 
@@ -12147,7 +12242,8 @@ bool MCONN_HANDLER::handle_listener_domain_notify(const std::shared_ptr<PARTHA_I
 			std::memcpy(plistener->server_domain_, (const char *)(pone + 1), pone->domain_string_len_ - 1);
 			plistener->server_domain_[pone->domain_string_len_ - 1] = 0;
 
-			plistener->domain_string_len_ 	= pone->domain_string_len_ - 1;
+			plistener->domain_string_len_ 		= pone->domain_string_len_ - 1;
+			plistener->last_svcinfo_chg_tusec_	= curr_tusec;
 		}
 
 		if (pone->tag_len_ > 1) {
@@ -12274,7 +12370,8 @@ bool MCONN_HANDLER::handle_listener_cluster_info(const std::shared_ptr<PARTHA_IN
 void MCONN_HANDLER::handle_shyama_svc_mesh(const comm::SM_SVC_CLUSTER_MESH * porigone, int nevents, uint8_t *pendptr, POOL_ALLOC_ARRAY *pthrpoolarr)
 {
 	uint64_t			svc_cluster_id = 0, ntotal_cluster_svc = 0;
-	time_t				tcurr = time(nullptr);
+	const uint64_t			curr_tusec = get_usec_time();
+	const time_t			tcurr = curr_tusec/GY_USEC_PER_SEC;
 
 	CONDDECLARE(
 		STRING_BUFFER<4096>		strbuf;
@@ -12299,6 +12396,8 @@ void MCONN_HANDLER::handle_shyama_svc_mesh(const comm::SM_SVC_CLUSTER_MESH * por
 		if (plistener->is_cluster_mesh_ == false) {
 			plistener->is_cluster_mesh_ = true;
 		}	
+
+		plistener->last_svcinfo_chg_tusec_ = curr_tusec;
 
 		return CB_OK;
 	};	
@@ -12364,6 +12463,7 @@ void MCONN_HANDLER::handle_shyama_svc_natip_clust(const comm::SM_SVC_NAT_IP_CLUS
 		STRING_BUFFER<1024>		strbuf;
 	);
 
+	const uint64_t			curr_tusec = get_usec_time();
 	const auto			*pone = porigone;
 	int				nprints = 0, nmissed = 0;
 
@@ -12406,6 +12506,8 @@ void MCONN_HANDLER::handle_shyama_svc_natip_clust(const comm::SM_SVC_NAT_IP_CLUS
 				break;
 			}
 		}
+
+		plistener->last_svcinfo_chg_tusec_ = curr_tusec;
 	}	
 
 	slowlock.unlock();
@@ -13521,6 +13623,8 @@ bool MCONN_HANDLER::partha_listener_info(const std::shared_ptr<PARTHA_INFO> & pa
 					GY_CC_BARRIER();
 					plistener->cmdline_len_ = clen;
 				}
+
+				plistener->last_svcinfo_chg_tusec_ = tusec_start;
 			}
 
 			ser_aggr_task_id = plistener->ser_aggr_task_id_.load(mo_relaxed);

@@ -797,8 +797,9 @@ begin
 		logmode, schname, tbltom, schname, timetomor, timedayafter);
 
 
+	-- Set as Unlogged Table 
 	execute format($fmt$
-		create %s table if not exists %s.tracereqtbl (
+		create unlogged table if not exists %s.tracereqtbl (
 			time 			timestamptz,
 			req			text,
 			response		bigint,
@@ -824,7 +825,7 @@ begin
 			preptime		bigint
 
 			) PARTITION BY RANGE (time)
-		$fmt$, logmode, schname);
+		$fmt$, schname);
 
 	execute format('alter table if exists %s.tracereqtbl alter column glob_id SET STORAGE plain', schname);
 	execute format('alter table if exists %s.tracereqtbl alter column comm SET STORAGE plain', schname);
@@ -833,15 +834,17 @@ begin
 	execute format('alter table if exists %s.tracereqtbl alter column uniqid SET STORAGE plain', schname);
 	
 	execute format('create index if not exists tracereqtbl_index_time on %s.tracereqtbl(time)', schname);
+	execute format('create index if not exists tracereqtbl_index_glob_id on %s.tracereqtbl using HASH (glob_id)', schname);
 
-	execute format('create %s table if not exists %s.tracereqtbl_%s partition of %s.tracereqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
-		logmode, schname, tbltoday, schname, timetoday, timetomor);
-	execute format('create %s table if not exists %s.tracereqtbl_%s partition of %s.tracereqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
-		logmode, schname, tbltom, schname, timetomor, timedayafter);
+	execute format('create unlogged table if not exists %s.tracereqtbl_%s partition of %s.tracereqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
+		schname, tbltoday, schname, timetoday, timetomor);
+	execute format('create unlogged table if not exists %s.tracereqtbl_%s partition of %s.tracereqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
+		schname, tbltom, schname, timetomor, timedayafter);
 
 
+	-- Set as Unlogged Table 
 	execute format($fmt$
-		create %s table if not exists %s.traceconntbl (
+		create unlogged table if not exists %s.traceconntbl (
 			time 			timestamptz,
 			glob_id 		char(16), 
 			ser_comm		char(16),
@@ -853,7 +856,7 @@ begin
 			cli_listener_proc	boolean
 
 			) PARTITION BY RANGE (time)
-		$fmt$, logmode, schname);
+		$fmt$, schname);
 
 	execute format('alter table if exists %s.traceconntbl alter column glob_id SET STORAGE plain', schname);
 	execute format('alter table if exists %s.traceconntbl alter column ser_comm SET STORAGE plain', schname);
@@ -865,10 +868,10 @@ begin
 	
 	execute format('create index if not exists traceconntbl_index_time on %s.traceconntbl(time)', schname);
 
-	execute format('create %s table if not exists %s.traceconntbl_%s partition of %s.traceconntbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
-		logmode, schname, tbltoday, schname, timetoday, timetomor);
-	execute format('create %s table if not exists %s.traceconntbl_%s partition of %s.traceconntbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
-		logmode, schname, tbltom, schname, timetomor, timedayafter);
+	execute format('create unlogged table if not exists %s.traceconntbl_%s partition of %s.traceconntbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
+		schname, tbltoday, schname, timetoday, timetomor);
+	execute format('create unlogged table if not exists %s.traceconntbl_%s partition of %s.traceconntbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
+		schname, tbltom, schname, timetomor, timedayafter);
 
 
 	execute format($fmt$

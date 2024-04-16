@@ -267,7 +267,7 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 
 	orig_proto_ = listenshr->api_proto_.load(mo_acquire);
 
-	if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_UNKNOWN) {
+	if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_INVALID) {
 		if (true == listenshr->api_is_ssl_.load(mo_relaxed)) {
 			orig_ssl_ = true;
 		}
@@ -282,7 +282,7 @@ SVC_INFO_CAP::~SVC_INFO_CAP() noexcept
 {
 	schedule_ssl_stop();
 
-	proto_ = PROTO_UNKNOWN;
+	proto_ = PROTO_INVALID;
 }
 
 void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
@@ -297,7 +297,7 @@ void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
 
 		schedule_ssl_stop();
 
-		proto_ = PROTO_UNKNOWN;
+		proto_ = PROTO_INVALID;
 	}
 	catch(...) {
 	
@@ -321,7 +321,7 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 		listenshr->api_svcweak_ = weak_from_this();
 
 		if (proto_ == PROTO_UNINIT) {
-			if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_UNKNOWN) {
+			if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_INVALID) {
 
 				isssl = orig_ssl_;
 				proto_ = orig_proto_;
@@ -814,7 +814,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	auto				& apistat = sess.apistat_;
 	tribool				isvalid;
 
-	if (apistat.proto_ != PROTO_UNINIT && apistat.proto_ < PROTO_UNKNOWN) {
+	if (apistat.proto_ != PROTO_UNINIT && apistat.proto_ < PROTO_INVALID) {
 		switch (apistat.proto_) {
 
 		case PROTO_HTTP1 :
@@ -1006,7 +1006,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 		for (int i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
 			auto			& apistat = detect.apistats_[i];
 
-			if (apistat.nconfirm_ > 1 && apistat.proto_ > PROTO_UNINIT && apistat.proto_ < PROTO_UNKNOWN) {
+			if (apistat.nconfirm_ > 1 && apistat.proto_ > PROTO_UNINIT && apistat.proto_ < PROTO_INVALID) {
 				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Service API Capture : Service Protocol Detected as \'%s\' for Listener %s Port %hu ID %lx : "
 							"SSL Capture is currently %sactive\n", proto_to_string(apistat.proto_), comm_, ns_ip_port_.ip_port_.port_,
 							glob_id_, sslreq == SSL_REQ_E::SSL_ACTIVE ? "" : "not ");

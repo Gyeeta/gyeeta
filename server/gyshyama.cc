@@ -1403,6 +1403,7 @@ static int start_shyama(int argc, char **argv)
 						hash_cfg_alertdefs_json		= fnv1_consthash("--cfg_alertdefs_json"),
 						hash_cfg_inhibits_json		= fnv1_consthash("--cfg_inhibits_json"),
 						hash_cfg_silences_json		= fnv1_consthash("--cfg_silences_json"),
+						hash_cfg_tracedefs_json		= fnv1_consthash("--cfg_tracedefs_json"),
 
 						hash_cfg_postgres_hostname	= fnv1_consthash("--cfg_postgres_hostname"),
 						hash_cfg_postgres_port		= fnv1_consthash("--cfg_postgres_port"),
@@ -1588,6 +1589,14 @@ static int start_shyama(int argc, char **argv)
 			case hash_cfg_silences_json :
 				if (i + 1 < argc) {
 					setenv("CFG_SILENCES_JSON", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+
+			case hash_cfg_tracedefs_json :
+				if (i + 1 < argc) {
+					setenv("CFG_TRACEDEFS_JSON", argv[i + 1], 1);
 					i++;
 				}
 				break;

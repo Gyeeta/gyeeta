@@ -22,25 +22,70 @@ enum PROTO_TYPES : uint16_t
 	PROTO_MONGO,
 	PROTO_REDIS,
 
-	PROTO_UNKNOWN
+	PROTO_INVALID,
 };	
+
+static constexpr const char 			*proto_type_str[PROTO_INVALID + 1] = 
+{
+		"Uninitialized", "HTTP1", "HTTP2", "Postgres", "MySQL", "Mongo", "Redis", 
+		"Invalid",
+};	
+
 
 static constexpr const char * proto_to_string(PROTO_TYPES proto) noexcept
 {
-	constexpr const char 		*protostr[PROTO_UNKNOWN + 1] = {
-		[PROTO_UNINIT] = "Uninitialized", [PROTO_HTTP1] = "HTTP1", [PROTO_HTTP2] = "HTTP2", 
-		[PROTO_POSTGRES] = "Postgres", [PROTO_MYSQL] = "MySQL", [PROTO_MONGO] = "Mongo", 
-		[PROTO_REDIS] = "Redis", 
+	if ((unsigned)proto < PROTO_INVALID) {
+		return proto_type_str[proto];
+	}	
 
-		[PROTO_UNKNOWN] = "Unknown",
-	};	
+	return proto_type_str[PROTO_INVALID];
+}	
 
-	if ((unsigned)proto < PROTO_UNKNOWN) {
-		return protostr[proto] ? protostr[proto] : "";
+static PROTO_TYPES string_to_proto(const char *str) noexcept
+{
+	for (int i = 0; i < (int)PROTO_INVALID; ++i) {
+		if (0 == strcasecmp(proto_type_str[i], str)) {
+			return (PROTO_TYPES)i;
+		}	
+	}
+
+	return PROTO_INVALID;
+};	
+
+enum PROTO_CAP_STATUS_E : uint8_t
+{
+	CAPSTAT_UNINIT			= 0,
+	CAPSTAT_FAILED,
+	CAPSTAT_STARTING,		// Do not change the order...
+	CAPSTAT_ACTIVE,
+
+	CAPSTAT_MAX,
+};	
+
+static constexpr const char			*cap_status_str[CAPSTAT_MAX] = 
+{
+	"Uninitialized", "Failed", "Starting", "Active",
+};	
+
+static constexpr const char * cap_status_to_string(PROTO_CAP_STATUS_E status) noexcept
+{
+	if ((unsigned)status < CAPSTAT_MAX) {
+		return cap_status_str[status];
 	}	
 
 	return "Invalid";
 }	
+
+static PROTO_CAP_STATUS_E string_to_cap_status(const char *str) noexcept
+{
+	for (int i = 0; i < (int)CAPSTAT_MAX; ++i) {
+		if (0 == strcasecmp(cap_status_str[i], str)) {
+			return (PROTO_CAP_STATUS_E)i;
+		}	
+	}
+
+	return CAPSTAT_MAX;
+};	
 
 enum PARSE_FIELD_E : uint16_t
 {
@@ -68,13 +113,6 @@ static constexpr const char			*parse_field_str[EFIELD_MAX] =
 	"nrows", "cursorname", "statuscode",
 };	
 
-enum PROTO_CAP_STATUS_E : uint8_t
-{
-	CAPSTAT_UNINIT			= 0,
-	CAPSTAT_FAILED,
-	CAPSTAT_STARTING,		// Do not change the order...
-	CAPSTAT_ACTIVE,
-};	
 
 /*
  * NOTE : There is no padding added and direct dereference is not to be done...
@@ -412,6 +450,7 @@ static std::string_view get_api_tran(const API_TRAN *ptran, PARSE_EXT_FIELDS & e
 
 	return {preq, (size_t)ptran->request_len_ - 1};
 }	
+
 
 } // namespace gyeeta
 

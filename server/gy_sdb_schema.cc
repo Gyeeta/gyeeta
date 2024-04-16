@@ -94,6 +94,14 @@ const char * SHCONN_HANDLER::get_sglobtables() const noexcept
 		action			text
 	);
 
+	create table if not exists public.tracedeftbl (
+		defid			char(8) PRIMARY KEY NOT NULL,
+		name			text,
+		tstart			timestamptz,
+		tend			timestamptz,
+		filter			text
+	);
+	
 	
 )";
 

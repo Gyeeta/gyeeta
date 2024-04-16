@@ -12,6 +12,7 @@
 #include		"gy_shalerts.h"
 #include 		"gy_refcnt.h"
 #include 		"gy_cloud_metadata.h"
+#include 		"gy_proto_common.h"
 
 #include 		<algorithm>
 
@@ -217,9 +218,18 @@ SHCONN_HANDLER::SHCONN_HANDLER(SHYAMA_C *pshyama)
 			check_svc_nat_ip_clusters();
 		});
 
-		GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION)->add_schedule(101 + 6 * GY_MSEC_PER_HOUR, 12 * GY_MSEC_PER_HOUR, 0, "Cleanup DB Partha Entries",
+		auto				*pschlong2 = GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION);
+
+		assert(pschlong2);
+
+		pschlong2->add_schedule(101 + 6 * GY_MSEC_PER_HOUR, 12 * GY_MSEC_PER_HOUR, 0, "Cleanup DB Partha Entries",
 		[this] {
 			cleanup_db_partha_entries();
+		});
+
+		pdbmain_scheduler_->add_schedule(303'000, 90'000, 0, "Check expired Req Tracedef Entries",
+		[this] {
+			check_all_tracedefs(*dbmain_scheduler_pool_.get());
 		});
 
 		INFOPRINT("Shyama Listener Initialization Completed successfully...\n");
@@ -3230,9 +3240,11 @@ int SHCONN_HANDLER::handle_l2(GY_THREAD *pthr)
 							get_dbname().get(), gy_to_charbuf<64>("shyama_db%u", l2_thr_num).get(), 
 							get_db_init_commands().get(), true /* auto_reconnect */, 12, 10, 10);
 
-				// Read DB saved Partha to Madhava mappings
 				if (0 == l2_thr_num) {
+					// Init db data...
 					read_db_partha_info(*dbpool);
+
+					init_tracedefs(*dbpool);
 				}
 			}	
 			else if (psigdata->thr_type_ == TTYPE_L2_ALERT) {
@@ -6254,6 +6266,930 @@ void SHCONN_HANDLER::cleanup_db_partha_entries() noexcept
 	);
 }
 
+void SHCONN_HANDLER::init_tracedefs(PGConnPool & dbpool)
+{
+	const char			*penv = getenv("CFG_TRACEDEFS_JSON");
+	std::string			jsonstr;
+
+	if (penv && *penv) {
+		jsonstr = read_file_to_string(penv, GY_UP_MB(32), 0, "Trace Definitions CFG_TRACEDEFS_JSON config file ");
+	}	
+
+	if (jsonstr.empty()) {
+		try {
+			read_db_tracedef_info(dbpool);
+		}
+		GY_CATCH_EXCEPTION(
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while trying to read Req Trace Definitions Info from DB : %s\n", GY_GET_EXCEPT_STRING); 
+		);
+	}
+	else {
+		// Set all tracedefs from config file ignoring existing tracedefs in db
+		set_cfg_tracedefs(penv, jsonstr.data(), jsonstr.size(), dbpool);
+	}	
+}	
+
+void SHCONN_HANDLER::set_cfg_tracedefs(const char *pfilename, const char *pcfg, size_t lencfg, PGConnPool & dbpool)
+{
+	JSON_DOCUMENT<32 * 1024, 8192>	doc;
+	auto				& jdoc = doc.get_doc();
+	JSON_ALLOCATOR			& allocator = jdoc.GetAllocator();
+
+	jdoc.Parse(pcfg, lencfg);
+
+	if (jdoc.HasParseError()) {
+		char			ebuf[256];
+		const char		*perrorstr = rapidjson::GetParseError_En(jdoc.GetParseError());
+
+		ERRORPRINTCOLOR(GY_COLOR_RED, "Invalid Request Trace Definitions Config CFG_TRACEDEFS_JSON : Error at offset %lu : Error is \'%s\'\n\n", 
+			jdoc.GetErrorOffset(), perrorstr);
+
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid JSON for Trace Definitions Config CFG_TRACEDEFS_JSON file %s", pfilename);
+	}	
+
+	if (false == jdoc.IsArray()) {
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid Trace Definitions Config CFG_TRACEDEFS_JSON file %s : Needs to be a JSON Array type", pfilename);
+	}	
+
+	time_t				tcurr = time(nullptr);
+	int				nadded = 0;
+	bool				bret;
+
+	// First truncate existing Tracedefs...
+	if (true) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Request Trace Definitions Config CFG_TRACEDEFS_JSON file %s seen : Deleting existing DB Tracedefs first...\n", pfilename);
+
+		auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 30'000 /* max_msec_wait */, true /* reset_on_timeout */);
+		
+		if (!pconn) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to Postgres for Trace Definitions truncation\n");
+
+			db_stats_.nconns_failed_.fetch_add_relaxed(1);
+			db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+		}
+		else {
+			pconn->pqexec_blocking("truncate table public.tracedeftbl;");
+		}
+	}	
+	
+	for (uint32_t i = 0; i < jdoc.Size(); i++) {
+		STRING_BUFFER<512>		errbuf;
+		auto 				[errcode, defid] = new_tracedef_json(jdoc[i], errbuf, dbpool);
+
+		if (defid) {
+			nadded++;
+		}	
+		else {
+			GY_THROW_EXPR_CODE(errcode, "Failed to add new Req Trace Definition from Config file : %s", errbuf.buffer()); 
+		}
+	}
+		
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Req Trace Definitions from Tracedef Config file %s\n", nadded, pfilename);
+}
+
+
+void SHCONN_HANDLER::read_db_tracedef_info(PGConnPool & dbpool)
+{
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 30000 /* max_msec_wait */, true /* reset_on_timeout */);
+
+	if (!pconn) {
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to query Postgres for Req Trace Definitions info from db\n");
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		return;
+	}	
+
+	int				ret, nadded = 0;
+	bool				bret;
+	time_t				tcurr = time(nullptr);
+
+	const JSON_DB_MAPPING		*colarr[GY_ARRAY_SIZE(json_db_tracedef_arr)] {};
+	size_t				ncol;
+	STRING_BUFFER<1024>		strbuf;
+
+	strbuf << "select defid, name, tstart, tend, filter from public.tracedeftbl limit "sv << MAX_REQ_TRACE_DEFS << "\n;";
+
+	bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.length());
+
+	if (bret == false) {
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to schedule query Postgres for Req Trace Definitions info from db\n");
+
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+		return;
+	}
+
+	ncol 				= 4;
+
+	colarr[0]			= &json_db_tracedef_arr[0];
+	colarr[1]		 	= &json_db_tracedef_arr[1];
+	colarr[2]			= &json_db_tracedef_arr[2];
+	colarr[3]			= &json_db_tracedef_arr[3];
+	colarr[4]			= &json_db_tracedef_arr[4];
+
+	static_assert(json_db_tracedef_arr[0].jsoncrc == FIELD_DEFID);
+	static_assert(json_db_tracedef_arr[1].jsoncrc == FIELD_NAME);
+	static_assert(json_db_tracedef_arr[2].jsoncrc == FIELD_TSTART);
+	static_assert(json_db_tracedef_arr[3].jsoncrc == FIELD_TEND);
+	static_assert(json_db_tracedef_arr[4].jsoncrc == FIELD_FILTER);
+
+	const auto rowcb = [&](int numrow, const JSON_DB_MAPPING **pcolarr, std::string_view colview[], uint32_t ncol)
+	{
+		uint32_t			defid;
+		time_t				tstart, tend = 0;
+		STRING_BUFFER<256>		strbuf;
+		std::string_view		& name = colview[1], & filter = colview[4];
+		
+		if (colview[0].size() == 0) {
+			return;
+		}	
+
+		defid = string_to_number<uint32_t>(colview[0].data(), 16);
+		if (defid == 0) {
+			return;
+		}	
+
+		if (name.size() == 0 || filter.size() == 0) {
+			return;
+		}	
+
+		if (colview[2].size() > 0) {
+			tstart = gy_iso8601_to_time_t(CHAR_BUF<64>(colview[1].data(), colview[1].size()).get());
+		}
+		else {
+			tstart = tcurr;
+		}
+
+		if (colview[3].size() > 0) {
+			tend = gy_iso8601_to_time_t(CHAR_BUF<64>(colview[2].data(), colview[2].size()).get());
+		}
+
+		auto 			[errcode, id] = add_tracedef(defid, name, filter, tstart, tend, strbuf);
+		
+		if (id) {
+			nadded++;
+
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Added Req Trace Definition from DB : \'%s\'\n", name.data());
+		}	
+		else {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to add new Req Trace Definition from DB : %s\n", strbuf.buffer()); 
+		}
+	};	
+
+	pconn->set_single_row_mode();
+
+	pconn->set_resp_cb(
+		[&, colarr, total_rows = 0, ncol](GyPGConn & conn, GyPGresult gyres, bool is_completed) mutable -> bool
+		{
+			return default_db_strview_cb(conn, std::move(gyres), is_completed, "Trace Definition", colarr, ncol, total_rows, rowcb);
+		}
+	);
+	
+	ret = dbpool.wait_one_response(30'000, pconn.getintconn());
+
+	if (ret != 0) {
+		if (ret == 2) {
+			db_stats_.ndbquery_timeout_.fetch_add_relaxed(1);
+		}
+
+		if (ret == 2) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Trace Definition Query : Database Querying Timeout... Skipping...\n");
+		}
+		else {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Trace Definition Query : Database Connection Error... Skipping...\n");
+		}	
+
+		return;
+	}	
+
+	INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Added %u Request Trace Definitions from DB\n", nadded);
+}
+
+std::tuple<ERR_CODES_E, uint32_t> SHCONN_HANDLER::add_tracedef(uint32_t defid, std::string_view name, std::string_view filter, time_t tstart, time_t tend, STR_WR_BUF & errbuf) noexcept
+{
+	try {
+		time_t				tcurr = time(nullptr);
+
+		if (name.size() == 0) {
+			errbuf << "Invalid Trace Add Definition : Require a valid name"sv;
+			return {ERR_INVALID_REQUEST, 0};
+		}	
+		else if (name.size() >= REQ_TRACE_DEF::MAX_NAMELEN) {
+			errbuf << "Trace Add Definition failed as Max name length "sv << REQ_TRACE_DEF::MAX_NAMELEN << " exceeded : "sv << name.size();
+			return {ERR_INVALID_REQUEST, 0};
+		}	
+
+		if (filter.size() == 0) {
+			errbuf << "Invalid Trace Add Definition : Require a valid filter"sv;
+			return {ERR_INVALID_REQUEST, 0};
+		}	
+		else if (filter.size() >= MAX_QUERY_STRLEN) {
+			errbuf << "Trace Add Definition failed as Max filter length "sv << MAX_QUERY_STRLEN << " exceeded : "sv << filter.size();
+			return {ERR_INVALID_REQUEST, 0};
+		}	
+
+		if (defid == 0) {
+			defid = REQ_TRACE_DEF::get_def_id(name.data(), name.size());
+		}
+
+		if (tstart == 0) {
+			tstart = tcurr;
+		}
+
+		CRITERIA_SET			tcrit(filter.data(), filter.size(), SUBSYS_SVCINFO);
+
+		SCOPE_GY_MUTEX			scope(tracemutex_);
+
+		if (tracedefmap_.size() >= MAX_REQ_TRACE_DEFS) {
+			errbuf.appendfmt("Request Trace Definition Add received but Max Trace Definition Count is already reached %lu : "
+						"Cannot add new Trace Definitions : Please delete any unused ones first", tracedefmap_.size());
+			return {ERR_INVALID_REQUEST, 0};
+		}
+
+		auto 				[it, success] = tracedefmap_.try_emplace(defid, defid, name.data(), filter, std::move(tcrit), tend, tstart);
+
+		if (!success) {
+			errbuf << "Trace Definition name \'"sv << name << "\' already exists : Please use a different name or delete the existing one first"sv;
+			return {ERR_CONFLICTS, 0};
+		}	
+
+		// Reset criteria as its no longer needed
+		it->second.reset_criteria();
+		
+		errbuf << "Added new Request Trace Definition name \'"sv << name << "\' successfully : Definition ID is "sv;
+		errbuf.appendfmt("\'%08x\'", defid);
+
+		return {ERR_STATUS_OK, defid};
+	}
+	GY_CATCH_EXPRESSION(
+		int			ecode = GY_GET_EXCEPT_CODE();
+
+		if (ecode == 0) ecode = ERR_SERV_ERROR;
+	
+		errbuf << "New Request Trace Definition failed due to : "sv << GY_GET_EXCEPT_STRING;
+		return {ERR_CODES_E(ecode), 0};
+	);
+}	
+
+std::tuple<ERR_CODES_E, uint32_t> SHCONN_HANDLER::new_tracedef_json(GEN_JSON_VALUE & value, STR_WR_BUF & errbuf, PGConnPool & dbpool, 
+									const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> * pconnshr, const comm::QUERY_CMD *pquery)
+{
+	std::string_view		name, filter;
+	time_t				tstart = time(nullptr), tend = 0;
+
+	if (!value.IsObject()) {
+		errbuf << "Failed to add new Request Trace Definition as JSON not of object type"sv;
+		return {ERR_INVALID_REQUEST, 0};
+	}	
+
+	if (auto aiter = value.FindMember("name"); ((aiter != value.MemberEnd()) && (aiter->value.IsString()))) {
+		name = { aiter->value.GetString(), (size_t)aiter->value.GetStringLength() };
+	}
+	else {
+		errbuf << "Failed to add new Request Trace Definition as required field : name : of string data type not found"sv;
+		return {ERR_INVALID_REQUEST, 0};
+	}	
+
+	if (auto aiter = value.FindMember("filter"); ((aiter != value.MemberEnd()) && (aiter->value.IsString()))) {
+		filter = { aiter->value.GetString(), (size_t)aiter->value.GetStringLength() };
+	}
+	else {
+		errbuf << "Failed to add new Request Trace Definition as required field : filter : of string data type not found"sv;
+		return {ERR_INVALID_REQUEST, 0};
+	}	
+	
+	if (auto aiter = value.FindMember("tend"); ((aiter != value.MemberEnd()) && (aiter->value.IsString()))) {
+		tend = gy_iso8601_to_time_t(aiter->value.GetString());
+	}	
+
+	STACK_JSON_WRITER<12 * 1024, 4096>	writer;
+	bool					bret;
+
+	writer.StartObject();
+
+	auto 					[errcode, defid] =  add_tracedef(0, name, filter, tstart, tend, errbuf);
+
+	if (defid) {
+		bret = db_insert_tracedef(defid, name.data(), filter.data(), tstart, tend, errbuf, dbpool);
+
+		if (!bret) {
+			SCOPE_GY_MUTEX			scope(tracemutex_);
+
+			tracedefmap_.erase(defid);
+
+			defid 	= 0;
+			errcode = ERR_SERV_ERROR;
+		}	
+		else {
+			if (pconnshr) {
+				writer.KeyConst("status");
+				writer.StringConst("ok");
+
+				writer.KeyConst("msg");
+				writer.String(errbuf.data(), errbuf.size());
+			}
+		}	
+	}
+
+	if (!defid && pconnshr) {
+
+		writer.KeyConst("status");
+		writer.StringConst("failed");
+		
+		writer.KeyConst("error");
+		writer.Uint(errcode);
+
+		writer.KeyConst("errmsg");
+		writer.String(errbuf.data(), errbuf.size());
+	}	
+
+	writer.EndObject();
+
+	if (pconnshr && pquery) {
+		// Send the status
+		const char			*pstr = writer.get_string();
+		uint32_t			lenstr = writer.get_size();
+		bool				bret;
+
+		send_query_response(*pconnshr, pquery->get_seqid(), RESP_WEB_JSON, errcode, RESP_JSON_WITH_HEADER, pstr, lenstr);
+	}
+
+	if (defid == 0) {
+		WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to add new Req Trace Definition from Node : %s\n", errbuf.buffer());
+	}	
+	else if (pconnshr) {
+		/*
+		 * Send Trace Def Add event to all Madhava's
+		 */
+	
+		constexpr size_t		fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY);
+
+		auto				puniq = make_refcnt_uniq(fixed_sz + sizeof(SM_REQ_TRACE_DEF_NEW) + filter.size() + 1 + 7);
+		void				*palloc = puniq.get();
+
+		COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);
+		EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1); 
+		auto				*pstat = reinterpret_cast<SM_REQ_TRACE_DEF_NEW *>(pnot + 1);
+
+		new (pstat) SM_REQ_TRACE_DEF_NEW(defid, name.data(), tend, filter.size() + 1);
+
+		new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, fixed_sz + pstat->get_elem_size(), COMM_HEADER::MS_HDR_MAGIC);
+		
+		new (pnot) EVENT_NOTIFY(NOTIFY_SM_REQ_TRACE_DEF_NEW, 1);
+
+		std::memcpy((uint8_t *)(pstat + 1), filter.data(), filter.size());
+		((uint8_t *)(pstat + 1))[filter.size()] = 0;
+		 
+		send_all_madhava_event(std::move(puniq), phdr->get_act_len(), phdr->get_pad_len());
+	}
+
+	if (defid) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Added new Request Trace Definition : %s\n", name.data());
+	}	
+
+	return {errcode, defid};
+}	
+
+bool SHCONN_HANDLER::db_insert_tracedef(uint32_t defid, const char *name, const char *filter, time_t tstart, time_t tend, STR_WR_BUF & errbuf, PGConnPool & dbpool)
+{
+	auto				tstartbuf = gy_localtime_iso8601_sec(tstart), tendbuf = gy_localtime_iso8601_sec(tend);
+	bool				bret;
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 30'000 /* max_msec_wait */, true /* reset_on_timeout */);
+	
+	if (!pconn) {
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to insert new Request Trace Definition to DB\n");
+
+		errbuf.reset();
+		errbuf << "Request Trace Definition add failed due to unavailable DB connection issue";
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		return false;
+	}	
+
+	char				idbuf[20];
+	const char			*params[5] { idbuf, name, tstartbuf.get(), tendbuf.get(), filter };
+	
+	snprintf(idbuf, sizeof(idbuf), "%08x", defid);
+
+	const char			qcmd[] = "insert into public.tracedeftbl values ($1::char(8), $2::text, $3::timestamptz, $4::timestamptz, $5::text) "
+							"on conflict(defid) do update set (tstart, tend, filter) = (excluded.tstart, excluded.tend, excluded.filter);\n";
+
+	bret = PQsendQueryParams(pconn->get(), qcmd, GY_ARRAY_SIZE(params), nullptr, params, nullptr, nullptr, 0);
+
+	if (bret == false) {
+		db_stats_.ntracedef_failed_.fetch_add_relaxed(1);
+
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to update DB with New Request Trace Definition due to %s\n", PQerrorMessage(pconn->get()));
+		return false;
+	}	
+
+	pconn->set_resp_cb(
+		[this](GyPGConn & conn, GyPGresult gyres, bool is_completed) -> bool
+		{
+			if (is_completed) {
+				if (conn.is_within_tran()) {
+					conn.pqexec_blocking("Rollback Work;");
+				}						
+				conn.make_available();
+				return true;
+			}	
+			
+			if (true == gyres.is_error()) {
+				db_stats_.nalertdef_failed_.fetch_add_relaxed(1);
+
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to update DB with New Request Trace Definition due to %s\n", gyres.get_error_msg());
+				return false;
+			}	
+
+			return true;
+		}
+	);
+
+	return true;
+}
+
+void SHCONN_HANDLER::handle_node_tracedef_add(const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> & connshr, GEN_JSON_VALUE & jdoc, const comm::QUERY_CMD *pquery, PGConnPool & dbpool)
+{
+	STRING_BUFFER<1024>		strbuf;
+	auto				it = jdoc.FindMember("data");
+	
+	if (it == jdoc.MemberEnd()) {
+		char			ebuf[256];
+
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Request Trace Definition Add Command received with missing data payload");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}
+	else if (false == it->value.IsObject()) {
+		char			ebuf[256];
+
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Request Trace Definition Add Command received with invalid data : data member not of JSON Object type");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}
+
+	new_tracedef_json(it->value, strbuf, dbpool, &connshr, pquery);
+}
+
+void SHCONN_HANDLER::handle_node_tracedef_delete(const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> & connshr, GEN_JSON_VALUE & jdoc, const comm::QUERY_CMD *pquery, PGConnPool & dbpool)
+{
+	STRING_BUFFER<1024>		strbuf;
+	auto				it = jdoc.FindMember("data");
+	
+	if (it == jdoc.MemberEnd()) {
+		char			ebuf[256];
+
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Request Trace Definition Delete Command received with missing data payload");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}
+	else if (false == it->value.IsObject()) {
+		char			ebuf[256];
+
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Request Trace Definition Delete Command received with invalid data : data member not of JSON Object type");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}
+
+	STACK_JSON_WRITER<2048>		writer;
+	ERR_CODES_E			errcode = ERR_STATUS_OK;
+	size_t				len;
+
+	writer.StartObject();
+
+	writer.KeyConst("status");
+
+	const char			*pdefid = nullptr, *pname = nullptr;
+	char				ebuf[255];
+	uint32_t			defid = 0;
+	bool				bret, delok = false;
+	const auto			& obj = it->value.GetObject();
+	
+	it = obj.FindMember("defid");
+
+	if (it == obj.MemberEnd()) {
+		it = obj.FindMember("name");
+		
+		if (it == obj.MemberEnd() || (false == it->value.IsString())) {
+			auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Delete Command received with missing mandatory fields \'defid\' or \'name\'");
+
+			send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+			return;
+		}
+
+		pname = it->value.GetString();
+
+		defid = REQ_TRACE_DEF::get_def_id(pname, it->value.GetStringLength());
+	}	
+	else if (false == it->value.IsString()) {
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Delete Command received with invalid data : \'defid\' member not of JSON string type");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}	
+	else {
+		pdefid = it->value.GetString();
+
+		bret = string_to_number(pdefid, defid, nullptr, 16);
+		if (!bret) {
+			auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Delete Command received with invalid data : \'defid\' specified is invalid : not in ID string format");
+
+			send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+			return;
+		}
+	}	
+
+	SCOPE_GY_MUTEX			scope(tracemutex_);
+
+	auto				mit = tracedefmap_.find(defid);
+
+	if (mit == tracedefmap_.end()) {
+		errcode	= ERR_DATA_NOT_FOUND;
+		len 	= GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Trace Definition %s \'%s\' not found", pdefid ? "ID" : "Name", pdefid ? pdefid : pname);
+
+		writer.StringConst("failed");
+	
+		writer.KeyConst("error");
+		writer.Uint(errcode);
+
+		writer.KeyConst("errmsg");
+		writer.String(ebuf, len);
+	}	
+	else {
+		tracedefmap_.erase(mit);
+
+		delok = true;
+
+		writer.StringConst("ok");
+
+		writer.KeyConst("msg");
+		writer.StringConst("Deleted Trace Definition");
+	}	
+
+	scope.unlock();
+
+	writer.EndObject();
+
+	// Send the status
+	const char			*pstr = writer.get_string();
+	uint32_t			lenstr = writer.get_size();
+	time_t				tend = time(nullptr) - 60;
+
+	bret = send_query_response(connshr, pquery->get_seqid(), RESP_WEB_JSON, errcode, RESP_JSON_WITH_HEADER, pstr, lenstr);
+	
+	if (!delok) {
+		return;
+	}	
+	
+	/*
+	 * Send Trace Def Delete event to all Madhava's
+	 */
+	size_t				fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(SM_REQ_TRACE_DEF_DISABLE);
+
+	auto				puniq = make_refcnt_uniq(fixed_sz);
+	void				*palloc = puniq.get();
+
+	COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);
+	EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1); 
+	auto				*pstat = reinterpret_cast<SM_REQ_TRACE_DEF_DISABLE *>(pnot + 1);
+
+	new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, fixed_sz, COMM_HEADER::MS_HDR_MAGIC);
+	
+	new (pnot) EVENT_NOTIFY(NOTIFY_SM_REQ_TRACE_DEF_DISABLE, 1);
+	
+	new (pstat) SM_REQ_TRACE_DEF_DISABLE(defid, tend);
+
+	send_all_madhava_event(std::move(puniq), fixed_sz, phdr->get_pad_len());
+
+	/*
+	 * Now update the DB 
+	 */
+	db_update_tracedef(&defid, 1, true, tend, dbpool);
+}
+
+void SHCONN_HANDLER::handle_node_tracedef_update(const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> & connshr, GEN_JSON_VALUE & jdoc, const comm::QUERY_CMD *pquery, PGConnPool & dbpool)
+{
+	STRING_BUFFER<1024>		strbuf;
+	auto				it = jdoc.FindMember("data");
+	
+	if (it == jdoc.MemberEnd()) {
+		char			ebuf[256];
+
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Request Trace Definition Update Command received with missing data payload");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}
+	else if (false == it->value.IsObject()) {
+		char			ebuf[256];
+
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Request Trace Definition Update Command received with invalid data : data member not of JSON Object type");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}
+
+	STACK_JSON_WRITER<2048>		writer;
+	ERR_CODES_E			errcode = ERR_STATUS_OK;
+	size_t				len;
+
+	writer.StartObject();
+
+	writer.KeyConst("status");
+
+	const char			*pdefid = nullptr, *pname = nullptr;
+	char				ebuf[255];
+	time_t				tend = 0;
+	uint32_t			defid = 0;
+	bool				bret;
+	const auto			& obj = it->value.GetObject();
+	
+	it = obj.FindMember("defid");
+
+	if (it == obj.MemberEnd()) {
+		it = obj.FindMember("name");
+		
+		if (it == obj.MemberEnd() || (false == it->value.IsString())) {
+			auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Update Command received with missing mandatory fields \'defid\' or \'name\'");
+
+			send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+			return;
+		}
+
+		pname = it->value.GetString();
+
+		defid = REQ_TRACE_DEF::get_def_id(pname, it->value.GetStringLength());
+	}	
+	else if (false == it->value.IsString()) {
+		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Update Command received with invalid data : \'defid\' member not of JSON string type");
+
+		send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+		return;
+	}	
+	else {
+		pdefid = it->value.GetString();
+
+		bret = string_to_number(pdefid, defid, nullptr, 16);
+		if (!bret) {
+			auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Update Command received with invalid data : \'defid\' specified is invalid : not in ID string format");
+
+			send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+			return;
+		}
+	}	
+
+	SCOPE_GY_MUTEX			scope(tracemutex_);
+
+	auto				mit = tracedefmap_.find(defid);
+
+	if (mit == tracedefmap_.end()) {
+		errcode	= ERR_DATA_NOT_FOUND;
+		len 	= GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Trace Definition %s \'%s\' not found", pdefid ? "ID" : "Name", pdefid ? pdefid : pname);
+
+		writer.StringConst("failed");
+	
+		writer.KeyConst("error");
+		writer.Uint(errcode);
+
+		writer.KeyConst("errmsg");
+		writer.String(ebuf, len);
+	}	
+	else {
+		it = obj.FindMember("filter");
+
+		if (it != obj.MemberEnd()) {
+			auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Update Command received with invalid data : \'filter\' specified but update can only change tend field");
+
+			send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+			return;
+		}	
+
+		it = obj.FindMember("tend");
+
+		if (it == obj.MemberEnd()) {
+			auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Update Command received with invalid data : \'tend\' field missing : update can only change tend field");
+
+			send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+			return;
+		}	
+		else if (false == it->value.IsString()) {
+			auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Update Command received with invalid data : \'tend\' field not of string type");
+
+			send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+			return;
+		}	
+		else {
+			tend = gy_iso8601_to_time_t(it->value.GetString());
+
+			if (tend == 0) {
+				auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node Trace Definition Update Command received with invalid data : \'tend\' field is invalid ");
+
+				send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
+				return;
+			}	
+
+			if (mit->second.tend_ != tend) {
+				mit->second.tend_ = tend;
+			}
+			else {
+				tend = 0;
+			}	
+
+			writer.StringConst("ok");
+
+			writer.KeyConst("msg");
+			writer.StringConst("Updated Trace Definition");
+		}
+	}	
+
+	scope.unlock();
+
+	writer.EndObject();
+
+	// Send the status
+	const char			*pstr = writer.get_string();
+	uint32_t			lenstr = writer.get_size();
+
+	bret = send_query_response(connshr, pquery->get_seqid(), RESP_WEB_JSON, errcode, RESP_JSON_WITH_HEADER, pstr, lenstr);
+	
+	if (0 == tend) {
+		return;
+	}	
+	
+	/*
+	 * Send Trace Def Update event to all Madhava's
+	 */
+	size_t				fixed_sz = sizeof(COMM_HEADER) + sizeof(EVENT_NOTIFY) + sizeof(SM_REQ_TRACE_DEF_DISABLE);
+
+	auto				puniq = make_refcnt_uniq(fixed_sz);
+	void				*palloc = puniq.get();
+
+	COMM_HEADER			*phdr = reinterpret_cast<COMM_HEADER *>(palloc);
+	EVENT_NOTIFY			*pnot = reinterpret_cast<EVENT_NOTIFY *>(phdr + 1); 
+	auto				*pstat = reinterpret_cast<SM_REQ_TRACE_DEF_DISABLE *>(pnot + 1);
+
+	new (phdr) COMM_HEADER(COMM_EVENT_NOTIFY, fixed_sz, COMM_HEADER::MS_HDR_MAGIC);
+	
+	new (pnot) EVENT_NOTIFY(NOTIFY_SM_REQ_TRACE_DEF_DISABLE, 1);
+	
+	new (pstat) SM_REQ_TRACE_DEF_DISABLE(defid, tend);
+
+	send_all_madhava_event(std::move(puniq), fixed_sz, phdr->get_pad_len());
+
+	/*
+	 * Now update the DB 
+	 */
+	db_update_tracedef(&defid, 1, false, tend, dbpool);
+}
+
+bool SHCONN_HANDLER::db_update_tracedef(uint32_t *pdefidarr, uint32_t ndefs, bool isdelete, time_t tend, PGConnPool & dbpool)
+{
+	if (!pdefidarr || !ndefs) {
+		return false;
+	}
+
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 30'000 /* max_msec_wait */, false /* reset_on_timeout */);
+	bool				bret;
+	
+	if (!pconn) {
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection for Trace Definition Update to DB\n");
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		return false;
+	}	
+
+	STRING_BUFFER<32 * 1024>	strbuf;
+
+	if (!isdelete) {
+		auto				tendbuf = gy_localtime_iso8601_sec(tend);
+		
+		strbuf.appendfmt("update public.tracedeftbl set tend = \'%s\'::timestamptz where defid in (", tendbuf.get());
+	}
+	else {
+		strbuf.appendfmt("delete from public.tracedeftbl where defid in (");
+	}	
+
+	for (uint32_t i = 0; i < ndefs; ++i) {
+		strbuf.appendfmt("\'%08x\',", pdefidarr[i]);
+	}	
+
+	strbuf--;
+
+	strbuf << ");";
+
+	bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.length());
+
+	if (bret == false) {
+		db_stats_.nalertdef_failed_.fetch_add_relaxed(1);
+
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to set Trace Definition Update to DB due to %s\n", PQerrorMessage(pconn->get()));
+		return false;
+	}	
+
+	pconn->set_resp_cb(
+		[this](GyPGConn & conn, GyPGresult gyres, bool is_completed) -> bool
+		{
+			if (is_completed) {
+				if (conn.is_within_tran()) {
+					conn.pqexec_blocking("Rollback Work;");
+				}						
+				conn.make_available();
+				return true;
+			}	
+			
+			if (true == gyres.is_error()) {
+				db_stats_.nalertdef_failed_.fetch_add_relaxed(1);
+
+				ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to set Trace Definition Update to DB due to %s\n", gyres.get_error_msg());
+				return false;
+			}	
+
+			return true;
+		}
+	);
+
+	return true;
+}
+
+bool SHCONN_HANDLER::send_madhava_all_tracedefs(MADHAVA_INFO *pmad, const std::shared_ptr<SHCONNTRACK> & connshr) noexcept
+{
+	try {
+		SHSTREAM_EVENT_BUF		streambuf(connshr, *this, NOTIFY_SM_REQ_TRACE_DEF_NEW, SM_REQ_TRACE_DEF_NEW::MAX_NUM_DEFS);
+
+		// Preallocate memory
+		streambuf.get_buf(64 * 1024);
+
+		SCOPE_GY_MUTEX			scope(tracemutex_);
+		
+		for (const auto & [defid, def] : tracedefmap_) {
+			uint32_t		szext = def.get_ext_sz(), minsz = sizeof(SM_REQ_TRACE_DEF_NEW) + szext + 1 + 7;
+			auto			*pstat = (SM_REQ_TRACE_DEF_NEW *)streambuf.get_buf(minsz);
+			
+			if (def.is_fixed_svcs()) {
+				new (pstat) SM_REQ_TRACE_DEF_NEW(def.reqdefid_, def.cap_glob_id_vec_.size(), def.name_, def.tend_);
+
+				std::memcpy((uint8_t *)(pstat + 1), def.cap_glob_id_vec_.data(), def.cap_glob_id_vec_.size() * sizeof(uint64_t));
+			}
+			else {
+				new (pstat) SM_REQ_TRACE_DEF_NEW(def.reqdefid_, def.name_, def.tend_, def.filterstr_.size() + 1);
+
+				std::memcpy((uint8_t *)(pstat + 1), def.filterstr_.data(), def.filterstr_.size() + 1);
+			}	
+			 
+			streambuf.set_buf_sz(pstat->get_elem_size(), 1);
+		}
+
+		return true;
+	}
+	GY_CATCH_EXPRESSION(
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to send Madhava %s Request Trace Definitions due to exception : %s\n", 
+				pmad->print_string(STRING_BUFFER<512>().get_str_buf()), GY_GET_EXCEPT_STRING);
+		return false;
+	)
+}	
+
+void SHCONN_HANDLER::check_all_tracedefs(PGConnPool & dbpool) noexcept
+{
+	try {
+		uint32_t			defidarr[MAX_REQ_TRACE_DEFS + 64], ndefs = 0;
+
+		SCOPE_GY_MUTEX			scope(tracemutex_);
+		time_t				tmin = time(nullptr) + 30;
+	
+		for (auto it = tracedefmap_.begin(); it != tracedefmap_.end();) {
+			if (it->second.tend_ < tmin) {
+
+				if (ndefs + 1 < GY_ARRAY_SIZE(defidarr)) {
+					defidarr[ndefs++] = it->second.reqdefid_;
+				}	
+
+				it = tracedefmap_.erase(it);
+				continue;
+			}	
+
+			++it;
+		}	
+
+		scope.unlock();
+
+		if (ndefs > 0) {
+			db_update_tracedef(defidarr, ndefs, true /* isdelete */, tmin, dbpool);
+		}	
+	}
+	GY_CATCH_EXPRESSION(
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception occured while cleaning Request Trace Defs : %s\n", GY_GET_EXCEPT_STRING);
+	);
+
+}	
 
 GyPGConn SHCONN_HANDLER::get_new_db_conn(bool auto_reconnect)
 {
@@ -7667,9 +8603,11 @@ void SHCONN_HANDLER::send_madhava_all_info(MADHAVA_INFO *pminfo, const std::shar
 
 		// Send all Alert definitions. This will result in all ongoing alerts within this Madhava to be cancelled
 		send_madhava_all_alertdefs(pminfo, connshr);
+
+		send_madhava_all_tracedefs(pminfo, connshr);
 	}
 	GY_CATCH_EXCEPTION(
-		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to send Madhava %s info such as Madhava List and alert definitions due to exception : %s\n", 
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to send Madhava %s info such as Madhava List and alert, trace definitions due to exception : %s\n", 
 					pminfo->print_string(STRING_BUFFER<512>().get_str_buf()), GY_GET_EXCEPT_STRING);
 	);	
 }	

@@ -21,6 +21,14 @@ static constexpr const char	*db_partha_partition_tbls[] = {
 	"aggrtaskinfotbl", "listeninfotbl", "tracereqtbl", "traceconntbl", "traceuniqtbl",
 };	
 
+
+/*
+ * Tables which are permanently unlogged for much faster inserts...
+ */
+static constexpr const char	*db_partha_unlogged_partition_tbls[] = {
+	"tracereqtbl", "traceconntbl", 
+};	
+
 class DBFailStats
 {
 public :

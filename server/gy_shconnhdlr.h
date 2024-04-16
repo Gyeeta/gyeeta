@@ -23,6 +23,7 @@
 #include		"gy_postgres.h"
 #include		"gy_scheduler.h"
 #include		"gy_query_common.h"
+#include		"gy_trace_def.h"
 
 #include		"folly/MPMCQueue.h"
 #include 		"folly/Function.h"
@@ -643,6 +644,8 @@ public :
 	using AggrClusterStateMap 		= INLINE_STACK_F14_MAP<CHAR_BUF<comm::MAX_CLUSTER_NAME_LEN>, comm::MS_CLUSTER_STATE::STATE_ONE, 100 * 1024, 
 								CHAR_BUF<comm::MAX_CLUSTER_NAME_LEN>::CHAR_BUF_HASH>;
 
+	using TraceDefMap 			= folly::F14NodeMap<uint32_t, REQ_TRACE_DEF, GY_JHASHER<uint32_t>>;
+
 	class MADHAVA_INFO : public HOST_CONN_LIST, public std::enable_shared_from_this <MADHAVA_INFO>
 	{	
 	public :	
@@ -1150,6 +1153,9 @@ public :
 
 	SvcClusterMapsTbl			svcclusters_		{1};
 
+	GY_MUTEX				tracemutex_;
+	TraceDefMap				tracedefmap_;
+
 	COND_VAR <SCOPE_GY_MUTEX>		barcond_;
 	std::atomic<size_t>			nblocked_acc_		{0};
 	std::atomic<size_t>			nblocked_l1_		{0};
@@ -1261,6 +1267,20 @@ public :
 
 	void 	read_db_partha_info(PGConnPool & dbpool) noexcept;
 	void	cleanup_db_partha_entries() noexcept;
+
+	void 	init_tracedefs(PGConnPool & dbpool);
+	void 	read_db_tracedef_info(PGConnPool & dbpool);
+	void 	set_cfg_tracedefs(const char *pfilename, const char *pcfg, size_t lencfg, PGConnPool & dbpool);
+	void	check_all_tracedefs(PGConnPool & dbpool) noexcept;
+	std::tuple<ERR_CODES_E, uint32_t> new_tracedef_json(GEN_JSON_VALUE & value, STR_WR_BUF & errbuf, PGConnPool & dbpool, \
+						const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> * pconnshr = nullptr, const comm::QUERY_CMD *pquery = nullptr);
+	std::tuple<ERR_CODES_E, uint32_t> add_tracedef(uint32_t defid, std::string_view name, std::string_view filter, time_t tstart, time_t tend, STR_WR_BUF & errbuf) noexcept;
+	void 	handle_node_tracedef_add(const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> & connshr, GEN_JSON_VALUE & jdoc, const comm::QUERY_CMD *pquery, PGConnPool & dbpool);
+	void 	handle_node_tracedef_delete(const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> & connshr, GEN_JSON_VALUE & jdoc, const comm::QUERY_CMD *pquery, PGConnPool & dbpool);
+	void 	handle_node_tracedef_update(const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> & connshr, GEN_JSON_VALUE & jdoc, const comm::QUERY_CMD *pquery, PGConnPool & dbpool);
+	bool 	db_insert_tracedef(uint32_t defid, const char *name, const char *filter, time_t tstart, time_t tend, STR_WR_BUF & errbuf, PGConnPool & dbpool);
+	bool 	db_update_tracedef(uint32_t *pdefidarr, uint32_t ndefs, bool isdelete, time_t tend, PGConnPool & dbpool);
+	bool 	send_madhava_all_tracedefs(MADHAVA_INFO *pmad, const std::shared_ptr<SHCONNTRACK> & connshr) noexcept;
 
 	bool 	madhava_tcp_conn_info(const std::shared_ptr<MADHAVA_INFO> & madhava_shr, const comm::MS_TCP_CONN_NOTIFY * pone, int nconns, POOL_ALLOC_ARRAY *pthrpoolarr);
 	bool 	madhava_tcp_close(const std::shared_ptr<MADHAVA_INFO> & madhava_shr, const comm::MS_TCP_CONN_CLOSE * pone, int nconns);
@@ -1384,6 +1404,12 @@ public :
 
 	bool 	web_query_shyamastatus(const std::shared_ptr<SHCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, \
 				const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<SHSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+
+	bool 	web_db_detail_tracedef(const std::shared_ptr<SHCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+				SOCK_JSON_WRITER<SHSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+	bool 	web_query_tracedef(const std::shared_ptr<SHCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+				SOCK_JSON_WRITER<SHSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+
 
 
 	void 	upgrade_db_schemas(int olddbver, int oldprocver, PGConnUniq & pconn);

@@ -61,8 +61,11 @@ enum SUBSYS_CLASS_E : int
 	SUBSYS_EXTTRACEREQ,
 	SUBSYS_TRACECONN,
 	SUBSYS_TRACEUNIQ,
+	SUBSYS_TRACEDEF,
+	SUBSYS_TRACESTATUS,
+	SUBSYS_TRACEHISTORY,
 
-	SUBSYS_MAX
+	SUBSYS_MAX,
 };	
 
 
@@ -2651,6 +2654,69 @@ static constexpr DB_AGGR_INFO traceuniq_aggr_info[] =
 	{ "count(*)::int as inrecs",						FIELD_INRECS,		"inrecs",		"int",		AOPER_COUNT,	false, 		0 },		
 };	
 
+enum : uint32_t
+{
+	FIELD_DEFID		= fnv1_consthash("defid"),
+	FIELD_TEND		= fnv1_consthash("tend"),
+	FIELD_FILTER		= fnv1_consthash("filter"),
+};
+
+
+static constexpr JSON_DB_MAPPING json_db_tracedef_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "defid", 		"defid", 		GYSLEN("defid"),	FIELD_DEFID,		SUBSYS_TRACEDEF,JSON_STRING,	NUM_NAN,	"char(8)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "name",		"name",			GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACEDEF,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr, 	nullptr,		"", },		
+{ "tstart", 		"tstart", 		GYSLEN("tstart"),	FIELD_TSTART,		SUBSYS_TRACEDEF,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "tend", 		"tend", 		GYSLEN("tend"),		FIELD_TEND,		SUBSYS_TRACEDEF,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "filter",		"filter",		GYSLEN("filter"),	FIELD_FILTER,		SUBSYS_TRACEDEF,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr, 	nullptr,		"", },		
+};
+
+
+enum : uint32_t
+{
+	FIELD_TLAST		= fnv1_consthash("tlast"),
+	FIELD_ISTLS		= fnv1_consthash("istls"),
+};
+
+static constexpr JSON_DB_MAPPING json_db_tracestatus_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+// Additional fields not present in DB
+{ "svcid", 		"", 			GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "name", 		"", 			GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "port", 		"", 			GYSLEN("port"),		FIELD_PORT,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,		"", },
+{ "tlast", 		"", 			GYSLEN("tlast"),	FIELD_TLAST,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "state",		"", 			GYSLEN("state"),	FIELD_STATE,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "proto",		"", 			GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "istls",		"",			GYSLEN("istls"),	FIELD_ISTLS,		SUBSYS_TRACESTATUS,JSON_BOOL,	NUM_NAN,	"boolean",	DB_STR_NONE,	nullptr, 	booltojson,		"",  },		
+{ "tstart", 		"", 			GYSLEN("tstart"),	FIELD_TSTART,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "tend", 		"", 			GYSLEN("tend"),		FIELD_TEND,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "nreq",		"",			GYSLEN("nreq"),		FIELD_NREQ,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "nerr",		"",			GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "defid", 		"", 			GYSLEN("defid"),	FIELD_DEFID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(8)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+};
+
+enum : uint32_t
+{
+	FIELD_INFO		= fnv1_consthash("info"),
+};
+
+
+static constexpr JSON_DB_MAPPING json_db_tracehistory_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+// Additional fields not present in DB
+{ "time", 		"", 			GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEHISTORY,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "svcid", 		"", 			GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACEHISTORY,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "name", 		"", 			GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACEHISTORY,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "port", 		"", 			GYSLEN("port"),		FIELD_PORT,		SUBSYS_TRACEHISTORY,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,		"", },
+{ "state",		"", 			GYSLEN("state"),	FIELD_STATE,		SUBSYS_TRACEHISTORY,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "info",		"", 			GYSLEN("info"),		FIELD_INFO,		SUBSYS_TRACEHISTORY,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "proto",		"", 			GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACEHISTORY,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "istls",		"",			GYSLEN("istls"),	FIELD_ISTLS,		SUBSYS_TRACEHISTORY,JSON_BOOL,		NUM_NAN,	"boolean",	DB_STR_NONE,	nullptr, 	booltojson,		"",  },		
+};
+
 
 struct SUBSYS_CLASS
 {
@@ -2870,6 +2936,12 @@ static size_t upd_subsys_from_qtype(NODE_QUERY_TYPE_E qtype, SUBSYS_CLASS_E *psu
 	case NQUERY_NM_TRACECONN		:	psubsyarr[0] = SUBSYS_TRACECONN; return 1;
 
 	case NQUERY_NM_TRACEUNIQ		:	psubsyarr[0] = SUBSYS_TRACEUNIQ; return 1;
+
+	case NQUERY_NS_TRACEDEF			:	psubsyarr[0] = SUBSYS_TRACEDEF; return 1;
+
+	case NQUERY_NM_TRACESTATUS		:	psubsyarr[0] = SUBSYS_TRACESTATUS; return 1;
+
+	case NQUERY_NM_TRACEHISTORY		:	psubsyarr[0] = SUBSYS_TRACEHISTORY; return 1;
 
 	default					: 	return 0;	
 

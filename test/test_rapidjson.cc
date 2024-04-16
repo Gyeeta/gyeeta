@@ -1,7 +1,6 @@
 //  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
 //  SPDX-License-Identifier: GPL-3.0-or-later
 
-
 #include		"gy_rapidjson.h"
 #include		"gy_malloc_hook.h"
 
@@ -74,9 +73,12 @@ static void stack_parse()
 
 	if (auto aiter = jdoc.FindMember("shyama_hostname"); ((aiter != jdoc.MemberEnd()) && (aiter->value.IsString()))) {
 		GY_SAFE_STR_MEMCPY(telem, sizeof(telem), aiter->value.GetString(), aiter->value.GetStringLength());
-	}	
 
-	assert(0 == strcmp(telem, "shyama.test1.local"));
+		assert(0 == strcmp(telem, "shyama.test1.local"));
+	}	
+	else {
+		assert(false);
+	}	
 
 	if (auto aiter = jdoc.FindMember("shyama_port"); ((aiter != jdoc.MemberEnd()) && (aiter->value.IsInt()))) {
 		int		shyama_port = aiter->value.GetInt();

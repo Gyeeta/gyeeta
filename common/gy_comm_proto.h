@@ -3377,7 +3377,6 @@ struct alignas(8) REQ_TRACE_STATUS
 struct alignas(8) SM_REQ_TRACE_DEF_NEW
 {
 	uint32_t			reqdefid_		{0};
-	bool				enable_cap_		{false};
 	time_t				tend_			{0};
 	char				name_[64]		{};
 	uint16_t			ncap_glob_id_arr_	{0};
@@ -3390,21 +3389,21 @@ struct alignas(8) SM_REQ_TRACE_DEF_NEW
 	/*char				crit_[lencrit_] follows;*/
 	/*char				padding_[padding_len_]; follows to make the entire 8 byte aligned */
 
-	static constexpr size_t		MAX_GLOB_ID_ARR 	{2048};
+	static constexpr size_t		MAX_GLOB_ID_ARR 	{1024};
 	static constexpr size_t		MAX_NUM_DEFS 		{128};	// Send in batches
 
 	SM_REQ_TRACE_DEF_NEW() noexcept				= default;
 
-	SM_REQ_TRACE_DEF_NEW(uint32_t reqdefid, const char *name, bool enable_cap, time_t tend, uint16_t lencrit) noexcept
-		: reqdefid_(reqdefid), enable_cap_(enable_cap), tend_(tend), lencrit_(lencrit)
+	SM_REQ_TRACE_DEF_NEW(uint32_t reqdefid, const char *name, time_t tend, uint16_t lencrit) noexcept
+		: reqdefid_(reqdefid), tend_(tend), lencrit_(lencrit)
 	{
 		GY_STRNCPY_0(name_, name, sizeof(name_));
 		set_padding_len();
 	}	
 
 	// Only fixed svcs as per ncap_glob_id_arr
-	SM_REQ_TRACE_DEF_NEW(uint32_t reqdefid, uint16_t ncap_glob_id_arr, const char *name, bool enable_cap, time_t tend) noexcept
-		: reqdefid_(reqdefid), enable_cap_(enable_cap), tend_(tend), ncap_glob_id_arr_(ncap_glob_id_arr)
+	SM_REQ_TRACE_DEF_NEW(uint32_t reqdefid, uint16_t ncap_glob_id_arr, const char *name, time_t tend) noexcept
+		: reqdefid_(reqdefid), tend_(tend), ncap_glob_id_arr_(ncap_glob_id_arr)
 	{
 		GY_STRNCPY_0(name_, name, sizeof(name_));
 	}	

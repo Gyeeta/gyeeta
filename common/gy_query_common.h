@@ -922,8 +922,15 @@ static CHAR_BUF<128> get_db_init_commands() noexcept
 	return cbuf;
 }	
 
+static constexpr const char		gunknownparid[] = "00000000000000000000000000000000";
+static constexpr const char		gunknownid[] = "0000000000000000";
+
 static NODE_MSG_TYPE_E gy_get_json_mtype(const GEN_JSON_VALUE & jdoc)
 {
+	if (false == jdoc.IsObject()) {
+		GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Invalid Message : Message not of JSON Object type");
+	}	
+	
 	auto 			it = jdoc.FindMember("mtype");
 
 	if (gy_unlikely(it == jdoc.MemberEnd())) {

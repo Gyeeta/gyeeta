@@ -53,6 +53,9 @@ SUBSYS_CLASS subsys_class_list[SUBSYS_MAX] =
 	{ "exttracereq",	SUBSYS_EXTTRACEREQ,	fnv1_consthash("exttracereq"),	nullptr,		0,						nullptr },
 	{ "traceconn",		SUBSYS_TRACECONN,	fnv1_consthash("traceconn"),	json_db_traceconn_arr,	GY_ARRAY_SIZE(json_db_traceconn_arr),		nullptr },
 	{ "traceuniq",		SUBSYS_TRACEUNIQ,	fnv1_consthash("traceuniq"),	json_db_traceuniq_arr,	GY_ARRAY_SIZE(json_db_traceuniq_arr),		nullptr },
+	{ "tracedef",		SUBSYS_TRACEDEF,	fnv1_consthash("tracedef"),	json_db_tracedef_arr,	GY_ARRAY_SIZE(json_db_tracedef_arr),		nullptr },
+	{ "tracestatus",	SUBSYS_TRACESTATUS,	fnv1_consthash("tracestatus"),	json_db_tracestatus_arr,GY_ARRAY_SIZE(json_db_tracestatus_arr),		nullptr },
+	{ "tracehistory",	SUBSYS_TRACEHISTORY,	fnv1_consthash("tracehistory"),	json_db_tracehistory_arr,GY_ARRAY_SIZE(json_db_tracehistory_arr),	nullptr },
 };	
 
 
@@ -102,6 +105,9 @@ DB_AGGR_CLASS subsys_aggr_list[SUBSYS_MAX] =
 	{ SUBSYS_EXTTRACEREQ,	nullptr,/* Update at startup */	0,						nullptr,			0,					0 },
 	{ SUBSYS_TRACECONN,	nullptr, 			0,						nullptr,			0,					0 },
 	{ SUBSYS_TRACEUNIQ,	json_db_aggr_traceuniq_arr, 	GY_ARRAY_SIZE(json_db_aggr_traceuniq_arr),	traceuniq_aggr_info,		GY_ARRAY_SIZE(traceuniq_aggr_info),	3600 },
+	{ SUBSYS_TRACEDEF,	nullptr, 			0,						nullptr,			0,					0 },
+	{ SUBSYS_TRACESTATUS,	nullptr, 			0,						nullptr,			0,					0 },
+	{ SUBSYS_TRACEHISTORY,	nullptr, 			0,						nullptr,			0,					0 },
 };	
 
 
@@ -154,6 +160,9 @@ SUBSYS_STATS subsys_stats_list[SUBSYS_MAX] =
 	{ SUBSYS_EXTTRACEREQ,	5,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},
 	{ SUBSYS_TRACECONN,	5,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},
 	{ SUBSYS_TRACEUNIQ,	3600,				AKEY_INVALID,		AHDLR_PARTHA,	ASYS_PROC_SVC,	},
+	{ SUBSYS_TRACEDEF,	60,				AKEY_INVALID,		AHDLR_SHYAMA,	ASYS_PROC_SVC,	},
+	{ SUBSYS_TRACESTATUS,	60,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_PROC_SVC,	},
+	{ SUBSYS_TRACEHISTORY,	60,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_PROC_SVC,	},
 };	
 
 
@@ -2968,6 +2977,26 @@ begin
 	end loop;
 end;
 $$ language plpgsql;
+
+create or replace function gy_set_tbl_unlogged(arr anyarray, ns_regex text) returns void as $$
+declare
+	c 		refcursor;
+	r 		record;
+	part		text;
+	tblyest		text := to_char(now()::date - '1 day'::interval, 'yyyymmdd');
+begin
+	open c for select nspname from pg_catalog.pg_namespace where nspname ~ ns_regex;
+	loop
+		fetch c into r;
+		exit when not found;
+		foreach part in array arr
+		loop
+			execute format('alter table if exists %s.%s_%s set unlogged', r.nspname, part, tblyest);
+		end loop;
+	end loop;
+end;
+$$ language plpgsql;
+
 
 
 create or replace function gy_del_entries(arr anyarray, ns_regex text) returns void as $$

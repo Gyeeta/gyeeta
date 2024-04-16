@@ -158,6 +158,11 @@ public :
 		return true;
 	}	
 
+	bool isvalid() const noexcept
+	{
+		return machid_.first > 0 && machid_.second > 0;
+	}	
+
 	CHAR_BUF<MACHID_STRLEN + 1> get_string() const noexcept
 	{
 		return gy_to_charbuf<MACHID_STRLEN + 1>("%016lx%016lx", machid_.first, machid_.second);

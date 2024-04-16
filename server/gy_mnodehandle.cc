@@ -287,6 +287,16 @@ bool MCONN_HANDLER::web_query_route_qtype(const std::shared_ptr<MCONNTRACK> & co
 		statsmap["Partha List Query"]++;
 		return web_query_parthalist(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
 
+	case NQUERY_NM_TRACESTATUS :
+		statsmap["Req Trace Status Query"]++;
+		return web_query_tracestatus(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+
+	case NQUERY_NM_TRACEHISTORY :
+		statsmap["Req Trace History Query"]++;
+		return web_query_tracehistory(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+
+
+
 	default :			
 		if (writer.get_stream()->reset_if_not_sent(ERR_INVALID_REQUEST)) {
 			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Unhandled or invalid Query Type %d seen for Madhava server", qtype);
@@ -8932,6 +8942,537 @@ bool MCONN_HANDLER::web_query_parthalist(const std::shared_ptr<MCONNTRACK> & con
 		throw;
 	}	
 }
+
+CRIT_RET_E MCONN_HANDLER::tracestatus_filter_match(const CRITERIA_SET & criteria, const REQ_TRACE_SVC & elem, const MREQ_TRACE_SVC & rtrace, const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const 
+{
+	const SUBSYS_CLASS_E		subsysarr[] {SUBSYS_TRACESTATUS, SUBSYS_HOST};
+
+	auto get_num_field = [&](const JSON_DB_MAPPING *pfield, SUBSYS_CLASS_E subsys) -> NUMBER_CRITERION
+	{
+		switch (pfield->jsoncrc) {
+
+		case FIELD_PORT			: 	return NUMBER_CRITERION((int)(elem.ns_ip_port_.get_port()));
+		case FIELD_TLAST		:	return NUMBER_CRITERION(rtrace.tlaststat_);
+		case FIELD_TSTART		:	return NUMBER_CRITERION(rtrace.tstart_);
+		case FIELD_TEND			:	return NUMBER_CRITERION(rtrace.tend_);
+		case FIELD_NREQ			:	return NUMBER_CRITERION((int64_t)rtrace.nrequests_);
+		case FIELD_NERR			:	return NUMBER_CRITERION((int64_t)rtrace.nerrors_);
+
+		default				:	return {};
+		}	
+	};
+
+	auto get_str_field = [&](const JSON_DB_MAPPING *pfield, char * tbuf, size_t szbuf, SUBSYS_CLASS_E subsys) -> std::pair<const char *, uint32_t>
+	{
+
+		switch (pfield->jsoncrc) {
+
+		case FIELD_SVCID		:	
+							if (tbuf && szbuf > 16) {
+								std::pair<const char *, uint32_t>	p;
+
+								p.first		= tbuf;
+								p.second 	= snprintf(tbuf, szbuf, "%016lx", elem.glob_id_);
+
+								return p;
+							}
+							return {};
+						
+		case FIELD_NAME 		: 	return { elem.comm_, strlen(elem.comm_) };
+
+		case FIELD_STATE		:	
+							if (true) {
+								const char		*st = cap_status_to_string(rtrace.api_cap_status_.load(mo_relaxed));
+
+								return { st, strlen(st) };
+							}
+							
+		case FIELD_PROTO		:	
+							if (true) {
+								const char		*pt = proto_to_string(rtrace.api_proto_.load(mo_relaxed));
+
+								return { pt, strlen(pt) };
+							}	
+
+		case FIELD_DEFID		:	
+							if (tbuf && szbuf > 8) {
+								std::pair<const char *, uint32_t>	p;
+
+								p.first		= tbuf;
+								p.second 	= snprintf(tbuf, szbuf, "%08x", rtrace.curr_trace_defid_);
+
+								return p;
+							}
+							return {};
+
+
+		case FIELD_PARID 		: 	return { prawpartha->machine_id_str_, 		32 };
+		case FIELD_HOST 		: 	return { prawpartha->hostname_, 		GY_READ_ONCE(prawpartha->hostname_len_) };
+		case FIELD_MADID		:	return { gmadhava_id_str_,			16 };
+		case FIELD_CLUSTER 		: 	return { prawpartha->cluster_name_,		GY_READ_ONCE(prawpartha->cluster_len_) };
+		case FIELD_REGION		:	return { prawpartha->region_name_,		GY_READ_ONCE(prawpartha->region_len_) };
+		case FIELD_ZONE			:	return { prawpartha->zone_name_,		GY_READ_ONCE(prawpartha->zone_len_) };
+
+		default				:	return {};
+		}	
+	};	
+
+	auto get_bool_field = [&](const JSON_DB_MAPPING *pfield, SUBSYS_CLASS_E subsys) -> BOOL_CRITERION
+	{
+		switch (pfield->jsoncrc) {
+
+		case FIELD_ISTLS		:	return BOOL_CRITERION(rtrace.api_is_ssl_.load(mo_relaxed));
+
+		default				:	return {};
+		}	
+	};
+
+	return criteria.match_criteria(get_num_field, get_str_field, get_bool_field, 0, ignore_other_subsys ? subsysarr : nullptr, ignore_other_subsys ? GY_ARRAY_SIZE(subsysarr) : 0);
+}
+
+
+bool MCONN_HANDLER::web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	try {
+		using SVCID_SET			= INLINE_STACK_HASH_SET<uint64_t, 16 * 1024, HASH_SAME_AS_KEY<uint64_t>>;
+		
+		SVCID_SET			svcset;
+		int				nrec = 0;
+		bool				bret;
+
+		qryopt.comp_criteria_init();	
+
+		if (false == qryopt.match_madhava_option(gmadhava_id_str_)) {
+			// Skip this query
+			writer.StartObject();	
+	
+			writer.KeyConst("madid");
+			writer.String(gmadhava_id_str_, 16);
+
+			writer.EndObject();
+
+			return true;
+		}
+
+		writer.StartObject();
+
+		writer.KeyConst("madid");
+		writer.String(gmadhava_id_str_, 16);
+
+		writer.KeyConst("tracestatus");
+		writer.StartArray();
+
+		auto writerec = [&, maxrecs = qryopt.get_max_records()](const REQ_TRACE_SVC & elem, const PARTHA_INFO *prawpartha) -> CB_RET_E
+		{
+			const auto		*prtraceshr = elem.rtraceshr_.get();
+			bool			bret;
+
+			if (!prtraceshr || prtraceshr->tlaststat_ == 0) {
+				return CB_OK;
+			}	
+
+			auto 			[it, isnew] = svcset.emplace(elem.glob_id_);
+			
+			if (!isnew) {
+				return CB_OK;
+			}	
+
+			if (qryopt.has_filter()) {
+				auto 			cret = tracestatus_filter_match(qryopt.get_filter_criteria(), elem, *prtraceshr, prawpartha, true /* ignore_other_subsys */);
+
+				if (cret == CRIT_FAIL) {
+					return CB_OK;
+				}
+			}	
+
+			writer.StartObject();
+
+			writer.KeyConst("svcid");
+			writer.String(number_to_string(elem.glob_id_, "%016lx").get(), 16);
+			
+			writer.KeyConst("name");
+			writer.String(elem.comm_);
+		
+			writer.KeyConst("port");
+			writer.Int(elem.ns_ip_port_.get_port());
+
+			writer.KeyConst("tlast");
+			writer.String(gy_localtime_iso8601(prtraceshr->tlaststat_, CHAR_BUF<64>().get(), 64));	
+			
+			writer.KeyConst("state");
+			writer.String(cap_status_to_string(prtraceshr->api_cap_status_.load(mo_relaxed)));
+
+			writer.KeyConst("proto");
+			writer.String(proto_to_string(prtraceshr->api_proto_.load(mo_relaxed)));
+
+			writer.KeyConst("istls");
+			writer.Bool(prtraceshr->api_is_ssl_.load(mo_relaxed));
+
+			writer.KeyConst("tstart");
+			writer.String(gy_localtime_iso8601(prtraceshr->tstart_, CHAR_BUF<64>().get(), 64));	
+			
+			writer.KeyConst("tend");
+			writer.String(gy_localtime_iso8601(prtraceshr->tend_, CHAR_BUF<64>().get(), 64));	
+			
+			writer.KeyConst("nreq");
+			writer.Uint64(prtraceshr->nrequests_);
+
+			writer.KeyConst("nerr");
+			writer.Uint64(prtraceshr->nerrors_);
+
+			writer.KeyConst("defid");
+			writer.String(number_to_string(prtraceshr->curr_trace_defid_, "%08x").get(), 16);
+			
+			writer.KeyConst("parid");
+			writer.String(prawpartha->machine_id_str_, sizeof(prawpartha->machine_id_str_) - 1);
+		
+			writer.KeyConst("host");
+			writer.String(prawpartha->hostname_, GY_READ_ONCE(prawpartha->hostname_len_));
+
+			writer.KeyConst("cluster");
+			writer.String(prawpartha->cluster_name_, GY_READ_ONCE(prawpartha->cluster_len_));
+
+			writer.KeyConst("region");
+			writer.String(prawpartha->region_name_, GY_READ_ONCE(prawpartha->region_len_));
+			
+			writer.KeyConst("zone");
+			writer.String(prawpartha->zone_name_, GY_READ_ONCE(prawpartha->zone_len_));
+
+
+			writer.EndObject();
+
+			nrec++;
+
+			if ((uint32_t)nrec >= maxrecs) {
+				return CB_BREAK_LOOP;
+			}	
+
+			return CB_OK;
+		};
+
+		SharedMutex::ReadHolder			rscope(trace_elems_.rwmutex_);
+
+		RCU_LOCK_SLOW				slowlock;
+
+		GY_MACHINE_ID				lastparid;
+		const PARTHA_INFO			*prawpartha = nullptr;
+		
+		for (const auto & [defid, smap] : trace_elems_.listmap_) {
+			for (const auto & [svcid, elem] : smap) {
+
+				if (lastparid != elem.machid_) {
+					
+					lastparid 			= elem.machid_;
+					prawpartha 			= nullptr;
+
+					const auto 			pelem = partha_tbl_.lookup_single_elem_locked(elem.machid_, elem.machid_.get_hash());
+				
+					if (pelem == nullptr) {
+						// Partha deleted...
+						continue;
+					}	
+
+					prawpartha = pelem->get_cref().get();
+				}	
+
+				if (!prawpartha) {
+					continue;
+				}	
+
+				auto			cret = writerec(elem, prawpartha);
+
+				if (cret == CB_BREAK_LOOP) {
+					goto done;
+				}	
+			}	
+		}	
+
+done :
+
+		slowlock.unlock();
+		rscope.unlock();
+
+		writer.EndArray();
+
+		writer.EndObject();
+
+		return true;
+	}
+	catch(...) {
+		writer.get_stream()->reset_if_not_sent(ERR_SERV_ERROR);
+		throw;
+	}	
+}
+
+// prawpartha may be nullptr
+CRIT_RET_E MCONN_HANDLER::tracehistory_filter_match(const CRITERIA_SET & criteria, const MREQ_TRACE_STATUS & elem, const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const 
+{
+	const SUBSYS_CLASS_E		subsysarr[] {SUBSYS_TRACEHISTORY, SUBSYS_HOST};
+
+	auto get_num_field = [&](const JSON_DB_MAPPING *pfield, SUBSYS_CLASS_E subsys) -> NUMBER_CRITERION
+	{
+		switch (pfield->jsoncrc) {
+
+		case FIELD_TIME			:	return NUMBER_CRITERION(elem.tstatus_);
+		case FIELD_PORT			: 	return NUMBER_CRITERION((int)(elem.port_));
+
+		default				:	return {};
+		}	
+	};
+
+	auto get_str_field = [&](const JSON_DB_MAPPING *pfield, char * tbuf, size_t szbuf, SUBSYS_CLASS_E subsys) -> std::pair<const char *, uint32_t>
+	{
+
+		switch (pfield->jsoncrc) {
+
+		case FIELD_SVCID		:	
+							if (tbuf && szbuf > 16) {
+								std::pair<const char *, uint32_t>	p;
+
+								p.first		= tbuf;
+								p.second 	= snprintf(tbuf, szbuf, "%016lx", elem.glob_id_);
+
+								return p;
+							}
+							return {};
+						
+		case FIELD_NAME 		: 	return { elem.comm_, strlen(elem.comm_) };
+
+		case FIELD_STATE		:	
+							if (true) {
+								const char		*st = cap_status_to_string(elem.status_);
+
+								return { st, strlen(st) };
+							}
+							
+		case FIELD_PROTO		:	
+							if (true) {
+								const char		*pt = proto_to_string(elem.proto_);
+
+								return { pt, strlen(pt) };
+							}	
+
+		case FIELD_PARID 		: 	
+							if (prawpartha) {
+								return { prawpartha->machine_id_str_, 32 };
+							}
+							return { gunknownparid, 32 };
+
+		case FIELD_HOST 		: 	
+							if (prawpartha) {
+								return { prawpartha->hostname_, GY_READ_ONCE(prawpartha->hostname_len_) };
+							}
+							return {};
+
+		case FIELD_MADID		:	
+							if (prawpartha) {
+								return { gmadhava_id_str_, 16 };
+							}
+							return { gunknownid, 16 };
+
+		case FIELD_CLUSTER 		: 	
+							if (prawpartha) {
+								return { prawpartha->cluster_name_, GY_READ_ONCE(prawpartha->cluster_len_) };
+							}
+							return {};
+
+		case FIELD_REGION		:	
+							if (prawpartha) {
+								return { prawpartha->region_name_, GY_READ_ONCE(prawpartha->region_len_) };
+							}
+							return {};
+
+		case FIELD_ZONE			:	
+							if (prawpartha) {
+								return { prawpartha->zone_name_, GY_READ_ONCE(prawpartha->zone_len_) };
+							}
+							return {};
+
+		default				:	return {};
+		}	
+	};	
+
+	auto get_bool_field = [&](const JSON_DB_MAPPING *pfield, SUBSYS_CLASS_E subsys) -> BOOL_CRITERION
+	{
+		switch (pfield->jsoncrc) {
+
+		case FIELD_ISTLS		:	return BOOL_CRITERION(elem.is_ssl_);
+
+		default				:	return {};
+		}	
+	};
+
+	return criteria.match_criteria(get_num_field, get_str_field, get_bool_field, 0, ignore_other_subsys ? subsysarr : nullptr, ignore_other_subsys ? GY_ARRAY_SIZE(subsysarr) : 0);
+}
+
+
+bool MCONN_HANDLER::web_query_tracehistory(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	try {
+		int				nrec = 0;
+		bool				bret;
+
+		qryopt.comp_criteria_init();	
+
+		if (false == qryopt.match_madhava_option(gmadhava_id_str_)) {
+			// Skip this query
+			writer.StartObject();	
+	
+			writer.KeyConst("madid");
+			writer.String(gmadhava_id_str_, 16);
+
+			writer.EndObject();
+
+			return true;
+		}
+
+		writer.StartObject();
+
+		writer.KeyConst("madid");
+		writer.String(gmadhava_id_str_, 16);
+
+		writer.KeyConst("tracehistory");
+		writer.StartArray();
+
+		auto writerec = [&, maxrecs = qryopt.get_max_records()](const MREQ_TRACE_STATUS & elem, const PARTHA_INFO *prawpartha) -> CB_RET_E
+		{
+			bool			bret;
+
+			// prawpartha may be nullptr
+
+			if (qryopt.has_filter()) {
+				auto 			cret = tracehistory_filter_match(qryopt.get_filter_criteria(), elem, prawpartha, true /* ignore_other_subsys */);
+
+				if (cret == CRIT_FAIL) {
+					return CB_OK;
+				}
+			}	
+
+			writer.StartObject();
+
+			writer.KeyConst("time");
+			writer.String(gy_localtime_iso8601(elem.tstatus_, CHAR_BUF<64>().get(), 64));	
+			
+			writer.KeyConst("svcid");
+			writer.String(number_to_string(elem.glob_id_, "%016lx").get(), 16);
+			
+			writer.KeyConst("name");
+			writer.String(elem.comm_);
+		
+			writer.KeyConst("port");
+			writer.Int(elem.port_);
+
+			writer.KeyConst("state");
+			writer.String(cap_status_to_string(elem.status_));
+
+			writer.KeyConst("info");
+			writer.String(elem.msgstr_);
+
+			writer.KeyConst("proto");
+			writer.String(proto_to_string(elem.proto_));
+
+			writer.KeyConst("istls");
+			writer.Bool(elem.is_ssl_);
+
+			writer.KeyConst("parid");
+			if (prawpartha) {
+				writer.String(prawpartha->machine_id_str_, sizeof(prawpartha->machine_id_str_) - 1);
+			}
+			else {
+				writer.String(gunknownparid, 32);
+			}	
+		
+			writer.KeyConst("host");
+			if (prawpartha) {
+				writer.String(prawpartha->hostname_, GY_READ_ONCE(prawpartha->hostname_len_));
+			}
+			else {
+				writer.String(gunknownid, 16);
+			}	
+
+			writer.KeyConst("cluster");
+			if (prawpartha) {
+				writer.String(prawpartha->cluster_name_, GY_READ_ONCE(prawpartha->cluster_len_));
+			}
+			else {
+				writer.String("");
+			}	
+
+			writer.KeyConst("region");
+			if (prawpartha) {
+				writer.String(prawpartha->region_name_, GY_READ_ONCE(prawpartha->region_len_));
+			}	
+			else {
+				writer.String("");
+			}	
+
+			writer.KeyConst("zone");
+			if (prawpartha) {
+				writer.String(prawpartha->zone_name_, GY_READ_ONCE(prawpartha->zone_len_));
+			}	
+			else {
+				writer.String("");
+			}	
+
+			writer.EndObject();
+
+			nrec++;
+
+			if ((uint32_t)nrec >= maxrecs) {
+				return CB_BREAK_LOOP;
+			}	
+
+			return CB_OK;
+		};
+
+		SharedMutex::ReadHolder			rscope(trace_elems_.rwmutex_);
+
+		RCU_LOCK_SLOW				slowlock;
+
+		GY_MACHINE_ID				lastparid;
+		const PARTHA_INFO			*prawpartha = nullptr;
+		
+		for (const auto & elem : trace_elems_.statlist_) {
+
+			if (lastparid != elem.machid_) {
+				
+				lastparid 			= elem.machid_;
+				prawpartha 			= nullptr;
+
+				const auto 			pelem = partha_tbl_.lookup_single_elem_locked(elem.machid_, elem.machid_.get_hash());
+			
+				if (pelem) {
+					prawpartha = pelem->get_cref().get();
+				}	
+			}	
+
+
+			// prawpartha may be nullptr
+
+			auto			cret = writerec(elem, prawpartha);
+
+			if (cret == CB_BREAK_LOOP) {
+				goto done;
+			}	
+		}	
+
+done :
+
+		slowlock.unlock();
+		rscope.unlock();
+
+		writer.EndArray();
+
+		writer.EndObject();
+
+		return true;
+	}
+	catch(...) {
+		writer.get_stream()->reset_if_not_sent(ERR_SERV_ERROR);
+		throw;
+	}	
+}
+
 } // namespace madhava
 } // namespace gyeeta
 

@@ -74,7 +74,7 @@ bool SHCONN_HANDLER::handle_node_query(const std::shared_ptr<SHCONNTRACK> & conn
 			
 		if (mtype == NODE_MSG_QUERY) {
 
-			auto 		qtype = gy_get_json_qtype(jdoc);
+			auto 					qtype = gy_get_json_qtype(jdoc);
 
 			if (qtype == NQUERY_NM_MULTI_QUERY) {
 				constexpr const char		emsg[] = "Invalid Node Query : Multi Query Requests not allowed for Shyama Servers";
@@ -94,12 +94,35 @@ bool SHCONN_HANDLER::handle_node_query(const std::shared_ptr<SHCONNTRACK> & conn
 
 			return web_query_route_qtype(connshr, qryopt, stackpool, pquery, writer, pthrpoolarr, statsmap, dbpool);
 		}
-		else if (mtype == NODE_MSG_ADD) {
-		}	
-		else if (mtype == NODE_MSG_UPDATE) {
-			// Update settings
-		}
-		else if (mtype == NODE_MSG_DELETE) {
+		else if ((mtype == NODE_MSG_ADD) || (mtype == NODE_MSG_UPDATE) || (mtype == NODE_MSG_DELETE)) {
+			// CRUD messages
+			auto 					qtype = gy_get_json_qtype(jdoc);
+
+			switch (qtype) {
+			
+			case NQUERY_NS_TRACEDEF :
+				if (mtype == NODE_MSG_ADD) {
+					handle_node_tracedef_add(connshr, jdoc, pquery, dbpool);
+				}
+				else if (mtype == NODE_MSG_DELETE) {
+					handle_node_tracedef_delete(connshr, jdoc, pquery, dbpool);
+				}
+				else {
+					handle_node_tracedef_update(connshr, jdoc, pquery, dbpool);
+				}	
+				break;
+
+			default :			
+				if (true) {
+					char			ebuf[256];
+
+					auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Node CRUD Command received with invalid Query Type %d", qtype);
+
+					send_json_error_resp(connshr, ERR_SERV_ERROR, pquery->get_seqid(), ebuf, lenerr);
+				}
+
+				return false;
+			}	
 		}	
 		else if (mtype == NODE_MSG_PING) {
 			SHSTREAM_JSON_EPOLL			stream(connshr, *this, RESP_WEB_JSON, resp_seqid, pthrpoolarr);
@@ -195,6 +218,10 @@ bool SHCONN_HANDLER::web_query_route_qtype(const std::shared_ptr<SHCONNTRACK> & 
 	case NQUERY_NS_SHYAMASTATUS :	
 		statsmap["Node Shyama Status Query"]++;
 		return web_query_shyamastatus(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+	
+	case NQUERY_NS_TRACEDEF :	
+		statsmap["Node Trace Def Query"]++;
+		return web_query_tracedef(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
 	
 
 	default :			
@@ -2114,6 +2141,129 @@ bool SHCONN_HANDLER::web_query_shyamastatus(const std::shared_ptr<SHCONNTRACK> &
 	}
 	catch(...) {
 		writer.get_stream()->reset_if_not_sent(ERR_SERV_ERROR);
+		throw;
+	}	
+}
+
+bool SHCONN_HANDLER::web_db_detail_tracedef(const std::shared_ptr<SHCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<SHSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 5000 /* max_msec_wait */, true /* reset_on_timeout */);
+
+	if (!pconn) {
+		DEBUGEXECN(1,
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to query Postgres for Trace Definition info\n");
+		);
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		constexpr const char errbuf[] = "Trace Definition Query : Database Querying Error : Failed to get an idle connection. Please try later...";
+		
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	time_t				tcurr = time(nullptr);
+	int				ret;
+	bool				bret;
+
+	const JSON_DB_MAPPING		*colarr[MAX_MULTI_HOST_COLUMN_LIST];
+	
+	auto [ncol, colspec] 		= qryopt.get_column_list(colarr, GY_ARRAY_SIZE(colarr), SUBSYS_TRACEDEF);
+
+	if (true) {
+		STRING_BUFFER<48 * 1024>	strbuf;
+
+		qryopt.get_db_select_query(strbuf, SUBSYS_ALERTDEF, "public.tracedeftbl");
+
+		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
+	}	
+
+	if (bret == false) {
+		constexpr const char errbuf[] = "Trace Definition Query : Failed to schedule query to Database. Please retry later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	writer.SetMaxDecimalPlaces(3);
+
+	writer.StartObject();
+	
+	writer.KeyConst("shyamaid");
+	writer.String(gshyama_id_str_, 16);
+
+	writer.KeyConst("tracedef");
+	writer.StartArray();
+
+	pconn->set_single_row_mode();
+
+	pconn->set_resp_cb(
+		[&, colarr, total_rows = 0, ncol](GyPGConn & conn, GyPGresult gyres, bool is_completed) mutable -> bool
+		{
+			return default_db_json_cb(conn, std::move(gyres), is_completed, "Trace Definition", colarr, ncol, writer, total_rows, noextracolcb);
+		}
+	);
+	
+	auto		expirysec = std::max<int64_t>(10, pquery->get_time_to_expiry(tcurr));
+
+	ret = dbpool.wait_one_response(expirysec * 1000, pconn.getintconn());
+
+	if (ret != 0) {
+		if (ret == 2) {
+			db_stats_.ndbquery_timeout_.fetch_add_relaxed(1);
+		}
+
+		if (writer.get_stream()->reset_if_not_sent(ret == 2 ? ERR_TIMED_OUT : ERR_SYSERROR)) {
+			if (ret == 2) {
+				constexpr const char errbuf[] = "Trace Definition Query : Database Querying Timeout. Please try later...";
+
+				send_json_error_resp(connshr, ERR_TIMED_OUT, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}
+			else {
+				constexpr const char errbuf[] = "Trace Definition Query : Database Connection Error. Please try later...";
+
+				send_json_error_resp(connshr, ERR_SYSERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}	
+
+			return false;
+		}	
+
+		writer.EndArray();
+		writer.EndObject();
+		
+		return false;
+	}	
+
+	writer.EndArray();
+
+	writer.EndObject();
+
+	return true;
+}
+
+bool SHCONN_HANDLER::web_query_tracedef(const std::shared_ptr<SHCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<SHSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	bool				bret;
+
+	try {
+		bret = web_db_detail_tracedef(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+
+		if (bret == true) {
+			return true;
+		}	
+
+		writer.get_stream()->reset_if_not_sent();
+		return false;
+	}
+	catch(...) {
+		writer.get_stream()->reset_if_not_sent();
 		throw;
 	}	
 }

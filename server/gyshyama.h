@@ -104,7 +104,7 @@ private :
 };	
 
 extern const char *			const gversion;
-extern const uint32_t			gversion_num, gmin_partha_version, gmin_madhava_version, gmin_node_version;
+extern const uint32_t			gversion_num, gmin_partha_version, gmin_madhava_version, gmin_node_version, gmin_alertaction_version;
 
 } // namespace shyama
 } // namespace gyeeta

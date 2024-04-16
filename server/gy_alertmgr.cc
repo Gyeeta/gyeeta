@@ -2974,7 +2974,7 @@ void ALERTMGR::add_node_action_sock(int sock, uint8_t *pregbuf, uint32_t lenbuf)
 			return;
 		}	
 
-		if (false == preg->validate_fields(gmin_node_version, gversion_num, ebuf, errcode)) {
+		if (false == preg->validate_fields(gmin_alertaction_version, gversion_num, ebuf, errcode)) {
 			gshconnhdlr->sock_register_connect_error<NS_REGISTER_RESP_S, NS_REGISTER_RESP>(sock, errcode, ebuf, COMM_HEADER::NS_HDR_MAGIC);
 
 			ERRORPRINT_OFFLOAD("Node Action Registration for %s Failed due to %s\n", preg->node_hostname_, ebuf);
@@ -8872,15 +8872,6 @@ void ALERTMGR::handle_crud_cmd(const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK
 		return;
 	}	
 
-	if (false == jdoc.IsObject()) {
-		char			ebuf[256];
-
-		auto lenerr = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Invalid Node Alert Command JSON : Need a JSON Object but command not of Object type");
-
-		gshconnhdlr->send_json_error_resp(connshr, ERR_INVALID_REQUEST, pquery->get_seqid(), ebuf, lenerr);
-		return;
-	}	
-	
 	auto			mtype = gy_get_json_mtype(jdoc);
 		
 	if (!((mtype == NODE_MSG_ADD) || (mtype == NODE_MSG_UPDATE) || (mtype == NODE_MSG_DELETE))) {

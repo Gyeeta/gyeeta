@@ -10,6 +10,7 @@
 #include			"gy_statistics.h"
 #include			"gy_query_common.h"
 #include			"gy_proto_common.h"
+#include			"gy_trace_def.h"
 
 #include			"folly/concurrency/AtomicSharedPtr.h" 
 #include			"folly/MicroLock.h"
@@ -422,60 +423,10 @@ public :
 	}
 };
 
-class MREQ_TRACE_DEF
-{
-public :
-	time_t					tstart_			{time(nullptr)};
-	time_t					tend_			{0};
-	uint64_t				cstartus_		{get_usec_clock()};
-	char					name_[64];
-	uint32_t				reqdefid_		{0};
-	std::vector<uint64_t>			cap_glob_id_vec_;
-	std::optional<CRITERIA_SET>		filcrit_;
-	std::string				filterstr_;
-
-	MREQ_TRACE_DEF(uint32_t reqdefid, const char *name, std::string_view filterstr, time_t tend)
-		: tend_(tend), reqdefid_(reqdefid), 
-		filcrit_(std::in_place, filterstr.data(), filterstr.size(), SUBSYS_SVCINFO), filterstr_(filterstr)
-	{
-		GY_STRNCPY(name_, name, sizeof(name_));
-	}	
-
-	MREQ_TRACE_DEF(uint32_t reqdefid, uint64_t *cap_glob_id_arr, uint16_t ncap_glob_id_arr, const char *name, time_t tend)
-		: tend_(tend), reqdefid_(reqdefid)
-	{
-		cap_glob_id_vec_.reserve(ncap_glob_id_arr);
-
-		for (uint16_t i = 0; i < ncap_glob_id_arr; ++i) {
-			cap_glob_id_vec_.emplace_back(cap_glob_id_arr[i]);
-		}	
-
-		GY_STRNCPY(name_, name, sizeof(name_));
-	}	
-
-	MREQ_TRACE_DEF(MREQ_TRACE_DEF && other) noexcept		= default;
-
-	MREQ_TRACE_DEF & operator= (MREQ_TRACE_DEF && other) noexcept	= default;
-
-	bool is_fixed_svcs() const noexcept
-	{
-		return cap_glob_id_vec_.size() > 0;
-	}	
-
-	const CRITERIA_SET * get_filter() const noexcept
-	{
-		if (filcrit_) {
-			return std::addressof(*filcrit_);
-		}	
-
-		return nullptr;
-	}	
-};	
-
 class MREQ_TRACE_DEFS
 {
 public :
-	using					DefMap = folly::F14VectorMap<uint32_t, MREQ_TRACE_DEF, GY_JHASHER<uint32_t>>;
+	using					DefMap = folly::F14VectorMap<uint32_t, REQ_TRACE_DEF, GY_JHASHER<uint32_t>>;
 
 	SharedMutex				def_rwmutex_;
 	DefMap					defmap_;
@@ -1360,10 +1311,11 @@ public :
 
 		IP_PORT						nat_ip_port_arr_[MAX_NAT_IP_ELEM];
 		int64_t						last_nat_chg_ip_tsec_			{0};
+		
+		uint64_t					last_svcinfo_chg_tusec_			{tusec_start_};
 
 		std::shared_ptr <ParthaInfo>			parthashr_;
 		GY_MACHINE_ID					partha_machine_id_;
-		
 		uint64_t					madhava_id_				{0};
 		std::weak_ptr <MadhavaInfo>			madhava_weak_;
 

@@ -1656,8 +1656,13 @@ public :
 	}	
 
 	
-	template <typename FiltCB, SUBSYS_CLASS_E subsys, typename SubsysFields>	// FiltCB of type filcb(MTCP_LISTENER & listener, PARTHA_INFO & rawpartha)
-	size_t check_svc_subsys_filter(const CRITERIA_SET & critset, FiltCB & filtcb, time_t tcurr = time(nullptr), size_t maxrecs = ~0ul - 1)
+	/*
+	 * Template to scan all listeners for a filter criteria with FiltCB of type filcb(MTCP_LISTENER & listener, PARTHA_INFO & rawpartha) -> bool
+	 * 
+	 * PreFiltCB is called before evaluating the filter and PostFiltCB is called if the PreFiltCB returns true and if the Criteria matches
+	 */
+	template <typename PreFiltCB, typename PostFiltCB, SUBSYS_CLASS_E subsys, typename SubsysFields>
+	size_t check_svc_subsys_filter(const CRITERIA_SET & critset, PreFiltCB & prefiltcb, PostFiltCB & postfiltcb, time_t tcurr = time(nullptr), size_t maxrecs = ~0ul - 1)
 	{
 		size_t				nrecs = 0;
 
@@ -1670,8 +1675,15 @@ public :
 		const auto checksvc = [&](MTCP_LISTENER & listener) -> bool
 		{
 			const auto			prawpartha = listener.parthashr_.get();
+			bool				bret;
 
 			if (!prawpartha) {
+				return false;
+			}
+
+			bret = prefiltcb(listener, *prawpartha);
+
+			if (!bret) {
 				return false;
 			}
 
@@ -1688,7 +1700,7 @@ public :
 
 			CB_RET_E			cbret;
 
-			filtcb(listener, *prawpartha);
+			postfiltcb(listener, *prawpartha);
 
 			nrecs++;
 
@@ -2144,7 +2156,7 @@ done :
 			STR_WR_BUF & strbuf, STATS_STR_MAP & statsmap);
 	bool 	handle_new_req_trace_def(comm::SM_REQ_TRACE_DEF_NEW *pdef, int nevents, uint8_t *pendptr);
 	bool 	handle_req_trace_def_disable(comm::SM_REQ_TRACE_DEF_DISABLE *pdef, int nevents, uint8_t *pendptr);
-	int	check_new_req_trace_svcs() noexcept;
+	int	check_new_req_trace_svcs(bool checkall) noexcept;
 	int	cleanup_req_trace_elems() noexcept;
 	bool 	handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_STATUS *pstat, int nevents, uint8_t *pendptr);
 
@@ -2285,6 +2297,17 @@ done :
 	bool 	web_query_parthalist(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
 			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 
+	CRIT_RET_E 	tracestatus_filter_match(const CRITERIA_SET & criteria, const REQ_TRACE_SVC & elem, const MREQ_TRACE_SVC & rtrace, \
+				const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const; 
+	bool 	web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+
+	CRIT_RET_E 	tracehistory_filter_match(const CRITERIA_SET & criteria, const MREQ_TRACE_STATUS & elem, \
+				const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const; 
+	bool 	web_query_tracehistory(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+				
+
 	size_t 	hoststate_rtalert_rwlocked(PARTHA_INFO & partha, const comm::HOST_STATE_NOTIFY & hstate, time_t tcurr, const char *timebuf) noexcept;
 
 	size_t 	cpumem_rtalert_rwlocked(PARTHA_INFO & partha, const CPU_MEM_STATE & cpu_mem_state, time_t tcurr, const char *timebuf) noexcept;
@@ -2320,6 +2343,7 @@ done :
 	bool 	db_add_init_partitions() noexcept;
 	bool 	db_add_partitions() noexcept;
 	bool 	db_set_part_logged() noexcept;
+	bool 	db_set_part_unlogged() noexcept;
 	bool 	db_cleanup_old_partitions(PGConnPool & dbpool, bool is_non_block) noexcept;
 	bool	db_add_partha(PARTHA_INFO *pinfo, PGConnPool & dbpool);
 	bool 	db_del_entries(bool is_check = false) noexcept;

@@ -40,7 +40,8 @@ bool COMM_HEADER::validate(const uint8_t *pdata, HDR_MAGIC_E req_magic) const no
 	case MM_CONNECT_CMD	: return (act_total_sz >= sizeof(COMM_HEADER) + sizeof(MM_CONNECT_CMD_S));
 
 	case NS_REGISTER_REQ	: 
-	case NS_ALERT_REGISTER	: return (act_total_sz >= sizeof(COMM_HEADER) + sizeof(NS_REGISTER_REQ_S));
+	case NS_ALERT_REGISTER	: 
+					return (act_total_sz >= sizeof(COMM_HEADER) + sizeof(NS_REGISTER_REQ_S));
 	
 	case NM_CONNECT_CMD	: return (act_total_sz >= sizeof(COMM_HEADER) + sizeof(NM_CONNECT_CMD_S));
 
