@@ -2297,6 +2297,19 @@ done :
 	bool 	web_query_parthalist(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
 			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 
+	bool 	web_db_detail_tracereq(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool, bool is_extended);
+	bool 	web_query_tracereq(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool, bool is_extended);
+
+	bool 	web_db_detail_traceconn(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+	bool 	web_query_traceconn(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+
+	bool 	web_query_traceuniq(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \
+			SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
+
 	CRIT_RET_E 	tracestatus_filter_match(const CRITERIA_SET & criteria, const REQ_TRACE_SVC & elem, const MREQ_TRACE_SVC & rtrace, \
 				const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const; 
 	bool 	web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, \

@@ -287,6 +287,22 @@ bool MCONN_HANDLER::web_query_route_qtype(const std::shared_ptr<MCONNTRACK> & co
 		statsmap["Partha List Query"]++;
 		return web_query_parthalist(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
 
+	case NQUERY_NM_TRACEREQ :
+		statsmap["Req Trace Query"]++;
+		return web_query_tracereq(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool, false /* is_extended */);
+
+	case NQUERY_NM_EXTTRACEREQ :
+		statsmap["Ext Req Trace Query"]++;
+		return web_query_tracereq(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool, true /* is_extended */);
+
+	case NQUERY_NM_TRACECONN :
+		statsmap["Req Trace Conn Query"]++;
+		return web_query_traceconn(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+
+	case NQUERY_NM_TRACEUNIQ :
+		statsmap["Req Trace Uniq Query"]++;
+		return web_query_traceuniq(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+
 	case NQUERY_NM_TRACESTATUS :
 		statsmap["Req Trace Status Query"]++;
 		return web_query_tracestatus(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
@@ -8941,6 +8957,400 @@ bool MCONN_HANDLER::web_query_parthalist(const std::shared_ptr<MCONNTRACK> & con
 		writer.get_stream()->reset_if_not_sent(ERR_SERV_ERROR);
 		throw;
 	}	
+}
+
+
+bool MCONN_HANDLER::web_db_detail_tracereq(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool, bool is_extended)
+{
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 5000 /* max_msec_wait */, true /* reset_on_timeout */);
+
+	if (!pconn) {
+		DEBUGEXECN(1,
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to query Postgres for Trace Request query\n");
+		);
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		constexpr const char errbuf[] = "Trace Request query : Database Querying Error : Failed to get an idle connection. Please try later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	int				ret;
+	bool				bret, multihost = qryopt.is_multi_host();
+	time_t				tcurr = time(nullptr);
+	struct timeval			tvstart, tvend;
+	
+	tvstart = qryopt.get_start_timeval(); 
+	tvend 	= qryopt.get_end_timeval();
+
+	SUBSYS_CLASS_E			subsys = (false == is_extended ? SUBSYS_TRACEREQ : SUBSYS_EXTTRACEREQ);
+	const char			*acttbl = (false == is_extended ? "tracereqtbl" : "exttracereqtbl");
+
+	auto 				datetbl = get_db_day_partition(tvstart.tv_sec, tvend.tv_sec, 0);
+
+	const JSON_DB_MAPPING		*colarr[MAX_MULTI_HOST_COLUMN_LIST];
+	
+	auto [ncol, colspec] 		= qryopt.get_all_column_list(colarr, GY_ARRAY_SIZE(colarr), subsys);
+
+	if (tcurr - db_storage_days_ * GY_SEC_PER_DAY > (uint64_t)tvend.tv_sec) {
+		char			ebuf[256];
+		size_t			esz;
+		
+		esz = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Trace Request Query : Time Requested not present in DB : Max Days of DB storage = %u", db_storage_days_);
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_DATA_NOT_FOUND)) {
+			send_json_error_resp(connshr, ERR_DATA_NOT_FOUND, pquery->get_seqid(), ebuf, esz, pthrpoolarr);
+		}
+
+		return false;
+	}	
+	
+
+	if (multihost) {
+		STRING_BUFFER<48 * 1024>		strbuf;
+		
+		qryopt.get_db_select_multihost_query(strbuf, subsys, acttbl, datetbl.get());
+
+		strbuf.appendconst(";\n reset search_path; ");
+
+		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
+	}
+	else {
+		STRING_BUFFER<48 * 1024>	strbuf;
+		char				tablename[128];
+
+		snprintf(tablename, sizeof(tablename), "sch%s.%s%s", qryopt.get_parid_str().get(), acttbl, datetbl.get());
+
+		qryopt.get_db_select_query(strbuf, subsys, tablename);
+
+		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
+	}	
+
+	if (bret == false) {
+		constexpr const char errbuf[] = "Trace Request Query : Failed to schedule query to Database. Please retry later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	writer.SetMaxDecimalPlaces(3);
+
+	writer.StartObject();
+	
+	writer.KeyConst("madid");
+	writer.String(gmadhava_id_str_, 16);
+
+	if (!is_extended) {
+		writer.KeyConst("tracereq");
+	}
+	else {
+		writer.KeyConst("exttracereq");
+	}	
+	writer.StartArray();
+
+	pconn->set_single_row_mode();
+
+	pconn->set_resp_cb(
+		[&, colarr, total_rows = 0, ncol](GyPGConn & conn, GyPGresult gyres, bool is_completed) mutable -> bool
+		{
+			return default_db_json_cb(conn, std::move(gyres), is_completed, "Trace Request", colarr, ncol, writer, total_rows, noextracolcb);
+		}
+	);
+	
+	auto		expirysec = std::max<int64_t>(10, pquery->get_time_to_expiry(tcurr));
+
+	ret = dbpool.wait_one_response(expirysec * 1000, pconn.getintconn());
+
+	if (ret != 0) {
+		if (ret == 2) {
+			db_stats_.ndbquery_timeout_.fetch_add_relaxed(1);
+		}
+
+		if (writer.get_stream()->reset_if_not_sent(ret == 2 ? ERR_TIMED_OUT : ERR_SYSERROR)) {
+			if (ret == 2) {
+				constexpr const char errbuf[] = "Trace Request Query : Database Querying Timeout. Please try later...";
+
+				send_json_error_resp(connshr, ERR_TIMED_OUT, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}
+			else {
+				constexpr const char errbuf[] = "Trace Request Query : Database Connection Error. Please try later...";
+
+				send_json_error_resp(connshr, ERR_SYSERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}	
+
+			return false;
+		}	
+
+		writer.EndArray();
+		writer.EndObject();
+		
+		return false;
+	}	
+
+	writer.EndArray();
+
+	if (false == qryopt.is_multi_host()) {
+		web_db_set_partha_hostinfo(writer, qryopt);
+	}
+
+	writer.EndObject();
+
+	return true;
+}	
+
+bool MCONN_HANDLER::web_query_tracereq(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool, bool is_extended)
+{
+	bool				bret;
+
+	try {
+		if (false == qryopt.match_madhava_option(gmadhava_id_str_)) {
+			// Skip this query
+			writer.StartObject();	
+	
+			writer.KeyConst("madid");
+			writer.String(gmadhava_id_str_, 16);
+
+			writer.EndObject();
+
+			return true;
+		}
+
+		bret = web_db_detail_tracereq(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool, is_extended);
+
+		if (bret == true) {
+			return true;
+		}	
+
+		writer.get_stream()->reset_if_not_sent();
+		return false;
+	}
+	catch(...) {
+		writer.get_stream()->reset_if_not_sent();
+		throw;
+	}
+}
+
+bool MCONN_HANDLER::web_db_detail_traceconn(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 5000 /* max_msec_wait */, true /* reset_on_timeout */);
+
+	if (!pconn) {
+		DEBUGEXECN(1,
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to query Postgres for Trace Conn query\n");
+		);
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		constexpr const char errbuf[] = "Trace Conn query : Database Querying Error : Failed to get an idle connection. Please try later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	int				ret;
+	bool				bret, multihost = qryopt.is_multi_host();
+	time_t				tcurr = time(nullptr);
+	struct timeval			tvstart, tvend;
+	
+	tvstart = qryopt.get_start_timeval(); 
+	tvend 	= qryopt.get_end_timeval();
+
+	const SUBSYS_CLASS_E		subsys = SUBSYS_TRACEREQ;
+	const char			*acttbl = "traceconntbl";
+
+	auto 				datetbl = get_db_day_partition(tvstart.tv_sec, tvend.tv_sec, 0);
+
+	const JSON_DB_MAPPING		*colarr[MAX_MULTI_HOST_COLUMN_LIST];
+	
+	auto [ncol, colspec] 		= qryopt.get_all_column_list(colarr, GY_ARRAY_SIZE(colarr), subsys);
+
+	if (tcurr - db_storage_days_ * GY_SEC_PER_DAY > (uint64_t)tvend.tv_sec) {
+		char			ebuf[256];
+		size_t			esz;
+		
+		esz = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Trace Conn Query : Time Requested not present in DB : Max Days of DB storage = %u", db_storage_days_);
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_DATA_NOT_FOUND)) {
+			send_json_error_resp(connshr, ERR_DATA_NOT_FOUND, pquery->get_seqid(), ebuf, esz, pthrpoolarr);
+		}
+
+		return false;
+	}	
+	
+
+	if (multihost) {
+		STRING_BUFFER<48 * 1024>		strbuf;
+		
+		qryopt.get_db_select_multihost_query(strbuf, subsys, acttbl, datetbl.get());
+
+		strbuf.appendconst(";\n reset search_path; ");
+
+		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
+	}
+	else {
+		STRING_BUFFER<48 * 1024>	strbuf;
+		char				tablename[128];
+
+		snprintf(tablename, sizeof(tablename), "sch%s.%s%s", qryopt.get_parid_str().get(), acttbl, datetbl.get());
+
+		qryopt.get_db_select_query(strbuf, subsys, tablename);
+
+		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
+	}	
+
+	if (bret == false) {
+		constexpr const char errbuf[] = "Trace Conn Query : Failed to schedule query to Database. Please retry later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	writer.SetMaxDecimalPlaces(3);
+
+	writer.StartObject();
+	
+	writer.KeyConst("madid");
+	writer.String(gmadhava_id_str_, 16);
+
+	writer.KeyConst("traceconn");
+
+	writer.StartArray();
+
+	pconn->set_single_row_mode();
+
+	pconn->set_resp_cb(
+		[&, colarr, total_rows = 0, ncol](GyPGConn & conn, GyPGresult gyres, bool is_completed) mutable -> bool
+		{
+			return default_db_json_cb(conn, std::move(gyres), is_completed, "Trace Conn", colarr, ncol, writer, total_rows, noextracolcb);
+		}
+	);
+	
+	auto		expirysec = std::max<int64_t>(10, pquery->get_time_to_expiry(tcurr));
+
+	ret = dbpool.wait_one_response(expirysec * 1000, pconn.getintconn());
+
+	if (ret != 0) {
+		if (ret == 2) {
+			db_stats_.ndbquery_timeout_.fetch_add_relaxed(1);
+		}
+
+		if (writer.get_stream()->reset_if_not_sent(ret == 2 ? ERR_TIMED_OUT : ERR_SYSERROR)) {
+			if (ret == 2) {
+				constexpr const char errbuf[] = "Trace Conn Query : Database Querying Timeout. Please try later...";
+
+				send_json_error_resp(connshr, ERR_TIMED_OUT, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}
+			else {
+				constexpr const char errbuf[] = "Trace Conn Query : Database Connection Error. Please try later...";
+
+				send_json_error_resp(connshr, ERR_SYSERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}	
+
+			return false;
+		}	
+
+		writer.EndArray();
+		writer.EndObject();
+		
+		return false;
+	}	
+
+	writer.EndArray();
+
+	if (false == qryopt.is_multi_host()) {
+		web_db_set_partha_hostinfo(writer, qryopt);
+	}
+
+	writer.EndObject();
+
+	return true;
+}	
+
+bool MCONN_HANDLER::web_query_traceconn(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	bool				bret;
+
+	try {
+		if (false == qryopt.match_madhava_option(gmadhava_id_str_)) {
+			// Skip this query
+			writer.StartObject();	
+	
+			writer.KeyConst("madid");
+			writer.String(gmadhava_id_str_, 16);
+
+			writer.EndObject();
+
+			return true;
+		}
+
+		bret = web_db_detail_traceconn(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+
+		if (bret == true) {
+			return true;
+		}	
+
+		writer.get_stream()->reset_if_not_sent();
+		return false;
+	}
+	catch(...) {
+		writer.get_stream()->reset_if_not_sent();
+		throw;
+	}
+}
+
+
+bool MCONN_HANDLER::web_query_traceuniq(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	bool				bret;
+
+	try {
+		if (false == qryopt.match_madhava_option(gmadhava_id_str_)) {
+			// Skip this query
+			writer.StartObject();	
+	
+			writer.KeyConst("madid");
+			writer.String(gmadhava_id_str_, 16);
+
+			writer.EndObject();
+
+			return true;
+		}
+
+		// XXX traceuniqtbl not updated currently...
+
+		writer.StartObject();
+		
+		writer.KeyConst("madid");
+		writer.String(gmadhava_id_str_, 16);
+
+		writer.KeyConst("traceuniq");
+		writer.StartArray();
+		
+		writer.EndArray();
+		writer.EndObject();
+
+		return true;
+	}
+	catch(...) {
+		writer.get_stream()->reset_if_not_sent();
+		throw;
+	}
 }
 
 CRIT_RET_E MCONN_HANDLER::tracestatus_filter_match(const CRITERIA_SET & criteria, const REQ_TRACE_SVC & elem, const MREQ_TRACE_SVC & rtrace, const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const 

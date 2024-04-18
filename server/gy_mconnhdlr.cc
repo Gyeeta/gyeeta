@@ -6280,13 +6280,13 @@ int MCONN_HANDLER::check_new_req_trace_svcs(bool checkall) noexcept
 
 			auto			st = listener.rtraceshr_->api_cap_status_.load(mo_acquire);
 
-			if (st == CAPSTAT_FAILED && listener.rtraceshr_->tlaststat_ > tcurr - 600 && def.tend_ > tcurr + 5) {
+			if (st == CAPSTAT_FAILED && listener.rtraceshr_->tlaststat_ > tcurr - 900) {
 				NOTEPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Ignoring New Request Trace command for listener \'%s' 0x%016lx for host %s as recent trace request failed : "
-						"Please retry later...\n", listener.comm_, listener.glob_id_, listener.parthashr_->hostname_);
+						"Will retry later...\n", listener.comm_, listener.glob_id_, listener.parthashr_->hostname_);
 				return false;
 			}	
 
-			if (st == CAPSTAT_UNINIT) {
+			if (st < CAPSTAT_STARTING) {
 				listener.rtraceshr_->tlaststat_ = tcurr;
 				listener.rtraceshr_->curr_trace_defid_ = def.reqdefid_;
 
@@ -6314,7 +6314,8 @@ int MCONN_HANDLER::check_new_req_trace_svcs(bool checkall) noexcept
 			
 			auto prefiltcb = [&, minstatetusec = tcurrusec - 300 * GY_USEC_PER_SEC](MTCP_LISTENER & listener, PARTHA_INFO & rawpartha) -> bool
 			{
-				if (listener.last_state_tusec_.load(mo_relaxed) < tcurrusec) {
+				// Skip Listeners not updated recently
+				if (listener.last_state_tusec_.load(mo_acquire) < minstatetusec) {
 					return false;
 				}	
 

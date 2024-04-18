@@ -3941,7 +3941,7 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 							
 							// Now remove the entry from listen_aggr_map_
 							if (plistener->aggr_glob_id_) {
-								SCOPE_GY_MUTEX		scopelock(&listen_aggr_lock_);
+								SCOPE_GY_MUTEX		scopelock(listen_aggr_lock_);
 
 								auto it = listen_aggr_map_.find(plistener->aggr_glob_id_);
 								if (it != listen_aggr_map_.end()) {
@@ -4724,7 +4724,7 @@ int TCP_SOCK_HANDLER::listener_inode_validate(int & nclconfirm) noexcept
 
 		auto aggradd = [&, this](TCP_LISTENER *plistener) -> bool
 		{
-			SCOPE_GY_MUTEX		scopelock(&listen_aggr_lock_);
+			SCOPE_GY_MUTEX		scopelock(listen_aggr_lock_);
 
 			auto & lset = listen_aggr_map_[plistener->aggr_glob_id_];
 
