@@ -6425,6 +6425,10 @@ void SHCONN_HANDLER::read_db_tracedef_info(PGConnPool & dbpool)
 			tend = gy_iso8601_to_time_t(CHAR_BUF<64>(colview[2].data(), colview[2].size()).get());
 		}
 
+		if (tend == 0) {
+			tend = tcurr + 10 * GY_SEC_PER_YEAR;
+		}	
+
 		auto 			[errcode, id] = add_tracedef(defid, name, filter, tstart, tend, strbuf);
 		
 		if (id) {
@@ -6535,12 +6539,19 @@ std::tuple<ERR_CODES_E, uint32_t> SHCONN_HANDLER::add_tracedef(uint32_t defid, s
 std::tuple<ERR_CODES_E, uint32_t> SHCONN_HANDLER::new_tracedef_json(GEN_JSON_VALUE & value, STR_WR_BUF & errbuf, PGConnPool & dbpool, 
 									const std::shared_ptr<SHCONN_HANDLER::SHCONNTRACK> * pconnshr, const comm::QUERY_CMD *pquery)
 {
-	std::string_view		name, filter;
-	time_t				tstart = time(nullptr), tend = 0;
+	std::string_view			name, filter;
+	time_t					tstart = time(nullptr), tend = 0;
+	ERR_CODES_E				errcode = ERR_STATUS_OK;
+	uint32_t				defid = 0;
+	STACK_JSON_WRITER<12 * 1024, 4096>	writer;
+	bool					bret;
+
+	writer.StartObject();
 
 	if (!value.IsObject()) {
 		errbuf << "Failed to add new Request Trace Definition as JSON not of object type"sv;
-		return {ERR_INVALID_REQUEST, 0};
+		errcode = ERR_INVALID_REQUEST;
+		goto done1;
 	}	
 
 	if (auto aiter = value.FindMember("name"); ((aiter != value.MemberEnd()) && (aiter->value.IsString()))) {
@@ -6548,7 +6559,8 @@ std::tuple<ERR_CODES_E, uint32_t> SHCONN_HANDLER::new_tracedef_json(GEN_JSON_VAL
 	}
 	else {
 		errbuf << "Failed to add new Request Trace Definition as required field : name : of string data type not found"sv;
-		return {ERR_INVALID_REQUEST, 0};
+		errcode = ERR_INVALID_REQUEST;
+		goto done1;
 	}	
 
 	if (auto aiter = value.FindMember("filter"); ((aiter != value.MemberEnd()) && (aiter->value.IsString()))) {
@@ -6556,19 +6568,24 @@ std::tuple<ERR_CODES_E, uint32_t> SHCONN_HANDLER::new_tracedef_json(GEN_JSON_VAL
 	}
 	else {
 		errbuf << "Failed to add new Request Trace Definition as required field : filter : of string data type not found"sv;
-		return {ERR_INVALID_REQUEST, 0};
+		errcode = ERR_INVALID_REQUEST;
+		goto done1;
 	}	
 	
 	if (auto aiter = value.FindMember("tend"); ((aiter != value.MemberEnd()) && (aiter->value.IsString()))) {
 		tend = gy_iso8601_to_time_t(aiter->value.GetString());
 	}	
 
-	STACK_JSON_WRITER<12 * 1024, 4096>	writer;
-	bool					bret;
+	if (tend == 0) {
+		tend = tstart + 10 * GY_SEC_PER_YEAR;
+	}	
 
-	writer.StartObject();
-
-	auto 					[errcode, defid] =  add_tracedef(0, name, filter, tstart, tend, errbuf);
+	if (true) {
+		auto tup =  add_tracedef(0, name, filter, tstart, tend, errbuf);
+		
+		errcode = std::get<0>(tup);
+		defid 	= std::get<1>(tup);
+	}
 
 	if (defid) {
 		bret = db_insert_tracedef(defid, name.data(), filter.data(), tstart, tend, errbuf, dbpool);
@@ -6592,6 +6609,7 @@ std::tuple<ERR_CODES_E, uint32_t> SHCONN_HANDLER::new_tracedef_json(GEN_JSON_VAL
 		}	
 	}
 
+done1 :
 	if (!defid && pconnshr) {
 
 		writer.KeyConst("status");

@@ -39,6 +39,12 @@ bool SHCONN_HANDLER::handle_node_query(const std::shared_ptr<SHCONNTRACK> & conn
 			return false;
 		}	
 
+		CONDEXEC(
+			DEBUGEXECN(12,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Node Query seen : [%s]\n", CHAR_BUF<1024>(pjson, pendptr - pjson).get()); 
+			);
+		);
+
 		JSON_DOCUMENT<16 * 1024, 8192>	doc;
 		auto				& jdoc = doc.get_doc();
 

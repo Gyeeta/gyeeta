@@ -2565,7 +2565,7 @@ static constexpr JSON_DB_MAPPING json_db_tracereq_arr[] =
 { "cport", 		"cliport", 		GYSLEN("cport"),	FIELD_CPORT,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
 { "sessid", 		"sessid", 		GYSLEN("sessid"),	FIELD_SESSID,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
 { "nprep",		"prepreqnum",		GYSLEN("nprep"),	FIELD_NPREP,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "tprep", 		"preptime", 		GYSLEN("tprep"),	FIELD_TPREP,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "tprep", 		"preptime", 		GYSLEN("tprep"),	FIELD_TPREP,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_NAN,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },
 // Additional fields not present in DB
 };
 

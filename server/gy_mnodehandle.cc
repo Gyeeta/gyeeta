@@ -35,6 +35,12 @@ bool MCONN_HANDLER::handle_node_query(const std::shared_ptr<MCONNTRACK> & connsh
 			return false;
 		}	
 
+		CONDEXEC(
+			DEBUGEXECN(12,
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Node Query seen : [%s]\n", CHAR_BUF<1024>(pjson, pendptr - pjson).get()); 
+			);
+		);
+
 		JSON_DOCUMENT<16 * 1024, 8192>	doc;
 		auto				& jdoc = doc.get_doc();
 
@@ -8986,8 +8992,14 @@ bool MCONN_HANDLER::web_db_detail_tracereq(const std::shared_ptr<MCONNTRACK> & c
 	time_t				tcurr = time(nullptr);
 	struct timeval			tvstart, tvend;
 	
-	tvstart = qryopt.get_start_timeval(); 
-	tvend 	= qryopt.get_end_timeval();
+	if (!qryopt.is_historical()) {
+		tvstart = { .tv_sec = tcurr - 5, .tv_usec = 0 };
+		tvend = { .tv_sec = tcurr + 1, .tv_usec = 0 };
+	}
+	else {
+		tvstart = qryopt.get_start_timeval(); 
+		tvend 	= qryopt.get_end_timeval();
+	}
 
 	SUBSYS_CLASS_E			subsys = (false == is_extended ? SUBSYS_TRACEREQ : SUBSYS_EXTTRACEREQ);
 	const char			*acttbl = (false == is_extended ? "tracereqtbl" : "exttracereqtbl");
@@ -9165,8 +9177,14 @@ bool MCONN_HANDLER::web_db_detail_traceconn(const std::shared_ptr<MCONNTRACK> & 
 	time_t				tcurr = time(nullptr);
 	struct timeval			tvstart, tvend;
 	
-	tvstart = qryopt.get_start_timeval(); 
-	tvend 	= qryopt.get_end_timeval();
+	if (!qryopt.is_historical()) {
+		tvstart = { .tv_sec = tcurr - 5, .tv_usec = 0 };
+		tvend = { .tv_sec = tcurr + 1, .tv_usec = 0 };
+	}
+	else {
+		tvstart = qryopt.get_start_timeval(); 
+		tvend 	= qryopt.get_end_timeval();
+	}
 
 	const SUBSYS_CLASS_E		subsys = SUBSYS_TRACEREQ;
 	const char			*acttbl = "traceconntbl";
@@ -9531,7 +9549,7 @@ bool MCONN_HANDLER::web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & co
 			writer.Uint64(prtraceshr->nerrors_);
 
 			writer.KeyConst("defid");
-			writer.String(number_to_string(prtraceshr->curr_trace_defid_, "%08x").get(), 16);
+			writer.String(number_to_string(prtraceshr->curr_trace_defid_, "%08x").get(), 8);
 			
 			writer.KeyConst("parid");
 			writer.String(prawpartha->machine_id_str_, sizeof(prawpartha->machine_id_str_) - 1);

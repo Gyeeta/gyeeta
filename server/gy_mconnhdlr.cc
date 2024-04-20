@@ -5871,7 +5871,7 @@ uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO>
 		return 0;
 	}	
 
-	assert(gy_get_thread_local().get_thread_stack_freespace() > 200 * 1024);
+	assert(gy_get_thread_local().get_thread_stack_freespace() > 300 * 1024);
 
 	auto				schemabuf = prawpartha->get_db_schema();
 	auto				*pone = ptran;
@@ -5885,32 +5885,43 @@ uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO>
 	{
 		auto writeconnday = [&](PARTHA_TRACE_CONN *parr[], int narr, const char *pschema, const char *pdatetbl) -> int
 		{
+			using ConnidSet			= INLINE_STACK_HASH_SET<uint64_t, 48 * 1024, GY_JHASHER<uint64_t>>;
+
+			ConnidSet			connidset;
+
 			int				ret = 0;
 
+			assert(gy_get_thread_local().get_thread_stack_freespace() > 200 * 1024);
+			
 			if (qbuf.bytes_left() < 1024) {
 				return 0;
 			}	
 
 			qbuf.appendfmt("insert into %s.traceconntbl%s values ", pschema, pdatetbl);
 
-			for (int i = 0; i < narr; ++i, ++ret) {
+			for (int i = 0; i < narr; ++i) {
 				PARTHA_TRACE_CONN		*pdata = parr[i];
 
 				if (qbuf.bytes_left() < sizeof(*pdata) * 2.5) {
 					break;
+				}	
+				
+				if (false == connidset.emplace(pdata->ser_connid_).second) {
+					// Redundant data probably due to conn close sync with partha notify
+					continue;
 				}	
 
 				qbuf.appendfmt("(to_timestamp(%ld),\'%016lx\',\'%s\',\'%016lx\',\'%016lx\',\'%s\',\'%016lx%016lx\',\'%016lx\',\'%c\'),", 
 					pdata->tconn_, pdata->glob_id_, pdata->ser_comm_, pdata->ser_connid_, pdata->cli_aggr_task_id_, pdata->cli_comm_, 
 					pdata->cli_partha_machine_id_.get_first(), pdata->cli_partha_machine_id_.get_second(), pdata->cli_madhavaid_, 
 					pgintbool[pdata->cli_listener_proc_ & 0x1]);
-			}	
+				
+				++ret;
+			}
 
 			qbuf.set_last_char(';');
 			
 			return ret;
-
-
 		};	
 
 		PARTHA_TRACE_CONN		*parr[MAX_TRACE_CONN_VEC];
@@ -6130,6 +6141,10 @@ d1 :
 		
 		prawpartha->tlast_trace_conn_.store(0, mo_relaxed);
 		slock.unlock();
+
+		if (vec.empty()) {
+			goto done1;
+		}	
 
 		writeconn(vec);
 
@@ -8404,7 +8419,7 @@ bool MCONN_HANDLER::add_local_conn_task_ref(PARTHA_INFO *pcli_partha, uint64_t a
 	return newadd;
 }	
 
-// Returns {ser_tusec_pstart, is_resolved, newconn, newtask}
+// Returns {trace_conn_added, is_resolved, newconn, newtask}
 std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::TCP_CONN_NOTIFY *pone, uint64_t tcurrusec, MP_CLI_TCP_INFO_MAP & parclimap, MP_CLI_TCP_INFO_VEC_ARENA & parclivecarena, MP_SER_TCP_INFO_MAP & parsermap, MP_SER_TCP_INFO_VEC_ARENA & parservecarena, SER_UN_CLI_INFO_MAP & serunmap, SER_UN_CLI_INFO_VEC_ARENA & serunvecarena, POOL_ALLOC_ARRAY *pthrpoolarr) 
 {
 	/*
@@ -8432,15 +8447,41 @@ std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::sh
 		}	
 
 		MTCP_LISTENER_ELEM_TYPE		*plistenelem = nullptr;
+		MTCP_LISTENER			*plistener = nullptr;
+		bool				trace_conn_added = false;
 
 		if (pone->is_loopback_conn_ && pone->ser_glob_id_) {
 			plistenelem = prawpartha->listen_tbl_.lookup_single_elem_locked(pone->ser_glob_id_, get_uint64_hash(pone->ser_glob_id_));
+
+			if (plistenelem) {
+				plistener = plistenelem->get_cref().get();
+				
+				if (plistener) {
+					bool			is_trace_active = (CAPSTAT_ACTIVE == plistener->get_trace_cap_status());
+
+					if (is_trace_active) {
+						SCOPE_GY_MUTEX			sconn(prawpartha->trace_conn_mutex_);
+						time_t				tc = pone->tusec_start_/GY_USEC_PER_SEC;
+
+						if (prawpartha->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+							prawpartha->trace_conn_vec_.emplace_back(tc, pone->ser_glob_id_, 
+									API_TRAN::get_connid_hash(pone->nat_cli_, pone->nat_ser_, pone->ser_glob_id_), 
+									pone->cli_task_aggr_id_, pone->cli_ser_machine_id_,
+									pone->cli_madhava_id_, pone->ser_comm_, pone->cli_comm_, !!pone->cli_related_listen_id_);
+
+							prawpartha->tlast_trace_conn_.store(tc, mo_relaxed);
+
+							trace_conn_added = true;
+						}	
+					}	
+				}	
+			}
 		}
 
-		bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, plistenelem ? plistenelem->get_cref().get() : nullptr,
+		bret = add_local_conn_task_ref(prawpartha, pone->cli_task_aggr_id_, plistener,
 						pone->cli_comm_, pone->cli_cmdline_len_, (const char *)(pone + 1), pthrpoolarr, tcurrusec);
 
-		return {false, false, false, bret};
+		return {trace_conn_added, false, false, bret};
 	}
 
 	PAIR_IP_PORT			ctuple(pone->nat_cli_, pone->nat_ser_);
@@ -8576,8 +8617,6 @@ std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_cli(const std::sh
 			time_t				tc = ser_tusec_pstart/GY_USEC_PER_SEC;
 
 			if (ser_parthashr->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
-				ser_parthashr->trace_conn_vec_.reserve(16);
-
 				ser_parthashr->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
 						ser_nat_conn_hash, pone->cli_task_aggr_id_, prawpartha->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_,
 						!!pone->cli_related_listen_id_);
@@ -8775,8 +8814,6 @@ std::tuple<bool, bool, bool, bool> MCONN_HANDLER::add_tcp_conn_ser(const std::sh
 			time_t				tc = pone->tusec_start_/GY_USEC_PER_SEC;
 
 			if (prawpartha->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
-				prawpartha->trace_conn_vec_.reserve(16);
-
 				prawpartha->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
 						API_TRAN::get_connid_hash(pone->nat_cli_, pone->nat_ser_, plistener->glob_id_), cli_task_aggr_id, pone->cli_ser_machine_id_,
 						pone->cli_madhava_id_, plistener->comm_, cli_comm, !!pone->cli_related_listen_id_);
@@ -9005,6 +9042,37 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 								prawpartha->tconnlistensec_ = tsec_start;
 							}
 						}
+
+						if (pone->is_loopback_conn_) {
+
+							MTCP_LISTENER_ELEM_TYPE		*plistenelem;
+							MTCP_LISTENER			*plistener;
+
+							plistenelem = prawpartha->listen_tbl_.lookup_single_elem_locked(pone->ser_glob_id_, get_uint64_hash(pone->ser_glob_id_));
+
+							if (plistenelem) {
+								plistener = plistenelem->get_cref().get();
+								
+								if (plistener) {
+									bool			is_trace_active = (CAPSTAT_ACTIVE == plistener->get_trace_cap_status());
+
+									if (is_trace_active) {
+										SCOPE_GY_MUTEX			sconn(prawpartha->trace_conn_mutex_);
+										time_t				tc = pone->tusec_start_/GY_USEC_PER_SEC;
+
+										if (prawpartha->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
+											prawpartha->trace_conn_vec_.emplace_back(tc, pone->ser_glob_id_, 
+													API_TRAN::get_connid_hash(pone->nat_cli_, pone->nat_ser_, pone->ser_glob_id_), 
+													pone->cli_task_aggr_id_, pone->cli_ser_machine_id_,
+													pone->cli_madhava_id_, pone->ser_comm_, pone->cli_comm_, !!pone->cli_related_listen_id_);
+
+											prawpartha->tlast_trace_conn_.store(tc, mo_relaxed);
+											ntraceconns++;
+										}	
+									}	
+								}	
+							}	
+						}
 					}	
 					else if (false == pone->is_tcp_accept_event_ && pone->is_tcp_connect_event_ && pone->cli_task_aggr_id_) {
 						if (prawpartha->connpeerarena_.bytes_left() > 2 * sizeof(CONN_PEER_ONE) && prawpartha->connclientmap_.size() < MAX_CLOSE_CONN_ELEM - 1) {
@@ -9053,6 +9121,7 @@ bool MCONN_HANDLER::partha_tcp_conn_info(const std::shared_ptr<PARTHA_INFO> & pa
 		}	
 	}	
 
+	// Release connlistenmutex_
 	scopelock.unlock();
 
 	if (cleanupmap.size()) {
@@ -9524,8 +9593,6 @@ bool MCONN_HANDLER::handle_partha_nat_notify(comm::NAT_TCP_NOTIFY * pone, int nc
 				time_t				tc = ser_tusec_pstart/GY_USEC_PER_SEC;
 
 				if (ser_parthashr->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
-					ser_parthashr->trace_conn_vec_.reserve(16);
-
 					ser_parthashr->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
 							ser_nat_conn_hash, cli_task_aggr_id, pclihost->machine_id_, gmadhava_id_, plistener->comm_, cli_comm, !!cli_related_listen_id);
 
@@ -10337,8 +10404,6 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 			time_t				tc = pone->tusec_pstart_/GY_USEC_PER_SEC;
 
 			if (pserhost->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
-				pserhost->trace_conn_vec_.reserve(16);
-
 				pserhost->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
 						pone->ser_nat_conn_hash_, pone->cli_task_aggr_id_, pserhost->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_,
 						!!pone->cli_related_listen_id_);
