@@ -328,6 +328,8 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 
 				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Service API Network Capture for svc '%s\' port %hu set as %s with SSL Capture %s as per prior stats\n",
 					comm_, ns_ip_port_.ip_port_.port_, proto_to_string(proto_), isssl == true ? "enabled" : "disabled");	
+
+				listenshr->api_cap_started_.store(CAPSTAT_ACTIVE, std::memory_order_release);
 			}
 			else {
 				protodetect_ = std::make_unique<PROTO_DETECT>();

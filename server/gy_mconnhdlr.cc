@@ -13682,10 +13682,6 @@ bool MCONN_HANDLER::partha_listener_info(const std::shared_ptr<PARTHA_INFO> & pa
 					plistener->aggr_glob_id_ = pone->aggr_glob_id_;
 				}	
 
-				if (plistener->rtraceshr_) {
-					plistener->rtraceshr_->reset_restart();
-				}	
-
 				plistener->comm_len_ = GY_STRNCPY_LEN(plistener->comm_, pone->comm_, sizeof(plistener->comm_));
 
 				if (pone->cmdline_len_ > 1 && pone->cmdline_len_ <= sizeof(plistener->cmdline_)) {
