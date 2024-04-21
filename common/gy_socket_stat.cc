@@ -1263,6 +1263,16 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 					return CB_OK;	
 				}
 			}	
+			else {
+				if ((0 == strcmp(plistener->orig_comm_, pevent->comm)) && (0 != old_ntasks)) {
+					auto 			ptaskshr = plistener->task_weak_.lock();
+
+					if (ptaskshr && ptaskshr->is_task_valid()) {
+						// New listener process added probably SO_REUSEPORT
+						return CB_OK;	
+					}
+				}	
+			}	
 
 			// New process (e.g. separate procs for IPv4/v6 Any or Listener process restarted before the listener entry was deleted) 
 			plistener->pid_ = pevent->pid;
@@ -1279,6 +1289,11 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 			// Reset Service Error and API Network Capture : Currently if restart happens within 30 sec we keep the old state...
 			plistener->httperr_cap_started_.store(indeterminate, mo_relaxed);
 			plistener->is_http_svc_ = indeterminate;
+
+			if (plistener->api_cap_started_.load(mo_relaxed) >= CAPSTAT_STARTING) {
+				// Stop capture
+				plistener->tapi_cap_stop_.store(curr_tusec/GY_USEC_PER_SEC, mo_relaxed);
+			}
 
 			plistener->api_is_ssl_.store(indeterminate, mo_relaxed);
 			plistener->api_proto_.store(PROTO_UNINIT, mo_relaxed);
