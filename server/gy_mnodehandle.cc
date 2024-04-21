@@ -8990,12 +8990,31 @@ bool MCONN_HANDLER::web_db_detail_tracereq(const std::shared_ptr<MCONNTRACK> & c
 	int				ret;
 	bool				bret, multihost = qryopt.is_multi_host();
 	time_t				tcurr = time(nullptr);
-	struct timeval			tvstart, tvend;
+	bool				updqryopt = false;
+	struct timeval			tvstart, tvend, origtvstart, origtvend;
+	char				origstarttime[48], origendtime[48];
 	
+	GY_SCOPE_EXIT {
+		if (updqryopt == true) {
+			qryopt.set_timestamps(origstarttime, origendtime, origtvstart, origtvend, false /* pointintime */);
+		}
+	};	
+
 	if (!qryopt.is_historical()) {
-		tvstart = { .tv_sec = tcurr - 5, .tv_usec = 0 };
-		tvend = { .tv_sec = tcurr + 1, .tv_usec = 0 };
-	}
+		origtvstart 	= {};
+		origtvend 	= {};
+		*origstarttime 	= 0;
+		*origendtime	= 0;
+		updqryopt 	= true;
+
+		tvstart.tv_sec 	= tcurr - 25;
+		tvstart.tv_usec = 0;
+
+		tvend.tv_sec	= tcurr + 1;
+		tvend.tv_usec	= 0;
+		
+		qryopt.set_timestamps(gy_localtime_iso8601_sec(tvstart.tv_sec).get(), gy_localtime_iso8601_sec(tvend.tv_sec).get(), tvstart, tvend, false /* pointintime */);
+	}	
 	else {
 		tvstart = qryopt.get_start_timeval(); 
 		tvend 	= qryopt.get_end_timeval();
@@ -9175,18 +9194,37 @@ bool MCONN_HANDLER::web_db_detail_traceconn(const std::shared_ptr<MCONNTRACK> & 
 	int				ret;
 	bool				bret, multihost = qryopt.is_multi_host();
 	time_t				tcurr = time(nullptr);
-	struct timeval			tvstart, tvend;
+	bool				updqryopt = false;
+	struct timeval			tvstart, tvend, origtvstart, origtvend;
+	char				origstarttime[48], origendtime[48];
 	
+	GY_SCOPE_EXIT {
+		if (updqryopt == true) {
+			qryopt.set_timestamps(origstarttime, origendtime, origtvstart, origtvend, false /* pointintime */);
+		}
+	};	
+
 	if (!qryopt.is_historical()) {
-		tvstart = { .tv_sec = tcurr - 5, .tv_usec = 0 };
-		tvend = { .tv_sec = tcurr + 1, .tv_usec = 0 };
-	}
+		origtvstart 	= {};
+		origtvend 	= {};
+		*origstarttime 	= 0;
+		*origendtime	= 0;
+		updqryopt 	= true;
+
+		tvstart.tv_sec 	= tcurr - 25;
+		tvstart.tv_usec = 0;
+
+		tvend.tv_sec	= tcurr + 1;
+		tvend.tv_usec	= 0;
+		
+		qryopt.set_timestamps(gy_localtime_iso8601_sec(tvstart.tv_sec).get(), gy_localtime_iso8601_sec(tvend.tv_sec).get(), tvstart, tvend, false /* pointintime */);
+	}	
 	else {
 		tvstart = qryopt.get_start_timeval(); 
 		tvend 	= qryopt.get_end_timeval();
 	}
 
-	const SUBSYS_CLASS_E		subsys = SUBSYS_TRACEREQ;
+	const SUBSYS_CLASS_E		subsys = SUBSYS_TRACECONN;
 	const char			*acttbl = "traceconntbl";
 
 	auto 				datetbl = get_db_day_partition(tvstart.tv_sec, tvend.tv_sec, 0);

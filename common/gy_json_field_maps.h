@@ -2575,6 +2575,7 @@ static constexpr JSON_DB_MAPPING json_db_traceconn_arr[] =
 // jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
 { "time", 		"time", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
 { "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "name", 		"ser_comm", 		GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
 { "connid", 		"connid", 		GYSLEN("connid"),	FIELD_CONNID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
 { "cprocid", 		"cli_aggr_task_id",	GYSLEN("cprocid"),	FIELD_CPROCID,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
 { "cname", 		"cli_comm", 		GYSLEN("cname"),	FIELD_CNAME,		SUBSYS_TRACECONN,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },

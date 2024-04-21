@@ -6380,7 +6380,7 @@ void SHCONN_HANDLER::read_db_tracedef_info(PGConnPool & dbpool)
 		return;
 	}
 
-	ncol 				= 4;
+	ncol 				= GY_ARRAY_SIZE(json_db_tracedef_arr);
 
 	colarr[0]			= &json_db_tracedef_arr[0];
 	colarr[1]		 	= &json_db_tracedef_arr[1];
@@ -6415,14 +6415,14 @@ void SHCONN_HANDLER::read_db_tracedef_info(PGConnPool & dbpool)
 		}	
 
 		if (colview[2].size() > 0) {
-			tstart = gy_iso8601_to_time_t(CHAR_BUF<64>(colview[1].data(), colview[1].size()).get());
+			tstart = gy_iso8601_to_time_t(CHAR_BUF<64>(colview[2].data(), colview[2].size()).get());
 		}
 		else {
 			tstart = tcurr;
 		}
 
 		if (colview[3].size() > 0) {
-			tend = gy_iso8601_to_time_t(CHAR_BUF<64>(colview[2].data(), colview[2].size()).get());
+			tend = gy_iso8601_to_time_t(CHAR_BUF<64>(colview[3].data(), colview[3].size()).get());
 		}
 
 		if (tend == 0) {

@@ -5797,6 +5797,8 @@ isagain :
 						continue;
 					}
 
+					heapbuf.reset();
+				
 					try {
 						COMM_HEADER			*phdr = (COMM_HEADER *)pdata;
 						EVENT_NOTIFY			*pnotify = (EVENT_NOTIFY *)(phdr + 1);
@@ -5881,6 +5883,10 @@ uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO>
 	int				ntracereq = 0, ntraceconn = 0;
 	bool				bret, conndone = false;
 	
+	GY_SCOPE_EXIT {
+		qbuf.reset();
+	};
+
 	auto writeconn = [&](std::vector<PARTHA_TRACE_CONN> & vec)
 	{
 		auto writeconnday = [&](PARTHA_TRACE_CONN *parr[], int narr, const char *pschema, const char *pdatetbl) -> int
@@ -6302,8 +6308,10 @@ int MCONN_HANDLER::check_new_req_trace_svcs(bool checkall) noexcept
 			}	
 
 			if (st < CAPSTAT_STARTING) {
-				listener.rtraceshr_->tlaststat_ = tcurr;
-				listener.rtraceshr_->curr_trace_defid_ = def.reqdefid_;
+				listener.rtraceshr_->tlaststat_ 	= tcurr;
+				listener.rtraceshr_->tstart_ 		= tcurr;
+				listener.rtraceshr_->tend_ 		= def.tend_;
+				listener.rtraceshr_->curr_trace_defid_ 	= def.reqdefid_;
 
 				listener.rtraceshr_->api_cap_status_.store(CAPSTAT_STARTING, mo_relaxed);
 			}
