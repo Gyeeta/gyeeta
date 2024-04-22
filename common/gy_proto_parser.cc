@@ -22,10 +22,18 @@ std::optional<GY_THREAD>			API_PARSE_HDLR::gtran_thr_;
 // Uncomment this to enable API Records print to file
 /*#define				GY_API_PRINT	"/tmp/gy_api_records___.txt"*/
 
-// Uncomment this to test the reorder handling
+// Uncomment this to enable pcap packet writes
+/*#define					GY_TEST_PCAPWRITE*/
+
+// Uncomment this to test the reorder handling (will also enable GY_TEST_PCAPWRITE)
 /*#define				GY_TEST_REORDER_PKTS	10*/
 
 #ifdef GY_TEST_REORDER_PKTS
+
+// Enable GY_TEST_PCAPWRITE if GY_TEST_PCAPWRITE set
+#ifndef 				GY_TEST_PCAPWRITE
+#define 				GY_TEST_PCAPWRITE
+#endif
 
 class TestRdr
 {
@@ -207,7 +215,6 @@ public :
 };
 
 static TestRdr				gtestrdr[MAX_API_PARSERS];		
-static GY_PCAP_WRITER			gpcapwr("/tmp/test_rdr_gyeeta.pcap", true /* use_unlocked_io */, false /* throw_if_exists */, GY_UP_GB(1));
 
 static bool test_reorders(uint8_t parseridx, SVC_INFO_CAP *psvc, ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata)
 {
@@ -220,6 +227,14 @@ static bool test_reorders(uint8_t parseridx, SVC_INFO_CAP *psvc, ParserMemPool::
 }	
 
 #endif /* GY_TEST_REORDER_PKTS */
+
+#ifdef GY_TEST_PCAPWRITE
+
+static GY_PCAP_WRITER			gpcapwr("/tmp/test_rdr_gyeeta.pcap", true /* use_unlocked_io */, false /* throw_if_exists */, GY_UP_GB(1));
+
+#endif
+
+
 
 API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint32_t api_max_len)
 		: reqbuffer_(API_TRAN::get_max_elem_size(api_max_len), API_TRAN::MAX_NUM_REQS, 32, API_TRAN::MAX_NUM_REQS/2, 
@@ -1985,7 +2000,7 @@ bool SVC_INFO_CAP::chk_drops_and_parse(SVC_SESSION & sess, ParserMemPool::Unique
 			// Need to set here as session could be initialized with a succeeding req due to reorder misses
 			common.tconnect_usec_ = timeval_to_usec(hdr.tv_);
 
-#ifdef	GY_TEST_REORDER_PKTS
+#ifdef	GY_TEST_PCAPWRITE
 			if (hdr.dir_ == DirPacket::DirInbound) {
 				gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
 			}
@@ -2230,7 +2245,7 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 			sess.reorder_.set_head_info(sess, hdr);
 		}	
 
-#ifdef	GY_TEST_REORDER_PKTS
+#ifdef	GY_TEST_PCAPWRITE
 		if (hdr.dir_ == DirPacket::DirInbound) {
 			gpcapwr.write_tcp_pkt(hdr.tv_, hdr.cliip_, hdr.serip_, hdr.cliport_, hdr.serport_, hdr.start_cli_seq_, hdr.nxt_ser_seq_, hdr.tcpflags_, pdata, hdr.datalen_);
 		}

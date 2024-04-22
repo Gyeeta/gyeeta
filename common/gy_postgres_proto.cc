@@ -507,7 +507,15 @@ start1 :
 				lenpkt -= ncopy;
 			}	
 
-			if (tknlen <= statpg_.nbytes_req_frag_ + statpg_.skip_req_bytes_ + lenpkt) {
+			auto			totlen = statpg_.nbytes_req_frag_ + statpg_.skip_req_bytes_;
+
+			if (tknlen <= totlen + lenpkt) {
+
+				if (statpg_.nbytes_req_frag_ == max_pg_req_token_) {
+					sptr += tknlen - totlen;
+					lenpkt -= tknlen - totlen;
+				}
+
 				ret = handle_req_token(tkntype, tknlen, preqfragbuf_, statpg_.nbytes_req_frag_);
 
 				if (ret < 0) {
@@ -666,18 +674,35 @@ start1 :
 			}	
 
 			if (statpg_.nbytes_resp_frag_ < max_pg_resp_token_) {
-				ncopy = std::min<uint32_t>(max_pg_resp_token_ - statpg_.nbytes_resp_frag_, tknlen - statpg_.nbytes_resp_frag_);
 
+				ncopy = std::min<uint32_t>(max_pg_resp_token_ - statpg_.nbytes_resp_frag_, tknlen - statpg_.nbytes_resp_frag_);
 				ncopy = std::min<uint32_t>(ncopy, lenpkt);
 
-				std::memcpy(presfragbuf_ + statpg_.nbytes_resp_frag_, sptr, ncopy);
+				/*
+				 * We currently skip MSG_B_DATAROW parsing...
+				 */
+				
+				if (tkntype != MSG_B_DATAROW) {
+					std::memcpy(presfragbuf_ + statpg_.nbytes_resp_frag_, sptr, ncopy);
+				}
+				else {
+					std::memcpy(presfragbuf_ + statpg_.nbytes_resp_frag_, sptr, std::min<uint32_t>(ncopy, 32));
+				}	
 
 				statpg_.nbytes_resp_frag_ += ncopy;
 				sptr += ncopy;
 				lenpkt -= ncopy;
 			}	
 
-			if (tknlen <= statpg_.nbytes_resp_frag_ + statpg_.skip_resp_bytes_ + lenpkt) {
+			auto			totlen = statpg_.nbytes_resp_frag_ + statpg_.skip_resp_bytes_;
+
+			if (tknlen <= totlen +  lenpkt) {
+
+				if (statpg_.nbytes_resp_frag_ == max_pg_resp_token_) {
+					sptr += tknlen - totlen;
+					lenpkt -= tknlen - totlen;
+				}
+
 				ret = handle_resp_token(tkntype, tknlen, presfragbuf_, statpg_.nbytes_resp_frag_);
 
 				if (ret < 0) {
@@ -1703,6 +1728,12 @@ int POSTGRES_SESSINFO::handle_resp_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen
 	
 	switch (tkntype) {
 	
+	case MSG_B_DATAROW :
+		/*
+		 * We currently skip MSG_B_DATAROW handling in parse_resp_pkt() : Change if needed as no complete MSG_B_DATAROW tokens will reach here...
+		 */
+		break;
+
 	case MSG_B_READY_FOR_QUERY :
 		
 		if (statpg_.nready_resp_pending_ > 0) {

@@ -1246,6 +1246,7 @@ public :
 	int listener_cluster_check() noexcept;
 
 	bool is_listener_deleted(const std::shared_ptr<TCP_LISTENER> & shrlisten) const noexcept;
+	TCP_LISTENER * get_listener_by_globid_slow_locked(uint64_t globid) const noexcept;
 
 	std::tuple<int, int, int> listener_stats_update(const std::shared_ptr<SERVER_CONNTRACK> & servshr, bool cpu_issue, bool mem_issue, GlobIDInodeMap &delidmap) noexcept;
 	bool host_status_update(const std::shared_ptr<SERVER_CONNTRACK> & servshr, bool cpu_issue, bool mem_issue, bool severe_cpu_issue, bool severe_mem_issue, \

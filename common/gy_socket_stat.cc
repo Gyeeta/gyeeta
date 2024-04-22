@@ -3858,6 +3858,32 @@ int TCP_SOCK_HANDLER::handle_api_trace_set(const comm::REQ_TRACE_SET *preq, int 
 	);
 }
 
+TCP_LISTENER * TCP_SOCK_HANDLER::get_listener_by_globid_slow_locked(uint64_t globid) const noexcept
+{
+	TCP_LISTENER			*pret = nullptr;
+
+	auto lam_listen = [&](TCP_LISTENER_ELEM_TYPE *pdatanode, void *arg1) noexcept -> CB_RET_E
+	{
+		auto 			plistener = pdatanode->get_cref().get();
+
+		if (gy_unlikely(plistener == nullptr)) {
+			return CB_OK;
+		}
+
+		if (plistener->glob_id_ == globid) {
+			pret = plistener;
+			return CB_BREAK_LOOP;
+		}
+
+		return CB_OK;
+	};
+
+	assert(false == gy_thread_rcu().is_rcu_thread_offline());
+	
+	listener_tbl_.walk_hash_table_const(lam_listen); 	
+
+	return pret;
+}	
 
 std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::shared_ptr<SERVER_CONNTRACK> & servshr, bool cpu_issue, bool mem_issue, GlobIDInodeMap & delidmap) noexcept
 {

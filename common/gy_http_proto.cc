@@ -480,8 +480,19 @@ lbl_chunk_end :
 							goto lbl_chunk_end;
 						}	
 
+						connstate.skip_till_eol_ = false;
+
 						pdata = ptmp + 2;
 						pktlen = pend - pdata;
+
+						if (pktlen >= 2 && pdata[0] == '\n' && pdata[1] == '\r') {
+							pktlen -= 2;
+							pdata += 2;
+							
+							set_resp_expected();
+
+							continue;
+						}	
 					}
 					else {
 						return 0;
@@ -490,9 +501,9 @@ lbl_chunk_end :
 				else {
 					pdata = ptmp + 1;
 					pktlen = pend - pdata;
-				}	
 				
-				connstate.skip_till_eol_ = false;
+					connstate.skip_till_eol_ = false;
+				}	
 			}	
 
 			if (pktlen <= 0) return 0;
@@ -737,6 +748,10 @@ lbl_chunk_hdr :
 					pktlen -= 2;
 					pdata += 2;
 				}	
+			}	
+			else if (connstate.data_chunk_len_ == 0 && pktlen == 1 && pdata[0] == '\r') {
+				connstate.fraglen_ = 1;
+				*reqfragbuf_ = '\r';
 			}	
 			else {
 				connstate.skip_till_eol_ = true;
@@ -1264,8 +1279,19 @@ lbl_chunk_end :
 							goto lbl_chunk_end;
 						}	
 
+						connstate.skip_till_eol_ = false;
+						
 						pdata = ptmp + 2;
 						pktlen = pend - pdata;
+
+						if (pktlen >= 2 && pdata[0] == '\n' && pdata[1] == '\r') {
+							pktlen -= 2;
+							pdata += 2;
+							
+							request_done();
+
+							continue;
+						}	
 					}
 					else {
 						return 0;
@@ -1274,9 +1300,9 @@ lbl_chunk_end :
 				else {
 					pdata = ptmp + 1;
 					pktlen = pend - pdata;
+
+					connstate.skip_till_eol_ = false;
 				}	
-				
-				connstate.skip_till_eol_ = false;
 			}	
 
 			if (pktlen <= 0) return 0;
@@ -1517,6 +1543,10 @@ lbl_chunk_hdr :
 					pktlen -= 2;
 					pdata += 2;
 				}	
+			}	
+			else if (connstate.data_chunk_len_ == 0 && pktlen == 1 && pdata[0] == '\r') {
+				connstate.fraglen_ = 1;
+				*respfragbuf_ = '\r';
 			}	
 			else {
 				connstate.skip_till_eol_ = true;

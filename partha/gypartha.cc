@@ -147,17 +147,25 @@ int PARTHA_C::init_all_singletons()
 
 /*
  * Current format of tmp/partha_runtime.json :
+ * XXX tracereq is only valid under CONDEXEC and DEBUGEXECN(5)
 {
 	"debuglevel"			:	10,
 	"response_sampling_percent"	:	50,
 	"log_use_utc_time"		:	false,
-	"is_kubernetes"			:	true
+	"is_kubernetes"			:	true,
+	"tracereq" : [
+		{
+			"svcid"		:	"f3ba5d643a5eb14b",
+			"tend"		:	"2024-04-22 11:00:00+0530"
+		}
+	]	
 }		 	
  */
 
 int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 {
 	try {
+		auto 				ptcp = TCP_SOCK_HANDLER::get_singleton();
 		JSON_DOCUMENT<2048, 2048>	jdoc;
 		auto				& doc = jdoc.get_doc();
 
@@ -195,7 +203,6 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 			int 		nparam = aiter->value.GetInt();
 
 			if (nparam >= 0 && nparam <= 100) {
-				auto ptcp = TCP_SOCK_HANDLER::get_singleton();
 				if (ptcp) {
 					if (ptcp->pebpf_) {
 						INFOPRINT_OFFLOAD("Response Time Sampling Percent changes are seen : New Run time percent is %hhu%%\n", nparam);
@@ -209,7 +216,6 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 		if (auto aiter = doc.FindMember("enable_response_probe"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 			bool 		enable = aiter->value.GetBool();
 
-			auto ptcp = TCP_SOCK_HANDLER::get_singleton();
 			if (ptcp) {
 				if (ptcp->pebpf_) {
 					INFOPRINT_OFFLOAD("Response kprobe runtime changes are seen : Response probes need to be %s\n", enable ? "enabled" : "disabled");
@@ -227,6 +233,53 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 				ptask->set_is_kubernetes(enable);
 			}
 		}	
+
+		CONDEXEC(
+			DEBUGEXECN(5,
+
+				if (auto aiter = doc.FindMember("tracereq"); ptcp && ((aiter != doc.MemberEnd()) && (aiter->value.IsArray()))) {
+					for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+						if (true == aiter->value[i].IsObject()) {
+							const auto 			& tobj = aiter->value[i].GetObject();
+							uint64_t			svcid = 0;
+							const char			*ptend = nullptr;
+							time_t				tend = 0;
+
+							if (auto it = tobj.FindMember("svcid"); ((it != tobj.MemberEnd()) && (it->value.IsString()))) {
+								svcid = string_to_number<uint64_t>(it->value.GetString(), 16);
+							}	
+							
+							if (svcid == 0) continue;
+
+							if (auto it = tobj.FindMember("tend"); ((it != tobj.MemberEnd()) && (it->value.IsString()))) {
+								ptend = it->value.GetString();
+								tend = gy_iso8601_to_time_t(ptend);
+							}	
+								
+							RCU_LOCK_SLOW			slowlock;
+							TCP_LISTENER			*plistener;
+
+							plistener = ptcp->get_listener_by_globid_slow_locked(svcid);
+
+							if (!plistener) {
+								WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Trace Request Command Line option set by svcid 0x%016lx not found...\n", svcid);
+								continue;
+							}	
+
+							comm::REQ_TRACE_SET		req(plistener->glob_id_, plistener->ns_ip_port_, plistener->comm_, tend);
+
+							INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Trace Request Command Line option : Starting Trace for Listener %s 0x%016lx with tend %s\n",
+									plistener->comm_, plistener->glob_id_, ptend);
+
+							ptcp->handle_api_trace_set(&req, 1);
+						}
+					}
+				}
+
+
+			);
+		);
+
 
 		return 0;
 	}
