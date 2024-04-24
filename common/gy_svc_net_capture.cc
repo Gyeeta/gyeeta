@@ -37,12 +37,10 @@ SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid, bool disable_api_capture, uint3
 
 	if (pcpumem) {
 		if (auto tcpu = pcpumem->get_number_of_cores(); tcpu == 1 && !disable_api_capture) {
-			WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Host CPU Count allowed is too low (%u). API Captures Disabled..\n", tcpu);
-			allow_api_cap_.store(false, mo_relaxed);
+			WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Host CPU Count allowed is too low (%u). Request Trace API Captures may have drops..\n", tcpu);
 		}	
 		else if (auto tmem = GY_DOWN_GB(pcpumem->get_total_memory()); tmem < 2 && !disable_api_capture) {
-			WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Host System Memory is too low (%lu GB). API Captures Disabled..\n", tmem);
-			allow_api_cap_.store(false, mo_relaxed);
+			WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Host System Memory is too low (%lu GB). Request Trace API Captures may have drops..\n", tmem);
 		}	
 	}
 

@@ -2153,7 +2153,7 @@ done :
 	std::pair<int, int> insert_close_conn_records(PARTHA_INFO *prawpartha, time_t currtsec, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool);
 
 	uint32_t handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, \
-			STR_WR_BUF & strbuf, STATS_STR_MAP & statsmap);
+			STR_WR_BUF & strbuf, bool isdummy = false);
 	bool 	handle_new_req_trace_def(comm::SM_REQ_TRACE_DEF_NEW *pdef, int nevents, uint8_t *pendptr);
 	bool 	handle_req_trace_def_disable(comm::SM_REQ_TRACE_DEF_DISABLE *pdef, int nevents, uint8_t *pendptr);
 	int	check_new_req_trace_svcs(bool checkall) noexcept;

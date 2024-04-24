@@ -5804,7 +5804,7 @@ isagain :
 						EVENT_NOTIFY			*pnotify = (EVENT_NOTIFY *)(phdr + 1);
 						REQ_TRACE_TRAN			*pone = (REQ_TRACE_TRAN *)(pnotify + 1);
 						
-						ntotalreq += handle_trace_requests(parshr, pone, pnotify->nevents_, dbpool, heapbuf, statsmap);
+						ntotalreq += handle_trace_requests(parshr, pone, pnotify->nevents_, dbpool, heapbuf);
 					}
 					GY_CATCH_EXPRESSION(
 						DEBUGEXECN(1,
@@ -5864,8 +5864,10 @@ isagain :
 	);
 }
 
-uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, 
-							STR_WR_BUF & qbuf, STATS_STR_MAP & statsmap)
+/*
+ * Can be called both from L2 Misc and L2 Trace threads...
+ */
+uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO> & partha_shr, comm::REQ_TRACE_TRAN * ptran, int nitems, PGConnPool & dbpool, STR_WR_BUF & qbuf, bool isdummy)
 {
 	PARTHA_INFO			*prawpartha = partha_shr.get();
 
@@ -6141,11 +6143,16 @@ d1 :
 	if (!conndone) {
 		qbuf.reset();
 
+		std::vector<PARTHA_TRACE_CONN>	vec;
+
 		SCOPE_GY_MUTEX			slock(prawpartha->trace_conn_mutex_);
 
-		std::vector<PARTHA_TRACE_CONN>	vec = std::move(prawpartha->trace_conn_vec_);
-		
+		if (prawpartha->trace_conn_vec_.size() > 0) {
+			vec = std::move(prawpartha->trace_conn_vec_);
+		}
+
 		prawpartha->tlast_trace_conn_.store(0, mo_relaxed);
+
 		slock.unlock();
 
 		if (vec.empty()) {
@@ -7547,15 +7554,38 @@ bool MCONN_HANDLER::handle_partha_active_conns(const std::shared_ptr<PARTHA_INFO
 
 	prawpartha->tlast_active_insert_ = tcur;
 
-	// Clear Trace Conns vector if no requests seen lately
-	if (auto tt = prawpartha->tlast_trace_conn_.load(mo_acquire); tt > 0 && tt + 200 < time(nullptr)) {
-		SCOPE_GY_MUTEX			slock(prawpartha->trace_conn_mutex_);
+	time_t 			ttrace = prawpartha->tlast_trace_conn_.load(mo_acquire); 
 
-		prawpartha->trace_conn_vec_.clear();
-		prawpartha->trace_conn_vec_.shrink_to_fit();
+	if (ttrace > 0) {
+		time_t				tc = time(nullptr);
 
-		prawpartha->tlast_trace_conn_.store(0, mo_relaxed);
-	}	
+		if (ttrace + 200 > tc) {
+
+			const auto flushconn = [&]() 
+			{
+				REQ_TRACE_TRAN			tran;
+				STRING_BUFFER<128 * 1024>	strbuf;
+
+				handle_trace_requests(partha_shr, &tran, 0, dbpool, strbuf, true /* isdummy */);
+			};
+
+			if (ttrace < tc - 10) {
+				/*
+				 * Simulate a dummy Trace Request to enable Trace conn flush as no new Trace Requests seen lately...
+				 */ 
+				flushconn();
+			}
+		}
+		else {
+			// Clear Trace Conns vector as no requests/active conns seen lately
+			SCOPE_GY_MUTEX			slock(prawpartha->trace_conn_mutex_);
+
+			prawpartha->trace_conn_vec_.clear();
+			prawpartha->trace_conn_vec_.shrink_to_fit();
+
+			prawpartha->tlast_trace_conn_.store(0, mo_relaxed);
+		}	
+	}
 
 	DEBUGEXECN(12,
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "%s : Received Active Conn Stats for %d Listeners and %d Client Records : Updated %d Close Listener and %d Close Client connections to DB\n",
@@ -10413,7 +10443,7 @@ void MCONN_HANDLER::handle_shyama_tcp_ser(comm::SHYAMA_SER_TCP_INFO * pone, int 
 
 			if (pserhost->trace_conn_vec_.size() < MAX_TRACE_CONN_VEC) {
 				pserhost->trace_conn_vec_.emplace_back(tc, plistener->glob_id_, 
-						pone->ser_nat_conn_hash_, pone->cli_task_aggr_id_, pserhost->machine_id_, gmadhava_id_, plistener->comm_, pone->cli_comm_,
+						pone->ser_nat_conn_hash_, pone->cli_task_aggr_id_, pone->cli_partha_machine_id_, pone->cli_madhava_id_, plistener->comm_, pone->cli_comm_,
 						!!pone->cli_related_listen_id_);
 
 				pserhost->tlast_trace_conn_.store(tc, mo_relaxed);
