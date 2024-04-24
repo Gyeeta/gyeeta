@@ -7437,9 +7437,10 @@ int SHCONN_HANDLER::handle_misc_madhava_reg(MS_REGISTER_REQ_S *pms, const DB_WRI
 	if (is_new) {
 		statsmap["New Madhava Registered"]++;
 		
-		INFOPRINT_OFFLOAD("Registered New Madhava Server \'%s\' from Host %s Port %hu with ID %016lx from Remote IP %s with max Partha Nodes %u and current Partha Nodes %u.\n", 
-			pms->madhava_name_, pms->madhava_hostname_, pms->madhava_port_, pminfo->madhava_id_, pminfo->remote_ip_.printaddr(STRING_BUFFER<128>().get_str_buf()), pminfo->max_partha_nodes_,
-			pms->last_partha_nodes_);
+		INFOPRINT_OFFLOAD("Registered New Madhava Server \'%s\' from Host %s Port %hu with ID %016lx from Region %s Zone %s and Remote IP %s "
+					"with max Partha Nodes %u and current Partha Nodes %u.\n", 
+			pms->madhava_name_, pms->madhava_hostname_, pms->madhava_port_, pminfo->madhava_id_, pminfo->region_name_, pminfo->zone_name_, 
+			pminfo->remote_ip_.printaddr(STRING_BUFFER<128>().get_str_buf()), pminfo->max_partha_nodes_, pms->last_partha_nodes_);
 	}
 	else {
 		statsmap["Existing Madhava Registered"]++;
