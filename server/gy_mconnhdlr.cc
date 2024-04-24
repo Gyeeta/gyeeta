@@ -6241,10 +6241,10 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 		}
 		else if (pone->lencrit_ > 0) {
 			auto 			[mit, isok] = defmap.try_emplace(pone->reqdefid_, pone->reqdefid_, pone->name_, 
-										std::string_view((const char *)(pone + 1), pone->lencrit_), pone->tend_);
+										std::string_view((const char *)(pone + 1), pone->lencrit_ - 1), pone->tend_);
 			
 			if (!isok) {
-				mit->second = REQ_TRACE_DEF(pone->reqdefid_, pone->name_, std::string_view((const char *)(pone + 1), pone->lencrit_), pone->tend_);
+				mit->second = REQ_TRACE_DEF(pone->reqdefid_, pone->name_, std::string_view((const char *)(pone + 1), pone->lencrit_ - 1), pone->tend_);
 			}	
 		}	
 	}
