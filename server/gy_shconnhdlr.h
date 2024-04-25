@@ -1139,6 +1139,7 @@ public :
 	std::atomic<uint64_t>			curr_madhava_id_	{0};
 	std::atomic<uint64_t>			nmadhava_partha_	{0};
 	std::atomic<uint64_t>			last_madhava_chg_tusec_	{0};
+	std::atomic<uint64_t>			last_new_madhava_cusec_	{0};
 
 	GY_MUTEX				pardb_mutex_;
 	ParthaDbMap				pardbmap_;

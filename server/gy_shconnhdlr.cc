@@ -7287,6 +7287,7 @@ int SHCONN_HANDLER::handle_misc_madhava_reg(MS_REGISTER_REQ_S *pms, const DB_WRI
 			is_new = true;
 
 			last_madhava_chg_tusec_.store(get_usec_time(), mo_release);
+			last_new_madhava_cusec_.store(get_usec_clock(), mo_release);
 		}
 		else {
 			pminfo = mstatshr.get_cref().get();
@@ -7754,10 +7755,18 @@ int SHCONN_HANDLER::handle_misc_partha_reg(PS_REGISTER_REQ_S *preg, const DB_WRI
 		if (errbyreassign) {
 			presp->error_code_	= ERR_MADHAVA_UNAVAIL;
 			
-			size_t			nmad = madhava_tbl_.count_slow();
-
 			snprintf(presp->error_string_, sizeof(presp->error_string_), 
 					"Madhava server assigned is no longer available or curently not accepting new hosts. Please try connecting after some time");
+						
+			send_par();
+
+			return -1;
+		}	
+
+		if (last_new_madhava_cusec_.load(mo_acquire) + 15 * GY_USEC_PER_SEC > get_usec_clock()) {
+			presp->error_code_	= ERR_MADHAVA_UNAVAIL;
+			
+			snprintf(presp->error_string_, sizeof(presp->error_string_), "New Madhava server is being initialized... Please try connecting after some time");
 						
 			send_par();
 
