@@ -6754,17 +6754,21 @@ bool MCONN_HANDLER::handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> &
 
 		auto				oldstatus = prtraceshr->api_cap_status_.load(mo_acquire);
 
-		if (pone->status_ != oldstatus) {
+		prtraceshr->nrequests_	= pone->nrequests_;
+		prtraceshr->nerrors_	= pone->nerrors_;
+		prtraceshr->tlaststat_ 	= tcurr;
+
+		if (pone->status_ != oldstatus || pone->status_ < CAPSTAT_STARTING) {
 			if (pone->status_ != CAPSTAT_STARTING && nlistarr < (int)REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM) {
 				plistarr[nlistarr++] = pone;
+
+				if (pone->status_ == oldstatus) {
+					pone->nrequests_ |= (1ul << 63);
+				}	
 			}
 
 			prtraceshr->api_cap_status_.store(pone->status_, mo_release);
 		}	
-
-		prtraceshr->nrequests_	= pone->nrequests_;
-		prtraceshr->nerrors_	= pone->nerrors_;
-		prtraceshr->tlaststat_ 	= tcurr;
 
 		prtraceshr->api_proto_.store(pone->proto_, mo_relaxed);
 		prtraceshr->api_is_ssl_.store(pone->is_ssl_, mo_relaxed);
@@ -6807,6 +6811,10 @@ bool MCONN_HANDLER::handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> &
 
 		for (int i = 0; i < nlistarr; ++i) {
 			REQ_TRACE_STATUS		*pstat = plistarr[i];
+
+			if (pstat->nrequests_ & (1ul << 63)) {
+				continue;
+			}
 
 			if (pstat->status_ == CAPSTAT_UNINIT || pstat->status_ == CAPSTAT_FAILED) { 
 				for (auto && [defid, smap] : trace_elems_.listmap_) {
