@@ -452,6 +452,12 @@ start1 :
 			}		
 			tknlen -= 4;
 
+			if (login_complete_ && (tdstrbuf_.size() == 0) && 
+				(tkntype != MSG_F_COPYFAIL) && (tkntype != MSG_FB_COPYDATA) && (tkntype != MSG_FB_COPYDONE)) {
+
+				set_new_req();
+			}
+
 			if (lenpkt < tknlen) {
 				statpg_.req_tkn_frag_ = 1;
 				statpg_.req_hdr_fraglen_ = 5;
@@ -731,12 +737,6 @@ int POSTGRES_SESSINFO::handle_req_token(PG_MSG_TYPES_E tkntype, uint32_t tknlen,
 	const bool			istrunc = (maxlen < (int)tknlen);
 	uint8_t				*pstart = sptr, *pend = sptr + maxlen;
 	
-	if (login_complete_ && (tdstrbuf_.size() == 0) && 
-		(tkntype != MSG_F_COPYFAIL) && (tkntype != MSG_FB_COPYDATA) && (tkntype != MSG_FB_COPYDONE)) {
-
-		set_new_req();
-	}
-
 	switch (tkntype) {
 	
 	case MSG_F_QUERY :

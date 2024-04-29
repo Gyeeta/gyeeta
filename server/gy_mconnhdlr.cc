@@ -6480,7 +6480,9 @@ int MCONN_HANDLER::check_new_req_trace_svcs(bool checkall) noexcept
 
 		wscope.unlock();
 
-		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sent %d New Request Trace Messages to %lu Partha hosts...\n", nmsg, rsetmap.size());
+		if (nmsg > 0) {
+			INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Sent %d New Request Trace Messages to %lu Partha hosts...\n", nmsg, rsetmap.size());
+		}
 
 		return 0;
 	}

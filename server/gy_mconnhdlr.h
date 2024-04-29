@@ -1668,7 +1668,11 @@ public :
 
 		static_assert(subsys == SUBSYS_SVCSTATE || subsys == SUBSYS_EXTSVCSTATE || subsys == SUBSYS_SVCINFO, "Only valid for svc subsystems");
 
-		if (0 == critset.get_total_ncriteria() || !critset.has_subsystem(subsys)) {
+		if (0 == critset.get_total_ncriteria()) {
+			return 0;
+		}
+		
+		if (!critset.has_subsystem(subsys) && !critset.has_subsystem(SUBSYS_HOST, true /* match_all */)) {
 			return 0;
 		}	
 

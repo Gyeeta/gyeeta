@@ -2548,7 +2548,7 @@ static constexpr JSON_DB_MAPPING json_db_tracereq_arr[] =
 { "resp",		"response",		GYSLEN("resp"),		FIELD_RESP,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "netin",		"bytesin",		GYSLEN("netin"),	FIELD_NETIN,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "netout",		"bytesout",		GYSLEN("netout"),	FIELD_NETOUT,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "err", 		"errcode", 		GYSLEN("err"),		FIELD_ERR,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
+{ "err", 		"errorcode", 		GYSLEN("err"),		FIELD_ERR,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
 { "errtxt",		"errtxt",		GYSLEN("errtxt"),	FIELD_ERRTXT,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
 { "status", 		"statuscode", 		GYSLEN("status"),	FIELD_STATUS,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
 { "app",		"appname",		GYSLEN("app"),		FIELD_APP,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
