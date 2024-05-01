@@ -406,6 +406,8 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 
 					}	
 					else if (psvc) {
+						// Reset to prevent failure status
+						listenshr.reset();
 						continue;
 					}	
 

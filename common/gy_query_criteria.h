@@ -266,15 +266,30 @@ struct NUMBER_CRITERION
 		}	
 	}	
 
-	NUMBER_CRITERION(int8_t val) noexcept : int8(val), type_(NUM_INT8), isvalid_(true) {}
+	NUMBER_CRITERION(int8_t val) noexcept : type_(NUM_INT8), isvalid_(true) 
+	{
+		int8 = val;
+	}
 
-	NUMBER_CRITERION(int16_t val) noexcept : int16(val), type_(NUM_INT16), isvalid_(true) {}
+	NUMBER_CRITERION(int16_t val) noexcept : type_(NUM_INT16), isvalid_(true) 
+	{
+		int16 = val;
+	}
 
-	NUMBER_CRITERION(int32_t val) noexcept : int32(val), type_(NUM_INT32), isvalid_(true) {}
+	NUMBER_CRITERION(int32_t val) noexcept : type_(NUM_INT32), isvalid_(true)
+	{
+		int32 = val;
+	}
 
-	NUMBER_CRITERION(int64_t val) noexcept : int64(val), type_(NUM_INT64), isvalid_(true) {}
+	NUMBER_CRITERION(int64_t val) noexcept : type_(NUM_INT64), isvalid_(true)
+	{
+		int64 = val;
+	}
 
-	NUMBER_CRITERION(double val) noexcept : dbl(val), type_(NUM_DOUBLE), isvalid_(true) {}
+	NUMBER_CRITERION(double val) noexcept : type_(NUM_DOUBLE), isvalid_(true)
+	{
+		dbl = val;
+	}
 
 	int8_t get_int8() const noexcept
 	{
