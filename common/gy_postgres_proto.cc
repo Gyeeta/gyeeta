@@ -1,8 +1,6 @@
 //  SPDX-FileCopyrightText: 2022 Exact Solutions, Inc.
 //  SPDX-License-Identifier: GPL-3.0-or-later
 
-#if 1
-
 #include			"gy_postgres_proto.h"
 #include			"gy_postgres_proto_detail.h"
 #include			"gy_proto_parser.h"
@@ -2146,4 +2144,3 @@ void POSTGRES_SESSINFO::print_stats(STR_WR_BUF & strbuf, time_t tcur, time_t tla
 
 } // namespace gyeeta
 
-#endif
