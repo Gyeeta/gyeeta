@@ -292,7 +292,6 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 		else {
 			orig_ssl_ = false;
 		}	
-		listenshr->api_cap_started_.store(CAPSTAT_ACTIVE, std::memory_order_release);
 	}
 
 	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();

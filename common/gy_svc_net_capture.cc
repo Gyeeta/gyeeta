@@ -1266,7 +1266,9 @@ SVC_API_PARSER::SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool 
 		tstart_(tstart), svcinfocap_(std::make_shared<SVC_INFO_CAP>(listenshr_, *pgsvccap->apihdlr_.get())), 
 		serport_(listenshr_->ns_ip_port_.ip_port_.port_), is_rootns_(is_rootns)
 {
-	listenshr_->api_cap_started_.store(CAPSTAT_STARTING, mo_release);
+	if (listenshr_->api_cap_started_.load(mo_acquire) != CAPSTAT_ACTIVE) {
+		listenshr_->api_cap_started_.store(CAPSTAT_STARTING, mo_release);
+	}
 }
 
 
