@@ -40,7 +40,7 @@ bool SHCONN_HANDLER::handle_node_query(const std::shared_ptr<SHCONNTRACK> & conn
 		}	
 
 		CONDEXEC(
-			DEBUGEXECN(12,
+			DEBUGEXECN(11,
 				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Node Query seen : [%s]\n", CHAR_BUF<1024>(pjson, pendptr - pjson).get()); 
 			);
 		);

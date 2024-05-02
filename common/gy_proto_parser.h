@@ -508,10 +508,6 @@ public :
 	SvcSessMap				sessmap_;
 	SessReorderMap				sessrdrmap_;
 	SVC_PARSE_STATS				laststats_;
-
-	/*
-	 * Lazy init fields as the constructor is called under RCU lock
-	 */
 	std::unique_ptr<PROTO_DETECT>		protodetect_;
 
 	uint64_t 				glob_id_		{0};
@@ -538,7 +534,7 @@ public :
 
 	void destroy(uint64_t tusec) noexcept;
 
-	void lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept;
+	void svc_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept;
 
 	void schedule_ssl_probe();
 

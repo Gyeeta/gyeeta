@@ -266,6 +266,9 @@ API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint
 
 API_PARSE_HDLR::~API_PARSE_HDLR() noexcept		= default;
 
+/*
+ * Called by the SVC_NET_CAPTURE::schedthr_ only
+ */
 SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_PARSE_HDLR & apihdlr)
 	: apihdlr_(apihdlr), 
 	svcweak_(
@@ -291,6 +294,14 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 		}	
 		listenshr->api_cap_started_.store(CAPSTAT_ACTIVE, std::memory_order_release);
 	}
+
+	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();
+
+	if (!psvcnet) {
+		return;
+	}	
+
+	svc_init_blocking(*psvcnet);
 }	
 
 SVC_INFO_CAP::~SVC_INFO_CAP() noexcept
@@ -319,10 +330,8 @@ void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
 	}
 }
 
-/*
- * Called by the SVC_NET_CAPTURE::schedthr_ only
- */
-void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
+// Called from constructor
+void SVC_INFO_CAP::svc_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 {
 	try {
 		tribool				isssl = indeterminate;
@@ -333,7 +342,11 @@ void SVC_INFO_CAP::lazy_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 			return;
 		}	
 
+		SCOPE_GY_MUTEX			slock(listenshr->svcweak_lock_);
+
 		listenshr->api_svcweak_ = weak_from_this();
+
+		slock.unlock();
 
 		if (proto_ == PROTO_UNINIT) {
 			if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_INVALID) {
@@ -1088,7 +1101,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 			if (stopped_parser_tusec_.load(mo_relaxed) == 0) {
 
 				WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Service API Capture being stopped as Protocol Detected as TLS Encrypted for Listener %s Port %hu ID %lx : "
-					"But SSL Capture cannot be enabled which may be because of unsupported binary (Golang, Java based) or an unsupported SSL Library : Reason seen is %s\n", 
+					"But SSL Capture cannot be enabled which may be because of [%s] or unsupported binary (Golang, Java based) or an unsupported SSL Library\n", 
 					comm_, ns_ip_port_.ip_port_.port_, glob_id_, bool(api_cap_err_) ? api_cap_err_.get() : "unspecified");
 
 				schedule_stop_capture();
@@ -2465,6 +2478,17 @@ void SVC_INFO_CAP::schedule_ssl_probe()
 
 	if (!psvcnet) {
 		return;
+	}	
+
+	auto				*papihdlr0 = psvcnet->get_api_handler(0);
+	
+	if (!papihdlr0 || papihdlr0->allow_ssl_probe_.load(mo_relaxed) == false) {
+		ssl_req_.store(SSL_REQ_E::SSL_REJECTED, mo_relaxed);
+
+		api_cap_err_ = std::make_unique<char []>(sizeof("SSL User Probes disalowed") + 1);
+
+		std::memcpy(api_cap_err_.get(), "SSL User Probes disalowed", sizeof("SSL User Probes disalowed"));
+		return;	
 	}	
 
 	ssl_req_.store(SSL_REQ_E::SSL_REQUEST_SCHED, mo_relaxed);

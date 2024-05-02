@@ -4053,6 +4053,7 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 
 				if (plistener->api_cap_started_.load(mo_acquire) == CAPSTAT_ACTIVE) {
 					SCOPE_GY_MUTEX			slock(plistener->svcweak_lock_);
+
 					auto				svcshr = plistener->api_svcweak_.lock();
 					
 					slock.unlock();

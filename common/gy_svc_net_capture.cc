@@ -335,8 +335,7 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 		INLINE_STACK_VECTOR<REQ_TRACE_STATUS, REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM * sizeof(REQ_TRACE_STATUS)>	reqvec;
 
 		STRING_BUFFER<1024>		strbuf;
-		SVC_INFO_CAP			*capcachearr[MAX_SVC_API_CAP * 2];
-		uint32_t			naddsvc = 0, ndelsvc = 0, ncapsvc = ncap_api_svc_.load(mo_relaxed), ncapcache = 0;
+		uint32_t			naddsvc = 0, ndelsvc = 0, ncapsvc = ncap_api_svc_.load(mo_relaxed);
 		const char 			*pgloberr = nullptr;
 
 		assert(gy_get_thread_local().get_thread_stack_freespace() >= 256 * 1024);
@@ -362,7 +361,6 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 			}
 
 			strbuf.reset();
-			ncapcache = 0;
 
 			try {
 				auto 				[it, success] = apicallmap_.try_emplace(inode, inode, *this, inode == rootnsid_);
@@ -449,10 +447,6 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 					naddsvc++;
 					ncapsvc++;
 
-					if (ncapcache + 1 < GY_ARRAY_SIZE(capcachearr)) {
-						capcachearr[ncapcache++] = psvcinfo;
-					}
-
 					nsone.port_listen_tbl_.insert_duplicate_elem(psvc, get_uint32_hash(port));
 
 					if (!portused) {
@@ -467,13 +461,6 @@ void SVC_NET_CAPTURE::add_api_listeners(SvcInodeMap & nslistmap) noexcept
 					INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Starting API Network Capture for %s Network Namespace %lu for new listeners : %s\n", 
 						success ? "new" : "existing", nsone.netinode_, strbuf.data());
 				}
-
-				// Lazy init of Svc Captures after RCU read lock unlocked
-				for (uint32_t i = 0; i < ncapcache; ++i) {
-					if (capcachearr[i]) {
-						capcachearr[i]->lazy_init_blocking(*this);
-					}	
-				}	
 
 				if (torestart) {
 					if (nsone.tstart_ > tcurr - 10) {
