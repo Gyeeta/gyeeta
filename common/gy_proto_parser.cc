@@ -2484,9 +2484,15 @@ void SVC_INFO_CAP::schedule_ssl_probe()
 	if (!papihdlr0 || papihdlr0->allow_ssl_probe_.load(mo_relaxed) == false) {
 		ssl_req_.store(SSL_REQ_E::SSL_REJECTED, mo_relaxed);
 
-		api_cap_err_ = std::make_unique<char []>(sizeof("SSL User Probes disalowed") + 1);
+		const char			ebuf[] = "SSL User Probes disallowed";
+		char				*pebuf = new char[sizeof(ebuf)];
 
-		std::memcpy(api_cap_err_.get(), "SSL User Probes disalowed", sizeof("SSL User Probes disalowed"));
+		std::memcpy(pebuf, ebuf, sizeof(ebuf));
+
+		GY_CC_BARRIER();
+
+		api_cap_err_.reset(pebuf);
+
 		return;	
 	}	
 
