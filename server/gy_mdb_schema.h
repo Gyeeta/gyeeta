@@ -11,7 +11,7 @@ namespace madhava {
 extern const int 		CURR_DB_VERSION;
 
 static constexpr const char	*db_glob_partition_tbls[] = {
-	"notificationtbl", 
+	"notificationtbl", "tracestatustbl",
 };	
 
 // Must end with "tbl" as its used in alerts db queries

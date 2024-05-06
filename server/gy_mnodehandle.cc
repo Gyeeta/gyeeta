@@ -9411,7 +9411,7 @@ bool MCONN_HANDLER::web_query_traceuniq(const std::shared_ptr<MCONNTRACK> & conn
 
 CRIT_RET_E MCONN_HANDLER::tracestatus_filter_match(const CRITERIA_SET & criteria, const REQ_TRACE_SVC & elem, const MREQ_TRACE_SVC & rtrace, const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const 
 {
-	const SUBSYS_CLASS_E		subsysarr[] {SUBSYS_TRACESTATUS, SUBSYS_HOST};
+	const SUBSYS_CLASS_E		subsysarr[] {SUBSYS_TRACESTATUS};
 
 	auto get_num_field = [&](const JSON_DB_MAPPING *pfield, SUBSYS_CLASS_E subsys) -> NUMBER_CRITERION
 	{
@@ -9497,7 +9497,7 @@ CRIT_RET_E MCONN_HANDLER::tracestatus_filter_match(const CRITERIA_SET & criteria
 }
 
 
-bool MCONN_HANDLER::web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+bool MCONN_HANDLER::web_curr_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr)
 {
 	try {
 		using SVCID_SET			= INLINE_STACK_HASH_SET<uint64_t, 16 * 1024, HASH_SAME_AS_KEY<uint64_t>>;
@@ -9505,6 +9505,7 @@ bool MCONN_HANDLER::web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & co
 		SVCID_SET			svcset;
 		int				nrec = 0;
 		bool				bret;
+		const auto			timebuf = gy_localtime_iso8601_sec(time(nullptr));
 
 		qryopt.comp_criteria_init();	
 
@@ -9552,6 +9553,9 @@ bool MCONN_HANDLER::web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & co
 			}	
 
 			writer.StartObject();
+
+			writer.KeyConst("time");
+			writer.String(timebuf.get());
 
 			writer.KeyConst("svcid");
 			writer.String(number_to_string(elem.glob_id_, "%016lx").get(), 16);
@@ -9669,6 +9673,350 @@ done :
 		throw;
 	}	
 }
+
+bool MCONN_HANDLER::web_db_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 5000 /* max_msec_wait */, true /* reset_on_timeout */);
+
+	if (!pconn) {
+		DEBUGEXECN(1,
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to query Postgres for Trace Status\n");
+		);
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		constexpr const char errbuf[] = "Trace Status Query : Database Querying Error : Failed to get an idle connection. Please try later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	int				ret;
+	bool				bret, origpointintime = qryopt.is_pointintime(), pointintime = origpointintime, updqryopt = false;
+	time_t				tcurr = time(nullptr);
+	struct timeval			tvstart, tvend, origtvstart, origtvend;
+	char				origstarttime[48], origendtime[48];
+	
+	GY_SCOPE_EXIT {
+		if (updqryopt == true) {
+			qryopt.set_timestamps(origstarttime, origendtime, origtvstart, origtvend, origpointintime);
+		}
+	};	
+
+	tvstart = qryopt.get_start_timeval(); 
+	tvend 	= qryopt.get_end_timeval();
+
+	if (tvend.tv_sec - tvstart.tv_sec < (int64_t)INFO_DB_UPDATE_SEC) {
+		origtvstart	= tvstart;
+		origtvend	= tvend;
+		GY_STRNCPY(origstarttime, qryopt.get_starttime(), sizeof(origstarttime));
+		GY_STRNCPY(origendtime, qryopt.get_endtime(), sizeof(origendtime));
+		updqryopt	= true;
+		
+		tvstart.tv_sec = tvend.tv_sec - INFO_DB_UPDATE_SEC;
+		tvend.tv_sec += INFO_DB_UPDATE_SEC/3;
+		qryopt.set_timestamps(gy_localtime_iso8601_sec(tvstart.tv_sec).get(), gy_localtime_iso8601_sec(tvend.tv_sec).get(), tvstart, tvend, true /* pointintime */);
+	
+		pointintime 	= true;
+	}	
+
+	auto 				datetbl = get_db_day_partition(tvstart.tv_sec, tvend.tv_sec, 0);
+
+	const JSON_DB_MAPPING		*colarr[MAX_MULTI_HOST_COLUMN_LIST];
+	
+	auto [ncol, colspec] 		= qryopt.get_all_column_list(colarr, GY_ARRAY_SIZE(colarr), SUBSYS_TRACESTATUS);
+
+	if (tcurr - db_storage_days_ * GY_SEC_PER_DAY > (uint64_t)tvend.tv_sec) {
+		char			ebuf[256];
+		size_t			esz;
+		
+		esz = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Trace Status Query : Time Requested not present in DB : Max Days of DB storage = %u", db_storage_days_);
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_DATA_NOT_FOUND)) {
+			send_json_error_resp(connshr, ERR_DATA_NOT_FOUND, pquery->get_seqid(), ebuf, esz, pthrpoolarr);
+		}
+
+		return false;
+	}	
+	
+	assert(qryopt.is_multi_host() == false);
+	
+	STRING_BUFFER<48 * 1024>	strbuf;
+	char				tablename[128];
+
+	snprintf(tablename, sizeof(tablename), "public.tracestatus_vtbl%s", datetbl.get());
+
+	qryopt.get_db_select_query(strbuf, SUBSYS_TRACESTATUS, tablename);
+
+	bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
+
+	if (bret == false) {
+		constexpr const char errbuf[] = "Trace Status Query : Failed to schedule query to Database. Please retry later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	writer.SetMaxDecimalPlaces(3);
+
+	writer.StartObject();
+	
+	writer.KeyConst("madid");
+	writer.String(gmadhava_id_str_, 16);
+
+	writer.KeyConst("tracestatus");
+	writer.StartArray();
+
+	pconn->set_single_row_mode();
+
+	pconn->set_resp_cb(
+		[&, colarr, total_rows = 0, ncol](GyPGConn & conn, GyPGresult gyres, bool is_completed) mutable -> bool
+		{
+			return default_db_json_cb(conn, std::move(gyres), is_completed, "Trace Status", colarr, ncol, writer, total_rows, noextracolcb);
+		}
+	);
+	
+	auto		expirysec = std::max<int64_t>(10, pquery->get_time_to_expiry(tcurr));
+
+	ret = dbpool.wait_one_response(expirysec * 1000, pconn.getintconn());
+
+	if (ret != 0) {
+		if (ret == 2) {
+			db_stats_.ndbquery_timeout_.fetch_add_relaxed(1);
+		}
+
+		if (writer.get_stream()->reset_if_not_sent(ret == 2 ? ERR_TIMED_OUT : ERR_SYSERROR)) {
+			if (ret == 2) {
+				constexpr const char errbuf[] = "Trace Status Query : Database Querying Timeout. Please try later...";
+
+				send_json_error_resp(connshr, ERR_TIMED_OUT, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}
+			else {
+				constexpr const char errbuf[] = "Trace Status Query : Database Connection Error. Please try later...";
+
+				send_json_error_resp(connshr, ERR_SYSERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}	
+
+			return false;
+		}	
+
+		writer.EndArray();
+		writer.EndObject();
+		
+		return false;
+	}	
+
+	writer.EndArray();
+
+	writer.EndObject();
+
+	return true;
+}
+
+bool MCONN_HANDLER::web_db_aggr_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	auto				pconn = dbpool.get_conn(true /* wait_response_if_unavail */, 5000 /* max_msec_wait */, true /* reset_on_timeout */);
+
+	if (!pconn) {
+		DEBUGEXECN(1,
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to query Postgres for Aggregated Trace Status query\n");
+		);
+
+		db_stats_.nconns_failed_.fetch_add_relaxed(1);
+		db_stats_.ndbquery_failed_.fetch_add_relaxed(1);
+
+		constexpr const char errbuf[] = "Aggregated Trace Status Query : Database Querying Error : Failed to get an idle connection. Please try later...";
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+			send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+		}
+
+		return false;
+	}	
+
+	int				ret;
+	bool				bret, updqryopt = false;
+	time_t				tcurr = time(nullptr);
+	struct timeval			tvstart, tvend, origtvstart, origtvend;
+	char				origstarttime[48], origendtime[48];
+	
+	GY_SCOPE_EXIT {
+		if (updqryopt == true) {
+			qryopt.set_timestamps(origstarttime, origendtime, origtvstart, origtvend, false);
+		}
+	};	
+
+	tvstart = qryopt.get_start_timeval(); 
+	tvend 	= qryopt.get_end_timeval();
+
+	if (tvend.tv_sec - tvstart.tv_sec < (int64_t)INFO_DB_UPDATE_SEC) {
+		origtvstart	= tvstart;
+		origtvend	= tvend;
+		GY_STRNCPY(origstarttime, qryopt.get_starttime(), sizeof(origstarttime));
+		GY_STRNCPY(origendtime, qryopt.get_endtime(), sizeof(origendtime));
+		updqryopt	= true;
+		
+		tvstart.tv_sec = tvend.tv_sec - INFO_DB_UPDATE_SEC;
+		tvend.tv_sec += INFO_DB_UPDATE_SEC/3;
+		qryopt.set_timestamps(gy_localtime_iso8601_sec(tvstart.tv_sec).get(), gy_localtime_iso8601_sec(tvend.tv_sec).get(), tvstart, tvend, false /* pointintime */);
+	}	
+
+	if (tcurr - db_storage_days_ * GY_SEC_PER_DAY > (uint64_t)tvend.tv_sec) {
+		char			ebuf[256];
+		size_t			esz;
+		
+		esz = GY_SAFE_SNPRINTF(ebuf, sizeof(ebuf), "Aggregated Trace Status Query : Time Requested not present in DB : Max Days of DB storage = %u", db_storage_days_);
+
+		if (writer.get_stream()->reset_if_not_sent(ERR_DATA_NOT_FOUND)) {
+			send_json_error_resp(connshr, ERR_DATA_NOT_FOUND, pquery->get_seqid(), ebuf, esz, pthrpoolarr);
+		}
+
+		return false;
+	}	
+	
+	auto 				datetbl = get_db_day_partition(tvstart.tv_sec, tvend.tv_sec, 0);
+
+	const JSON_DB_MAPPING		*colarr[QUERY_OPTIONS::MAX_AGGR_COLUMNS];
+	JSON_DB_MAPPING			acolarr[QUERY_OPTIONS::MAX_AGGR_COLUMNS];
+	uint32_t			ncol;
+
+	assert(gy_get_thread_local().get_thread_stack_freespace() >= 256 * 1024);
+
+	assert(qryopt.is_multi_host() == false);
+
+	if (true) {
+		STRING_BUFFER<48 * 1024>		strbuf;
+		
+		ncol = get_tracestatus_aggr_query(strbuf, qryopt, datetbl.get(), acolarr);
+
+		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
+
+		if (bret == false) {
+			constexpr const char errbuf[] = "Aggregated Trace Status Query : Failed to schedule query to Database. Please retry later...";
+
+			if (writer.get_stream()->reset_if_not_sent(ERR_BLOCKING_ERROR)) {
+				send_json_error_resp(connshr, ERR_BLOCKING_ERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}
+
+			return false;
+		}	
+
+		for (uint32_t i = 0; i < ncol; ++i) {
+			colarr[i] = acolarr + i;
+		}	
+	}
+
+	writer.SetMaxDecimalPlaces(3);
+
+	writer.StartObject();
+	
+	writer.KeyConst("madid");
+	writer.String(gmadhava_id_str_, 16);
+
+	writer.KeyConst("tracestatus");
+	writer.StartArray();
+
+	pconn->set_single_row_mode();
+
+	pconn->set_resp_cb(
+		[&, colarr, total_rows = 0, ncol](GyPGConn & conn, GyPGresult gyres, bool is_completed) mutable -> bool
+		{
+			return default_db_json_cb(conn, std::move(gyres), is_completed, "Aggregated Trace Status", colarr, ncol, writer, total_rows, noextracolcb);
+		}
+	);
+	
+	auto		expirysec = std::max<int64_t>(30, pquery->get_time_to_expiry(tcurr));
+
+	ret = dbpool.wait_one_response(expirysec * 1000, pconn.getintconn());
+
+	if (ret != 0) {
+		if (ret == 2) {
+			db_stats_.ndbquery_timeout_.fetch_add_relaxed(1);
+		}
+
+		if (writer.get_stream()->reset_if_not_sent(ret == 2 ? ERR_TIMED_OUT : ERR_SYSERROR)) {
+			if (ret == 2) {
+				constexpr const char errbuf[] = "Aggregated Trace Status Query : Database Querying Timeout. Please try later...";
+
+				send_json_error_resp(connshr, ERR_TIMED_OUT, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}
+			else {
+				constexpr const char errbuf[] = "Aggregated Trace Status Query : Database Connection Error. Please try later...";
+
+				send_json_error_resp(connshr, ERR_SYSERROR, pquery->get_seqid(), errbuf, sizeof(errbuf) - 1, pthrpoolarr);
+			}	
+
+			return false;
+		}	
+
+		writer.EndArray();
+		writer.EndObject();
+
+		return false;
+	}	
+
+	writer.EndArray();
+
+	set_json_column_list(writer, colarr, ncol);
+
+	writer.EndObject();
+
+	return true;
+}
+
+
+
+bool MCONN_HANDLER::web_query_tracestatus(const std::shared_ptr<MCONNTRACK> & connshr, QUERY_OPTIONS & qryopt, EXT_POOL_ALLOC & extpool, const comm::QUERY_CMD *pquery, SOCK_JSON_WRITER<MSTREAM_JSON_EPOLL> & writer, POOL_ALLOC_ARRAY *pthrpoolarr, PGConnPool & dbpool)
+{
+	bool					bret;
+
+	try {
+		if (false == qryopt.match_madhava_option(gmadhava_id_str_)) {
+			// Skip this query
+			writer.StartObject();	
+	
+			writer.KeyConst("madid");
+			writer.String(gmadhava_id_str_, 16);
+
+			writer.EndObject();
+
+			return true;
+		}
+
+		auto			tvstart = qryopt.get_start_timeval(); 
+
+		if (!qryopt.is_historical() || tvstart.tv_sec >= time(nullptr) - 60) {
+			bret = web_curr_tracestatus(connshr, qryopt, extpool, pquery, writer, pthrpoolarr);
+		}
+		else {
+			if (false == qryopt.is_aggregated()) {
+				bret = web_db_tracestatus(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+			}
+			else {
+				bret = web_db_aggr_tracestatus(connshr, qryopt, extpool, pquery, writer, pthrpoolarr, dbpool);
+			}	
+		}	
+		
+		if (bret == true) {
+			return true;
+		}	
+
+		writer.get_stream()->reset_if_not_sent();
+		return false;
+	}
+	catch(...) {
+		writer.get_stream()->reset_if_not_sent();
+		throw;
+	}
+
+}	
 
 // prawpartha may be nullptr
 CRIT_RET_E MCONN_HANDLER::tracehistory_filter_match(const CRITERIA_SET & criteria, const MREQ_TRACE_STATUS & elem, const PARTHA_INFO * prawpartha, bool ignore_other_subsys) const 

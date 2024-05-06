@@ -387,6 +387,12 @@ next :
 		cleanup_rem_madhava_unused_structs();
 	});
 
+	pdb_scheduler_->add_schedule(725'000, 5 * GY_MSEC_PER_MINUTE, 0, "Update DB with Trace Status", 
+	[this] { 
+		insert_db_req_trace_status();
+	});
+
+
 	pdb_scheduler_->add_schedule(0, 60000, 0, "Set DB Disk Space Used", 
 	[this] { 
 		set_db_disk_space_used();
@@ -6840,6 +6846,143 @@ bool MCONN_HANDLER::handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> &
 	return true;
 }	
 
+void MCONN_HANDLER::insert_db_req_trace_status() noexcept
+{
+	try {
+		auto				pconn = db_scheduler_pool_->get_conn(true /* wait_response_if_unavail */, 10'000 /* max_msec_wait */, false /* reset_on_timeout */);
+		if (!pconn) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to get a connection to schedule query to Postgres to insert Req Trace Status\n");
+			db_stats_.nconns_failed_.fetch_add_relaxed(1, mo_relaxed);
+			return;
+		}	
+
+		assert(gy_get_thread_local().get_thread_stack_freespace() > 600 * 1024);
+
+		using SVCID_SET			= INLINE_STACK_HASH_SET<uint64_t, 16 * 1024, HASH_SAME_AS_KEY<uint64_t>>;
+		
+		SVCID_SET			svcset;
+
+		STRING_BUFFER<500 * 1024>	qbuf;
+		int				nrec = 0;
+		bool				bret;
+
+		SharedMutex::ReadHolder		rscope(trace_elems_.rwmutex_);
+		RCU_LOCK_SLOW			slowlock;
+
+		time_t				tcur = time(nullptr);
+		auto				datetbl = get_db_day_partition(tcur, 1);
+
+		qbuf.appendfmt("insert into public.tracestatustbl%s values ", datetbl.get());
+
+		auto writerec = [&](const REQ_TRACE_SVC & elem, const PARTHA_INFO *prawpartha) -> CB_RET_E
+		{
+			const auto		*prtraceshr = elem.rtraceshr_.get();
+			bool			bret;
+
+			if (!prtraceshr || prtraceshr->tlaststat_ == 0) {
+				return CB_OK;
+			}	
+
+			auto 			[it, isnew] = svcset.emplace(elem.glob_id_);
+			
+			if (!isnew) {
+				return CB_OK;
+			}	
+
+			qbuf.appendfmt("(to_timestamp(%ld),\'%016lx\',\'%s\',%hu,to_timestamp(%ld),\'%s\',\'%s\',%hhd::boolean,"
+				"to_timestamp(%ld),to_timestamp(%ld),%lu,%lu,\'%08x\',\'%s\'),",
+				tcur, elem.glob_id_, elem.comm_, elem.ns_ip_port_.get_port(), prtraceshr->tlaststat_, 
+				cap_status_to_string(prtraceshr->api_cap_status_.load(mo_relaxed)), proto_to_string(prtraceshr->api_proto_.load(mo_relaxed)),
+				prtraceshr->api_is_ssl_.load(mo_relaxed), prtraceshr->tstart_, prtraceshr->tend_, prtraceshr->nrequests_, prtraceshr->nerrors_,
+				prtraceshr->curr_trace_defid_, prawpartha->machine_id_str_);
+
+			nrec++;
+
+			if (qbuf.bytes_left() < 1024) {
+				return CB_BREAK_LOOP;
+			}	
+
+			return CB_OK;
+		};
+
+		GY_MACHINE_ID				lastparid;
+		const PARTHA_INFO			*prawpartha = nullptr;
+		
+		for (const auto & [defid, smap] : trace_elems_.listmap_) {
+			for (const auto & [svcid, elem] : smap) {
+
+				if (lastparid != elem.machid_) {
+					
+					lastparid 			= elem.machid_;
+					prawpartha 			= nullptr;
+
+					const auto 			pelem = partha_tbl_.lookup_single_elem_locked(elem.machid_, elem.machid_.get_hash());
+				
+					if (pelem == nullptr) {
+						// Partha deleted...
+						continue;
+					}	
+
+					prawpartha = pelem->get_cref().get();
+				}	
+
+				if (!prawpartha) {
+					continue;
+				}	
+
+				auto			cret = writerec(elem, prawpartha);
+
+				if (cret == CB_BREAK_LOOP) {
+					goto done;
+				}	
+			}	
+		}	
+
+done :
+
+		slowlock.unlock();
+		rscope.unlock();
+
+		if (nrec == 0) {
+			return;
+		}	
+
+		qbuf.set_last_char(';');
+
+		bret = PQsendQueryOptim(pconn->get(), qbuf.buffer(), qbuf.size());
+		
+		if (bret == false) {
+			ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to schedule query to Postgres to update Req Trace Status : Error is %s\n", PQerrorMessage(pconn->get()));
+			return;
+		}	
+
+		pconn->set_resp_cb(
+			[this](GyPGConn & conn, GyPGresult gyres, bool is_completed) -> bool
+			{
+				if (is_completed) {
+					if (conn.is_within_tran()) {
+						conn.pqexec_blocking("Rollback Work;");
+					}						
+					conn.make_available();
+					return true;
+				}	
+				
+				if (true == gyres.is_error()) {
+					ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Failed to execute DB query to insert Req Trace Status : %s\n", gyres.get_error_msg());
+					return false;
+				}	
+
+				return true;
+			}
+		);
+
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "Updated DB with %d Request Trace Status records...\n", nrec);
+
+	}
+	GY_CATCH_EXPRESSION(
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception caught while inserting into DB Req Trace Status : %s\n\n", GY_GET_EXCEPT_STRING);
+	);
+}	
 
 MA_SETTINGS_C * MCONN_HANDLER::get_settings() const noexcept
 {

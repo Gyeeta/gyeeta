@@ -614,7 +614,7 @@ public :
 
 			strbuf.appendconst(" where ");
 
-			if (is_multihost_ == false && psubsys->machidfilstr) {
+			if (is_multihost_ == false && psubsys->machidfilstr && parid_.isvalid()) {
 				is_parid = true;
 				strbuf.appendfmt(psubsys->machidfilstr, table_alias_prefix, get_parid_str().get());
 			}
@@ -640,7 +640,7 @@ public :
 				get_db_filters(strbuf, subsys, table_alias_prefix, "(true)", add_multihost_subsys);
 			}	
 		}
-		else if (is_multihost_ == false && psubsys->machidfilstr) {
+		else if (is_multihost_ == false && psubsys->machidfilstr && parid_.isvalid()) {
 			strbuf.appendconst(" where ");
 			strbuf.appendfmt(psubsys->machidfilstr, table_alias_prefix, get_parid_str().get());
 		}	
@@ -1281,6 +1281,9 @@ extern uint32_t get_clusterstate_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS &
 							EXT_POOL_ALLOC *pstrpool = nullptr);
 
 extern uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], \
+							EXT_POOL_ALLOC *pstrpool = nullptr);
+
+extern uint32_t get_tracestatus_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], \
 							EXT_POOL_ALLOC *pstrpool = nullptr);
 
 extern void init_subsys_maps();

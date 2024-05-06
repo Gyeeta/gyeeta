@@ -2683,20 +2683,83 @@ enum : uint32_t
 static constexpr JSON_DB_MAPPING json_db_tracestatus_arr[] =
 {
 // jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "time", 		"time", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "name", 		"comm",			GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "port", 		"port",			GYSLEN("port"),		FIELD_PORT,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,		"", },
+{ "tlast", 		"tlast", 		GYSLEN("tlast"),	FIELD_TLAST,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "state",		"state", 		GYSLEN("state"),	FIELD_STATE,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "proto",		"proto", 		GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "istls",		"istls",		GYSLEN("istls"),	FIELD_ISTLS,		SUBSYS_TRACESTATUS,JSON_BOOL,	NUM_NAN,	"boolean",	DB_STR_NONE,	nullptr, 	booltojson,		"",  },		
+{ "tstart", 		"tstart", 		GYSLEN("tstart"),	FIELD_TSTART,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "tend", 		"tend", 		GYSLEN("tend"),		FIELD_TEND,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "nreq",		"nreq",			GYSLEN("nreq"),		FIELD_NREQ,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,		"", },		
+{ "nerr",		"nerr",			GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,		"", },		
+{ "defid", 		"defid", 		GYSLEN("defid"),	FIELD_DEFID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(8)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "parid", 		"machid", 		GYSLEN("parid"),	FIELD_PARID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(32)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "host",		"hostname",	 	GYSLEN("host"),		FIELD_HOST,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "madid",		"madhavaid", 		GYSLEN("madid"),	FIELD_MADID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "cluster",		"clustername", 		GYSLEN("cluster"),	FIELD_CLUSTER,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "region",		"region", 		GYSLEN("region"),	FIELD_REGION,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+{ "zone",		"zone", 		GYSLEN("zone"),		FIELD_ZONE,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
+
 // Additional fields not present in DB
-{ "svcid", 		"", 			GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
-{ "name", 		"", 			GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
-{ "port", 		"", 			GYSLEN("port"),		FIELD_PORT,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,		"", },
-{ "tlast", 		"", 			GYSLEN("tlast"),	FIELD_TLAST,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
-{ "state",		"", 			GYSLEN("state"),	FIELD_STATE,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
-{ "proto",		"", 			GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
-{ "istls",		"",			GYSLEN("istls"),	FIELD_ISTLS,		SUBSYS_TRACESTATUS,JSON_BOOL,	NUM_NAN,	"boolean",	DB_STR_NONE,	nullptr, 	booltojson,		"",  },		
-{ "tstart", 		"", 			GYSLEN("tstart"),	FIELD_TSTART,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
-{ "tend", 		"", 			GYSLEN("tend"),		FIELD_TEND,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
-{ "nreq",		"",			GYSLEN("nreq"),		FIELD_NREQ,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "nerr",		"",			GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "defid", 		"", 			GYSLEN("defid"),	FIELD_DEFID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(8)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
 };
+
+static constexpr JSON_DB_MAPPING json_db_aggr_tracestatus_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "time", 		"atime", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "name", 		"comm",			GYSLEN("name"),		FIELD_NAME,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "port", 		"port",			GYSLEN("port"),		FIELD_PORT,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,		"", },
+{ "tlast", 		"tlast", 		GYSLEN("tlast"),	FIELD_TLAST,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "state",		"state", 		GYSLEN("state"),	FIELD_STATE,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "proto",		"proto", 		GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "istls",		"istls",		GYSLEN("istls"),	FIELD_ISTLS,		SUBSYS_TRACESTATUS,JSON_BOOL,	NUM_NAN,	"boolean",	DB_STR_NONE,	nullptr, 	booltojson,		"",  },		
+{ "tstart", 		"tstart", 		GYSLEN("tstart"),	FIELD_TSTART,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "tend", 		"tend", 		GYSLEN("tend"),		FIELD_TEND,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,		"", },
+{ "nreq",		"nreq",			GYSLEN("nreq"),		FIELD_NREQ,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,		"", },		
+{ "nerr",		"nerr",			GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,		"", },		
+{ "defid", 		"defid", 		GYSLEN("defid"),	FIELD_DEFID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(8)",	DB_STR_OCHAR,	nullptr, 	nullptr,		"", },
+{ "parid", 		"machid", 		GYSLEN("parid"),	FIELD_PARID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(32)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "host",		"hostname",	 	GYSLEN("host"),		FIELD_HOST,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "madid",		"madhavaid", 		GYSLEN("madid"),	FIELD_MADID,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr,	nullptr, 		"", },
+{ "cluster",		"clustername", 		GYSLEN("cluster"),	FIELD_CLUSTER,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr, 		"", },
+{ "region",		"region", 		GYSLEN("region"),	FIELD_REGION,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,		"", },
+{ "zone",		"zone", 		GYSLEN("zone"),		FIELD_ZONE,		SUBSYS_TRACESTATUS,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,		"", },
+{ "inrecs",		"inrecs",		GYSLEN("inrecs"),	FIELD_INRECS,		SUBSYS_TRACESTATUS,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,		"", },		
+
+// Additional fields not present in DB
+};
+
+
+static constexpr DB_AGGR_INFO tracestatus_aggr_info[] = 
+{
+	// dbexpr								// jsoncrc		// dbfieldname		// dbfieldtype	// dflt_aggr	// ignore_sum	// extarg	
+	{ "",									FIELD_TIME,		"atime",		"timestamptz",	AOPER_GROUPBY,	false, 		0 },		
+	{ "glob_id",								FIELD_SVCID,		"glob_id",		"char(16)",	AOPER_GROUPBY,	false, 		0 },		
+	{ "comm",								FIELD_NAME,		"comm",			"char(16)",	AOPER_GROUPBY,	false, 		0 },			
+	{ "port",								FIELD_PORT,		"port",			"int",		AOPER_GROUPBY,	false, 		0 },			
+	{ "public.last_elem(tlast) as tlast",					FIELD_TLAST,		"tlast",		"timestamptz",	AOPER_LAST_ELEM,false, 		0 },	
+	{ "public.last_elem(state) as state",					FIELD_STATE,		"state",		"char(16)",	AOPER_LAST_ELEM,false, 		0 },			
+	{ "public.last_elem(proto) as proto",					FIELD_PROTO,		"proto",		"char(16)",	AOPER_LAST_ELEM,false, 		0 },			
+	{ "public.last_elem(istls) as istls",					FIELD_ISTLS,		"istls",		"boolean",	AOPER_LAST_ELEM,false, 		0 },			
+	{ "tstart",								FIELD_TSTART,		"tstart",		"timestamptz",	AOPER_GROUPBY,	false, 		0 },			
+	{ "tend",								FIELD_TEND,		"tend",			"timestamptz",	AOPER_GROUPBY,	false, 		0 },			
+	{ "public.last_elem(nreq) as nreq",					FIELD_NREQ,		"nreq",			"bigint",	AOPER_LAST_ELEM,true, 		0 },	
+	{ "public.last_elem(nerr) as nerr",					FIELD_NERR,		"nerr",			"bigint",	AOPER_LAST_ELEM,true, 		0 },	
+	{ "defid",								FIELD_DEFID,		"defid",		"char(8)",	AOPER_GROUPBY,	false, 		0 },			
+	{ "machid",								FIELD_PARID,		"machid",		"char(32)",	AOPER_GROUPBY,	false, 		0 },		
+	{ "hostname",								FIELD_HOST,		"hostname",		"text",		AOPER_GROUPBY,	false, 		0 },		
+	{ "madhavaid",								FIELD_MADID,		"madhavaid",		"char(16)",	AOPER_GROUPBY,	false, 		0 },		
+	{ "clustername",							FIELD_CLUSTER,		"clustername",		"text",		AOPER_GROUPBY,	false, 		0 },			
+	{ "region",								FIELD_REGION,		"region",		"text",		AOPER_GROUPBY,	false, 		0 },		
+	{ "zone",								FIELD_ZONE,		"zone",			"text",		AOPER_GROUPBY,	false, 		0 },		
+	{ "count(*)::int as inrecs",						FIELD_INRECS,		"inrecs",		"int",		AOPER_COUNT,	false, 		0 },		
+};
+
+
 
 enum : uint32_t
 {

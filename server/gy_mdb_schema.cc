@@ -111,6 +111,43 @@ begin
 	execute format('create %s table if not exists public.notificationtbl_%s partition of public.notificationtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
 		logmode, tbltom, timetomor, timedayafter);
 
+
+
+	execute format($fmt$
+		create %s table if not exists public.tracestatustbl (
+			time 			timestamptz,
+			glob_id 		char(16), 
+			comm			char(16),
+			port			int,
+			tlast 			timestamptz,
+			state			char(16),
+			proto			char(16),
+			istls			boolean,
+			tstart			timestamptz,
+			tend			timestamptz,
+			nreq			bigint,
+			nerr			bigint,
+			defid			char(8),
+			machid			char(32)
+			
+			) PARTITION BY RANGE (time)
+		$fmt$, logmode);
+
+	execute format('alter table if exists public.tracestatustbl alter column glob_id SET STORAGE plain');
+	execute format('alter table if exists public.tracestatustbl alter column comm SET STORAGE plain');
+	execute format('alter table if exists public.tracestatustbl alter column state SET STORAGE plain');
+	execute format('alter table if exists public.tracestatustbl alter column proto SET STORAGE plain');
+	execute format('alter table if exists public.tracestatustbl alter column defid SET STORAGE plain');
+	execute format('alter table if exists public.tracestatustbl alter column machid SET STORAGE plain');
+	
+	execute format('create index if not exists tracestatustbl_index_time on public.tracestatustbl(time)');
+
+	execute format('create %s table if not exists public.tracestatustbl_%s partition of public.tracestatustbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
+		logmode, tbltoday, timetoday, timetomor);
+	execute format('create %s table if not exists public.tracestatustbl_%s partition of public.tracestatustbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)',
+		logmode, tbltom, timetomor, timedayafter);
+
+
 end;
 $func1$ language plpgsql;
 
@@ -906,7 +943,6 @@ begin
 		logmode, schname, tbltom, schname, timetomor, timedayafter);
 
 
-
 	
 end;
 $func1$ language plpgsql;
@@ -1143,13 +1179,54 @@ declare
 	c 		refcursor;
 	r 		record;
 	tbl		text;
+	tbltoday	text := to_char(now()::date, 'yyyymmdd');
+	tbltom		text := to_char(now()::date + '1 day'::interval, 'yyyymmdd');
+	istbl		boolean;
 begin
+
+	-- Add Global Level Views
+
+	istbl := public.gy_table_exists('public', 'tracestatustbl_', tbltoday);
+	if not istbl then 
+		return;
+	end if;	
+
+	istbl := public.gy_table_exists('public', 'tracestatustbl_', tbltom);
+	if not istbl then 
+		return;
+	end if;	
+
+	istbl := public.gy_table_exists('public', 'tracestatus_vtbl', '');
+	if not istbl then 
+		execute format($fmt$ create or replace view public.tracestatus_vtbl as 
+				select tbl.*, t1.hostname, t1.madhavaid, t1.clustername, t1.region, t1.zone 
+					from public.tracestatustbl tbl left join public.parthatbl t1 on tbl.machid = t1.machid $fmt$);		
+	end if;	
+
+	istbl := public.gy_table_exists('public', 'tracestatus_vtbl_%s', tbltoday);
+	if not istbl then 
+		execute format($fmt$ create or replace view public.tracestatus_vtbl_%s as 
+				select tbl.*, t1.hostname, t1.madhavaid, t1.clustername, t1.region, t1.zone 
+					from public.tracestatustbl_%s tbl left join public.parthatbl t1 on tbl.machid = t1.machid 
+			$fmt$, tbltoday, tbltoday);		
+	end if;	
+
+	istbl := public.gy_table_exists('public', 'tracestatus_vtbl_%s', tbltom);
+	if not istbl then 
+		execute format($fmt$ create or replace view public.tracestatus_vtbl_%s as 
+				select tbl.*, t1.hostname, t1.madhavaid, t1.clustername, t1.region, t1.zone 
+					from public.tracestatustbl_%s tbl left join public.parthatbl t1 on tbl.machid = t1.machid 
+			$fmt$, tbltom, tbltom);		
+	end if;	
+
+	-- Now add Partha Level Views
 	open c for select nspname from pg_catalog.pg_namespace where nspname ~ '^sch[0-9a-f]{32}$';
 	loop
 		fetch c into r;
 		exit when not found;
 		execute format($fmt$ select public.gy_add_views('%s', '%s', '%s') $fmt$ , r.nspname::text, right(r.nspname, -3)::text, madhavaid);
 	end loop;
+
 end;
 $$ language plpgsql;
 

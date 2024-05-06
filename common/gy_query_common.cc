@@ -54,7 +54,7 @@ SUBSYS_CLASS subsys_class_list[SUBSYS_MAX] =
 	{ "traceconn",		SUBSYS_TRACECONN,	fnv1_consthash("traceconn"),	json_db_traceconn_arr,	GY_ARRAY_SIZE(json_db_traceconn_arr),		nullptr },
 	{ "traceuniq",		SUBSYS_TRACEUNIQ,	fnv1_consthash("traceuniq"),	json_db_traceuniq_arr,	GY_ARRAY_SIZE(json_db_traceuniq_arr),		nullptr },
 	{ "tracedef",		SUBSYS_TRACEDEF,	fnv1_consthash("tracedef"),	json_db_tracedef_arr,	GY_ARRAY_SIZE(json_db_tracedef_arr),		nullptr },
-	{ "tracestatus",	SUBSYS_TRACESTATUS,	fnv1_consthash("tracestatus"),	json_db_tracestatus_arr,GY_ARRAY_SIZE(json_db_tracestatus_arr),		nullptr },
+	{ "tracestatus",	SUBSYS_TRACESTATUS,	fnv1_consthash("tracestatus"),	json_db_tracestatus_arr,GY_ARRAY_SIZE(json_db_tracestatus_arr),		" %smachid = \'%s\' " },
 	{ "tracehistory",	SUBSYS_TRACEHISTORY,	fnv1_consthash("tracehistory"),	json_db_tracehistory_arr,GY_ARRAY_SIZE(json_db_tracehistory_arr),	nullptr },
 };	
 
@@ -106,7 +106,7 @@ DB_AGGR_CLASS subsys_aggr_list[SUBSYS_MAX] =
 	{ SUBSYS_TRACECONN,	nullptr, 			0,						nullptr,			0,					0 },
 	{ SUBSYS_TRACEUNIQ,	json_db_aggr_traceuniq_arr, 	GY_ARRAY_SIZE(json_db_aggr_traceuniq_arr),	traceuniq_aggr_info,		GY_ARRAY_SIZE(traceuniq_aggr_info),	3600 },
 	{ SUBSYS_TRACEDEF,	nullptr, 			0,						nullptr,			0,					0 },
-	{ SUBSYS_TRACESTATUS,	nullptr, 			0,						nullptr,			0,					0 },
+	{ SUBSYS_TRACESTATUS,	json_db_aggr_tracestatus_arr, 	GY_ARRAY_SIZE(json_db_aggr_tracestatus_arr),	tracestatus_aggr_info,		GY_ARRAY_SIZE(tracestatus_aggr_info),	300 },
 	{ SUBSYS_TRACEHISTORY,	nullptr, 			0,						nullptr,			0,					0 },
 };	
 
@@ -322,12 +322,17 @@ setcurr1 :
 			nsubsys_ 			= 1;
 		}	
 
-		pallowed_subsys_arr_[nsubsys_++]	= SUBSYS_HOST;
-
 		pdefsubsys_ = get_subsys_info(pallowed_subsys_arr_[0]);
 		if (!pdefsubsys_) {
 			GY_THROW_EXPR_CODE(ERR_INVALID_REQUEST, "Query options : Invalid subsystem specified for allowed subsys list");
 		}
+
+		if (pdefsubsys_->machidfilstr == nullptr) {
+			pallowed_subsys_arr_[nsubsys_++]	= SUBSYS_HOST;
+		}
+		else {
+			is_multihost_ = false;
+		}	
 
 		const auto				*phostsubsys = get_subsys_info(SUBSYS_HOST);
 		const auto				*phostjsonmap = json_db_host_arr;
@@ -2721,6 +2726,19 @@ uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, cons
 
 	return ncol;
 }
+
+uint32_t get_tracestatus_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], EXT_POOL_ALLOC *pstrpool)
+{
+	uint32_t			ncol;
+	char				tablename[128];
+
+	snprintf(tablename, sizeof(tablename), "public.tracestatus_vtbl%s", datetbl);
+
+	ncol = qryopt.get_select_aggr_query(strbuf, SUBSYS_TRACESTATUS, pcolarr, tablename, "", pstrpool);
+
+	return ncol;
+}
+
 
 
 void validate_json_name(const char *pname, size_t namelen, size_t maxlen, const char *ptype, bool firstalphaonly, bool emptyok, const char * extrainvchars)
