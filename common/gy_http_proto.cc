@@ -1082,7 +1082,7 @@ lbl_hdr :
 			for (int i = 0; i < (int)GY_ARRAY_SIZE(req_hdr_http); ++i) {
 				const auto		& rv = req_hdr_http[i];
 
-				if (sv1.size() > rv.size() && (0 == memcmp(sv1.data(), rv.data(), rv.size()))) {
+				if (sv1.size() > rv.size() && (0 == gy_memcasecmp(sv1.data(), rv.data(), rv.size()))) {
 					if (i == (int)REQ_HDR_CONTENT_TYPE) {
 						if (connstate.save_req_payload_ != 0) {
 							continue;
@@ -1793,7 +1793,7 @@ lbl_hdr :
 				for (int i = 0; i < (int)GY_ARRAY_SIZE(resp_hdr_http); ++i) {
 					const auto		& rv = resp_hdr_http[i];
 
-					if (sv1.size() > rv.size() && (0 == memcmp(sv1.data(), rv.data(), rv.size()))) {
+					if (sv1.size() > rv.size() && (0 == gy_memcasecmp(sv1.data(), rv.data(), rv.size()))) {
 						if (i == (int)RESP_HDR_CONTENT_LEN) {
 							size_t				colen = 0;
 
