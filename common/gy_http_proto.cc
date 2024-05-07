@@ -201,6 +201,7 @@ void HTTP1_SESSINFO::handle_ssl_change(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 int HTTP1_SESSINFO::handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, const uint32_t pktlen)
 {
 	size_t				ndropreq = svcsess_.get_req_drop_bytes(), ndropresp = svcsess_.get_resp_drop_bytes();
+	auto				& common = svcsess_.common_;
 
 	drop_seen_ = 0;
 
@@ -251,6 +252,8 @@ int HTTP1_SESSINFO::handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, cons
 					if (ndropreq && !ndropresp) {
 						if (reqstate_.is_content_len_ && !reqstate_.skip_till_eol_ && reqstate_.data_chunk_left_ >= ndropreq) {
 							reqstate_.data_chunk_left_ -= ndropreq;
+
+							tran_.update_req_stats(common.tlastpkt_usec_, (uint32_t)ndropreq);
 							return 0;
 						}
 					}	
@@ -265,6 +268,7 @@ int HTTP1_SESSINFO::handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, cons
 						auto			[isend, pend] = is_req_resp_end_heuristic(pdata, pktlen, DirPacket::DirInbound);
 
 						if (isend) {
+							tran_.update_req_stats(common.tlastpkt_usec_, (uint32_t)ndropreq + hdr.datalen_);
 							set_resp_expected();
 
 							skip_till_resp_ = true;
@@ -292,6 +296,7 @@ int HTTP1_SESSINFO::handle_drop_on_req(PARSE_PKT_HDR & hdr, uint8_t *pdata, cons
 int HTTP1_SESSINFO::handle_drop_on_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata, const uint32_t pktlen)
 {
 	size_t				ndropreq = svcsess_.get_req_drop_bytes(), ndropresp = svcsess_.get_resp_drop_bytes();
+	auto				& common = svcsess_.common_;
 
 	drop_seen_ = 0;
 
@@ -314,6 +319,8 @@ int HTTP1_SESSINFO::handle_drop_on_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata, con
 					if (ndropresp && !ndropreq) {
 						if (respstate_.is_content_len_ && !respstate_.skip_till_eol_ && respstate_.data_chunk_left_ >= ndropresp) {
 							respstate_.data_chunk_left_ -= ndropresp;
+
+							tran_.update_resp_stats(common.tlastpkt_usec_, (uint32_t)ndropresp);
 							return 0;
 						}
 					}	
@@ -332,6 +339,8 @@ int HTTP1_SESSINFO::handle_drop_on_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata, con
 						}
 
 						if (isend) {
+							tran_.update_resp_stats(common.tlastpkt_usec_, (uint32_t)ndropresp + hdr.datalen_);
+						
 							request_done();
 
 							gstats[STATH1_DROP_RECOVER]++;

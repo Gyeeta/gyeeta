@@ -1421,7 +1421,6 @@ try1 :
 
 				// Send data blocking
 				bret = pser->send_trace_data_blocking(elem);
-	
 
 				if (bret) {
 					pstats->nsend_bytes_ += elem.size();
@@ -2522,31 +2521,31 @@ void SVC_INFO_CAP::schedule_ssl_stop() noexcept
 
 void SVC_PARSE_STATS::operator -= (const SVC_PARSE_STATS & other) noexcept
 {
-	npkts_			-= other.npkts_;
-	nbytes_			-= other.nbytes_;
-	nreqpkts_		-= other.nreqpkts_;
-	nreqbytes_		-= other.nreqbytes_;
-	nresppkts_		-= other.nresppkts_;
-	nrespbytes_		-= other.nrespbytes_;
+	npkts_			= gy_diff_counter(npkts_, other.npkts_);
+	nbytes_			= gy_diff_counter(nbytes_, other.nbytes_);
+	nreqpkts_		= gy_diff_counter(nreqpkts_, other.nreqpkts_);
+	nreqbytes_		= gy_diff_counter(nreqbytes_, other.nreqbytes_);
+	nresppkts_		= gy_diff_counter(nresppkts_, other.nresppkts_);
+	nrespbytes_		= gy_diff_counter(nrespbytes_, other.nrespbytes_);
 
-	nrequests_		-= other.nrequests_;
-	ncli_errors_		-= other.ncli_errors_;
-	nser_errors_		-= other.nser_errors_;
+	nrequests_		= gy_diff_counter(nrequests_, other.nrequests_);
+	ncli_errors_		= gy_diff_counter(ncli_errors_, other.ncli_errors_);
+	nser_errors_		= gy_diff_counter(nser_errors_, other.nser_errors_);
 
-	ndroppkts_		-= other.ndroppkts_;
-	ndropbytes_		-= other.ndropbytes_;
-	ndropbytesin_		-= other.ndropbytesin_;
-	ndropbytesout_		-= other.ndropbytesout_;
-	nrdrpkts_		-= other.nrdrpkts_;
-	nrdrbytes_		-= other.nrdrbytes_;
-	nrdr_sess_max_		-= other.nrdr_sess_max_;
-	nrdr_timeout_		-= other.nrdr_timeout_;
-	nrdr_alloc_fails_	-= other.nrdr_alloc_fails_;
-	nsessions_new_		-= other.nsessions_new_;
-	nsessions_del_		-= other.nsessions_del_;
-	nsess_drop_new_		-= other.nsess_drop_new_;
-	nskip_conc_sess_	-= other.nskip_conc_sess_;
-	nsrc_chg_		-= other.nsrc_chg_;
+	ndroppkts_		= gy_diff_counter(ndroppkts_, other.ndroppkts_);
+	ndropbytes_		= gy_diff_counter(ndropbytes_, other.ndropbytes_);
+	ndropbytesin_		= gy_diff_counter(ndropbytesin_, other.ndropbytesin_);
+	ndropbytesout_		= gy_diff_counter(ndropbytesout_, other.ndropbytesout_);
+	nrdrpkts_		= gy_diff_counter(nrdrpkts_, other.nrdrpkts_);
+	nrdrbytes_		= gy_diff_counter(nrdrbytes_, other.nrdrbytes_);
+	nrdr_sess_max_		= gy_diff_counter(nrdr_sess_max_, other.nrdr_sess_max_);
+	nrdr_timeout_		= gy_diff_counter(nrdr_timeout_, other.nrdr_timeout_);
+	nrdr_alloc_fails_	= gy_diff_counter(nrdr_alloc_fails_, other.nrdr_alloc_fails_);
+	nsessions_new_		= gy_diff_counter(nsessions_new_, other.nsessions_new_);
+	nsessions_del_		= gy_diff_counter(nsessions_del_, other.nsessions_del_);
+	nsess_drop_new_		= gy_diff_counter(nsess_drop_new_, other.nsess_drop_new_);
+	nskip_conc_sess_	= gy_diff_counter(nskip_conc_sess_, other.nskip_conc_sess_);
+	nsrc_chg_		= gy_diff_counter(nsrc_chg_, other.nsrc_chg_);
 
 	for (uint8_t i = 0; i < API_CAP_SRC::SRC_MAX; ++i) {
 		srcpkts_[i]	-= other.srcpkts_[i];
@@ -2899,16 +2898,16 @@ void API_PARSE_HDLR::chk_svc_info()
 
 void API_PARSER_STATS::operator -= (const API_PARSER_STATS & other) noexcept
 {
-	nsvcadd_		-=	other.nsvcadd_;
-	nsvcdel_		-=	other.nsvcdel_;
-	nsvcssl_on_		-=	other.nsvcssl_on_;
-	nsvcssl_fail_		-=	other.nsvcssl_fail_;
-	ninvalid_pkt_		-=	other.ninvalid_pkt_;
-	ninvalid_msg_		-=	other.ninvalid_msg_;
-	nrdr_alloc_fails_	-=	other.nrdr_alloc_fails_;
-	nxfer_pool_fail_	-=	other.nxfer_pool_fail_;
-	nsend_req_fail_		-=	other.nsend_req_fail_;
-	nsend_bytes_		-=	other.nsend_bytes_;
+	nsvcadd_		=	gy_diff_counter(nsvcadd_, other.nsvcadd_);
+	nsvcdel_		=	gy_diff_counter(nsvcdel_, other.nsvcdel_);
+	nsvcssl_on_		=	gy_diff_counter(nsvcssl_on_, other.nsvcssl_on_);
+	nsvcssl_fail_		=	gy_diff_counter(nsvcssl_fail_, other.nsvcssl_fail_);
+	ninvalid_pkt_		=	gy_diff_counter(ninvalid_pkt_, other.ninvalid_pkt_);
+	ninvalid_msg_		=	gy_diff_counter(ninvalid_msg_, other.ninvalid_msg_);
+	nrdr_alloc_fails_	=	gy_diff_counter(nrdr_alloc_fails_, other.nrdr_alloc_fails_);
+	nxfer_pool_fail_	=	gy_diff_counter(nxfer_pool_fail_, other.nxfer_pool_fail_);
+	nsend_req_fail_		=	gy_diff_counter(nsend_req_fail_, other.nsend_req_fail_);
+	nsend_bytes_		=	gy_diff_counter(nsend_bytes_, other.nsend_bytes_);
 
 	nskip_pool_.fetch_sub_relaxed_0(other.nskip_pool_.load(mo_relaxed));
 }
