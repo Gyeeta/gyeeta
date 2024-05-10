@@ -1013,14 +1013,14 @@ public :
 		GY_MACHINE_ID				machid_;
 		time_t					tstatus_		{0};
 		uint16_t				port_			{0};
-		PROTO_TYPES				proto_			{PROTO_UNINIT};
-		PROTO_CAP_STATUS_E			status_			{CAPSTAT_UNINIT};
+		PROTO_TYPES				proto_			{PROTO_UNKNOWN};
+		PROTO_CAP_STATUS_E			status_			{CAPSTAT_STOPPED};
 		bool					is_ssl_			{false};
 		char					comm_[TASK_COMM_LEN]	{};
 		char					msgstr_[256];
 		
 		MREQ_TRACE_STATUS(uint64_t glob_id, const GY_MACHINE_ID & machid, time_t tstatus, uint16_t port, PROTO_CAP_STATUS_E status, const char *comm, const char *msgstr,
-					PROTO_TYPES proto = PROTO_UNINIT, bool is_ssl = false) noexcept
+					PROTO_TYPES proto = PROTO_UNKNOWN, bool is_ssl = false) noexcept
 			: glob_id_(glob_id), machid_(machid), tstatus_(tstatus), port_(port), proto_(proto), status_(status), is_ssl_(is_ssl)
 		{
 			GY_STRNCPY(comm_, comm, sizeof(comm_));

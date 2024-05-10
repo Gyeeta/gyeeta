@@ -1258,8 +1258,8 @@ public :
 		time_t					tstart_			{0};
 		time_t					tend_			{0};
 		uint32_t				curr_trace_defid_	{0};
-		gy_atomic<PROTO_TYPES>			api_proto_		{PROTO_UNINIT};
-		gy_atomic<PROTO_CAP_STATUS_E>		api_cap_status_		{CAPSTAT_UNINIT};
+		gy_atomic<PROTO_TYPES>			api_proto_		{PROTO_UNKNOWN};
+		gy_atomic<PROTO_CAP_STATUS_E>		api_cap_status_		{CAPSTAT_STOPPED};
 		gy_atomic<bool>				api_is_ssl_		{false};
 		
 		MREQ_TRACE_SVC(uint64_t glob_id) noexcept : glob_id_(glob_id)
@@ -1271,7 +1271,7 @@ public :
 			tstart_ = 0;
 			tend_ = 0;
 
-			api_cap_status_.store(CAPSTAT_UNINIT, mo_relaxed);
+			api_cap_status_.store(CAPSTAT_STOPPED, mo_relaxed);
 		}	
 	};
 
@@ -1460,7 +1460,7 @@ public :
 				return rtraceshr_->api_cap_status_.load(order);
 			}	
 
-			return CAPSTAT_UNINIT;
+			return CAPSTAT_STOPPED;
 		}	
 
 		friend inline bool operator== (const std::shared_ptr<MTCP_LISTENER> &lhs, const uint64_t glob_id) noexcept

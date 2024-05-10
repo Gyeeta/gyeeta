@@ -1296,7 +1296,7 @@ void TCP_SOCK_HANDLER::handle_listener_event(tcp_listener_event_t * pevent, bool
 			}
 
 			plistener->api_is_ssl_.store(indeterminate, mo_relaxed);
-			plistener->api_proto_.store(PROTO_UNINIT, mo_relaxed);
+			plistener->api_proto_.store(PROTO_UNKNOWN, mo_relaxed);
 
 			ptask_handler_->get_task(pevent->pid, newtaskcb);
 

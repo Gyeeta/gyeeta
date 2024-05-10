@@ -589,9 +589,9 @@ public :
 
 	static_assert(decltype(httperr_cap_started_)::is_always_lock_free == true, "Boost Tribool Atomics not lock free!");
 	
-	gy_atomic<PROTO_CAP_STATUS_E>			api_cap_started_		{CAPSTAT_UNINIT};
+	gy_atomic<PROTO_CAP_STATUS_E>			api_cap_started_		{CAPSTAT_STOPPED};
 	gy_atomic<time_t>				tapi_cap_stop_			{0};
-	gy_atomic<PROTO_TYPES>				api_proto_			{PROTO_UNINIT};
+	gy_atomic<PROTO_TYPES>				api_proto_			{PROTO_UNKNOWN};
 	std::atomic<tribool>				api_is_ssl_			{indeterminate};
 
 	GY_MUTEX					svcweak_lock_;

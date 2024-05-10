@@ -487,7 +487,7 @@ senderr :
 				}
 
 				if (reqvec.size() < REQ_TRACE_STATUS::MAX_REQ_TRACE_ELEM) {
-					reqvec.emplace_back(listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, CAPSTAT_FAILED, false, PROTO_UNINIT, 
+					reqvec.emplace_back(listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, CAPSTAT_FAILED, false, PROTO_UNKNOWN, 
 							pgloberr ? pgloberr : "Failed to start Request Trace API Capture which may be due to Max Service or Port Limit breach");
 				}
 			}
@@ -676,7 +676,7 @@ void SVC_NET_CAPTURE::del_api_listeners(const GlobIDInodeMap & nslistmap) noexce
 					}
 
 					if (listenshr) {
-						PROTO_CAP_STATUS_E			status = (perrstr ? CAPSTAT_FAILED : CAPSTAT_UNINIT);
+						PROTO_CAP_STATUS_E			status = (perrstr ? CAPSTAT_FAILED : CAPSTAT_STOPPED);
 
 						SCOPE_GY_MUTEX				scope(listenshr->svcweak_lock_);
 
@@ -947,14 +947,14 @@ void SVC_NET_CAPTURE::check_netns_api_listeners(const bool sendstatus) noexcept
 					// This should not happen : Try forced cleanup...
 
 					lshr->tapi_cap_stop_.store(0L, mo_relaxed);
-					lshr->api_cap_started_.store(CAPSTAT_UNINIT, mo_release);
+					lshr->api_cap_started_.store(CAPSTAT_STOPPED, mo_release);
 
 					if (svcinfocap) {
 						nrequests = svcinfocap->stats_.nrequests_;
 						nerrors = svcinfocap->stats_.ncli_errors_ + svcinfocap->stats_.nser_errors_;
 					}	
 
-					reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, CAPSTAT_UNINIT, lshr->api_is_ssl_.load(mo_relaxed) == true,
+					reqvec.emplace_back(lshr->glob_id_, lshr->ns_ip_port_, lshr->comm_, CAPSTAT_STOPPED, lshr->api_is_ssl_.load(mo_relaxed) == true,
 								lshr->api_proto_.load(mo_relaxed), nullptr, nrequests, nerrors);
 					
 					if (!forcerestart && (1 >= pnetone->port_listen_tbl_.count_duplicate_elems(psvcone->serport_, get_uint32_hash(psvcone->serport_), 2))) {

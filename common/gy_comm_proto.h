@@ -3339,15 +3339,15 @@ struct alignas(8) REQ_TRACE_STATUS
 	uint64_t			nrequests_			{0};
 	uint64_t			nerrors_			{0};
 	char				comm_[TASK_COMM_LEN]		{};
-	PROTO_TYPES			proto_				{PROTO_UNINIT};
-	PROTO_CAP_STATUS_E		status_				{CAPSTAT_UNINIT};
+	PROTO_TYPES			proto_				{PROTO_UNKNOWN};
+	PROTO_CAP_STATUS_E		status_				{CAPSTAT_STOPPED};
 	bool				is_ssl_				{false};
 	char				errstr_[COMM_MAX_ERROR_LEN];
 
 	static constexpr size_t		MAX_REQ_TRACE_ELEM		{128};
 
 	REQ_TRACE_STATUS(uint64_t glob_id, const NS_IP_PORT & ns_ip_port, const char *comm, PROTO_CAP_STATUS_E status, bool is_ssl = false,
-					PROTO_TYPES proto = PROTO_UNINIT, const char *errstr = nullptr, uint64_t nrequests = 0, uint64_t nerrors = 0) noexcept
+					PROTO_TYPES proto = PROTO_UNKNOWN, const char *errstr = nullptr, uint64_t nrequests = 0, uint64_t nerrors = 0) noexcept
 		: glob_id_(glob_id), ns_ip_port_(ns_ip_port), nrequests_(nrequests), nerrors_(nerrors), proto_(proto), status_(status), is_ssl_(is_ssl)
 	{
 		GY_STRNCPY(comm_, comm, sizeof(comm_));

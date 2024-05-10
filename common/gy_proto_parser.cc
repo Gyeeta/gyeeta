@@ -285,7 +285,7 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 
 	orig_proto_ = listenshr->api_proto_.load(mo_acquire);
 
-	if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_INVALID) {
+	if (orig_proto_ != PROTO_UNKNOWN && orig_proto_ < PROTO_INVALID) {
 		if (true == listenshr->api_is_ssl_.load(mo_relaxed)) {
 			orig_ssl_ = true;
 		}
@@ -347,8 +347,8 @@ void SVC_INFO_CAP::svc_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
 
 		slock.unlock();
 
-		if (proto_ == PROTO_UNINIT) {
-			if (orig_proto_ != PROTO_UNINIT && orig_proto_ < PROTO_INVALID) {
+		if (proto_ == PROTO_UNKNOWN) {
+			if (orig_proto_ != PROTO_UNKNOWN && orig_proto_ < PROTO_INVALID) {
 
 				isssl = orig_ssl_;
 				proto_ = orig_proto_;
@@ -477,7 +477,7 @@ void PROTO_DETECT::cleanup_inactive_sess(time_t tcur) noexcept
 		auto				& sess = it->second;
 
 		if (sess.tlastpkt_ < tmin && sess.apistat_.nconfirm_ == 0) {
-			if (sess.apistat_.proto_ == PROTO_UNINIT) {
+			if (sess.apistat_.proto_ == PROTO_UNKNOWN) {
 				smap_.erase(it);
 				ndel++;
 				continue;
@@ -843,7 +843,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	auto				& apistat = sess.apistat_;
 	tribool				isvalid;
 
-	if (apistat.proto_ != PROTO_UNINIT && apistat.proto_ < PROTO_INVALID) {
+	if (apistat.proto_ != PROTO_UNKNOWN && apistat.proto_ < PROTO_INVALID) {
 		switch (apistat.proto_) {
 
 		case PROTO_HTTP1 :
@@ -935,7 +935,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 					if (i == (int)PROTO_DETECT::MAX_API_PROTO) {
 						for (i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
-							if (detect.apistats_[i].proto_ == PROTO_UNINIT) {
+							if (detect.apistats_[i].proto_ == PROTO_UNKNOWN) {
 
 								detect.apistats_[i].src_ = apistat.src_;
 								detect.apistats_[i].proto_ = apistat.proto_;
@@ -1035,7 +1035,7 @@ void SVC_INFO_CAP::analyze_detect_status()
 		for (int i = 0; i < (int)PROTO_DETECT::MAX_API_PROTO; ++i) {
 			auto			& apistat = detect.apistats_[i];
 
-			if (apistat.nconfirm_ > 1 && apistat.proto_ > PROTO_UNINIT && apistat.proto_ < PROTO_INVALID) {
+			if (apistat.nconfirm_ > 1 && apistat.proto_ > PROTO_UNKNOWN && apistat.proto_ < PROTO_INVALID) {
 				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Service API Capture : Service Protocol Detected as \'%s\' for Listener %s Port %hu ID %lx : "
 							"SSL Capture is currently %sactive\n", proto_to_string(apistat.proto_), comm_, ns_ip_port_.ip_port_.port_,
 							glob_id_, sslreq == SSL_REQ_E::SSL_ACTIVE ? "" : "not ");
@@ -2641,7 +2641,7 @@ bool API_PARSE_HDLR::handle_proto_pkt(MSG_PKT_SVCCAP & msg) noexcept
 			return true;
 		}	
 
-		if (psvc->proto_ != PROTO_UNINIT) {
+		if (psvc->proto_ != PROTO_UNKNOWN) {
 #ifndef GY_TEST_REORDER_PKTS
 			return psvc->parse_pkt(puniq, *phdr, pdata);
 #else

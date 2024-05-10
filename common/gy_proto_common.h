@@ -13,7 +13,7 @@ static constexpr uint32_t			MAX_PARSE_EXT_LEN	{1400};
 
 enum PROTO_TYPES : uint16_t 
 {
-	PROTO_UNINIT				= 0,
+	PROTO_UNKNOWN				= 0,
 
 	PROTO_HTTP1,
 	PROTO_HTTP2,
@@ -27,7 +27,7 @@ enum PROTO_TYPES : uint16_t
 
 static constexpr const char 			*proto_type_str[PROTO_INVALID + 1] = 
 {
-		"Uninitialized", "HTTP1", "HTTP2", "Postgres", "MySQL", "Mongo", "Redis", 
+		"Unknown", "HTTP1", "HTTP2", "Postgres", "MySQL", "Mongo", "Redis", 
 		"Invalid",
 };	
 
@@ -54,7 +54,7 @@ static PROTO_TYPES string_to_proto(const char *str) noexcept
 
 enum PROTO_CAP_STATUS_E : uint8_t
 {
-	CAPSTAT_UNINIT			= 0,
+	CAPSTAT_STOPPED			= 0,
 	CAPSTAT_FAILED,
 	CAPSTAT_STARTING,		// Do not change the order...
 	CAPSTAT_ACTIVE,
@@ -64,7 +64,7 @@ enum PROTO_CAP_STATUS_E : uint8_t
 
 static constexpr const char			*cap_status_str[CAPSTAT_MAX] = 
 {
-	"Uninitialized", "Failed", "Starting", "Active",
+	"Stopped", "Failed", "Starting", "Active",
 };	
 
 static constexpr const char * cap_status_to_string(PROTO_CAP_STATUS_E status) noexcept
@@ -155,7 +155,7 @@ struct API_TRAN
 	uint32_t				app_sleep_ms_		{0};		/* Delay between a request and preceding response */
 	uint32_t				tran_type_		{0};
 	
-	PROTO_TYPES				proto_			{PROTO_UNINIT};
+	PROTO_TYPES				proto_			{PROTO_UNKNOWN};
 	uint16_t				cliport_		{0};
 	uint16_t				serport_		{0};
 

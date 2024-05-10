@@ -6624,7 +6624,7 @@ int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
 				setsvc(listenshr->parthashr_, listenshr->glob_id_, listenshr->ns_ip_port_, listenshr->comm_, notupd ? tcurr : tend);
 				
 				listenshr->rtraceshr_->tlaststat_ = tcurr;
-				listenshr->rtraceshr_->api_cap_status_.store(CAPSTAT_UNINIT, mo_release);
+				listenshr->rtraceshr_->api_cap_status_.store(CAPSTAT_STOPPED, mo_release);
 
 				if (notupd) {
 					sit = smap.erase(sit);
@@ -6798,7 +6798,7 @@ bool MCONN_HANDLER::handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> &
 				GY_STRNCPY(msg, pstat->errstr_, sizeof(msg));
 			}	
 			else {
-				if (pstat->status_ == CAPSTAT_UNINIT) {
+				if (pstat->status_ == CAPSTAT_STOPPED) {
 					GY_STRNCPY(msg, "Request Trace has been stopped", sizeof(msg));
 				}	
 				else if (pstat->status_ == CAPSTAT_FAILED) {
@@ -6824,7 +6824,7 @@ bool MCONN_HANDLER::handle_req_trace_status(const std::shared_ptr<PARTHA_INFO> &
 				continue;
 			}
 
-			if (pstat->status_ == CAPSTAT_UNINIT || pstat->status_ == CAPSTAT_FAILED) { 
+			if (pstat->status_ == CAPSTAT_STOPPED || pstat->status_ == CAPSTAT_FAILED) { 
 				for (auto && [defid, smap] : trace_elems_.listmap_) {
 					auto			it = smap.find(pstat->glob_id_);
 					

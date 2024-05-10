@@ -201,7 +201,7 @@ public :
 		uint16_t			nmaybe_not_		{0};		
 		uint8_t				nis_not_		{0};
 		API_CAP_SRC			src_			{SRC_UNKNOWN};
-		PROTO_TYPES			proto_			{PROTO_UNINIT};
+		PROTO_TYPES			proto_			{PROTO_UNKNOWN};
 	};
 
 	struct SessInfo
@@ -396,7 +396,7 @@ struct SVC_SESSION
 	void					*pdataproto_		{nullptr};
 	COMMON_PROTO				common_;				
 	SVC_INFO_CAP				*psvc_			{nullptr};
-	PROTO_TYPES				proto_			{PROTO_UNINIT};
+	PROTO_TYPES				proto_			{PROTO_UNKNOWN};
 	REORDER_INFO				reorder_;
 	uint32_t				to_del_			{0};
 	bool					isrdrmap_		{false};
@@ -517,7 +517,7 @@ public :
 	gy_atomic<uint64_t>			stopped_parser_tusec_	{0};
 
 	std::unique_ptr<char []>		api_cap_err_;
-	PROTO_TYPES				proto_			{PROTO_UNINIT};
+	PROTO_TYPES				proto_			{PROTO_UNKNOWN};
 	gy_atomic<SSL_REQ_E>			ssl_req_		{SSL_REQ_E::SSL_NO_REQ};
 	
 	bool					is_any_ip_		{false};
@@ -525,7 +525,7 @@ public :
 	SSL_SVC_E				svc_ssl_		{SSL_SVC_E::SSL_UNINIT};
 
 	// Previously set listener info
-	PROTO_TYPES				orig_proto_		{PROTO_UNINIT};
+	PROTO_TYPES				orig_proto_		{PROTO_UNKNOWN};
 	bool					orig_ssl_		{false};		
 
 	SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_PARSE_HDLR & apihdlr);
