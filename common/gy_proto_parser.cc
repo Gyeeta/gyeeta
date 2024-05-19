@@ -1119,8 +1119,8 @@ void SVC_INFO_CAP::analyze_detect_status()
 
 	detect.tlastchk_ = tcurr;
 
-	if (detect.tfirstreq_ && detect.tfirstresp_ && tcurr > detect.tfirstreq_ + 600 && tcurr > detect.tfirstresp_ + 600 && tstats.npkts_ > 1000 && 
-		tstats.nbytes_ > GY_UP_MB(1) && (detect.nsynsess_ > 4 || (detect.nmidsess_ > 10 && detect.nsynsess_ > 1))) {
+	if (detect.tfirstreq_ && detect.tfirstresp_ && tcurr > detect.tfirstreq_ + 600 && tcurr > detect.tfirstresp_ + 600 && tstats.npkts_ > 200 && 
+		tstats.nbytes_ >= GY_UP_MB(1) && (detect.nsynsess_ > 4 || (detect.nmidsess_ > 10 && detect.nsynsess_ > 1))) {
 
 		auto				sslreq = ssl_req_.load(mo_relaxed);
 

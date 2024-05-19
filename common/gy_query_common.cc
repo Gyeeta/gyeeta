@@ -106,7 +106,7 @@ DB_AGGR_CLASS subsys_aggr_list[SUBSYS_MAX] =
 	{ SUBSYS_TRACECONN,	nullptr, 			0,						nullptr,			0,					0 },
 	{ SUBSYS_TRACEUNIQ,	json_db_aggr_traceuniq_arr, 	GY_ARRAY_SIZE(json_db_aggr_traceuniq_arr),	traceuniq_aggr_info,		GY_ARRAY_SIZE(traceuniq_aggr_info),	3600 },
 	{ SUBSYS_TRACEDEF,	nullptr, 			0,						nullptr,			0,					0 },
-	{ SUBSYS_TRACESTATUS,	json_db_aggr_tracestatus_arr, 	GY_ARRAY_SIZE(json_db_aggr_tracestatus_arr),	tracestatus_aggr_info,		GY_ARRAY_SIZE(tracestatus_aggr_info),	300 },
+	{ SUBSYS_TRACESTATUS,	json_db_aggr_tracestatus_arr, 	GY_ARRAY_SIZE(json_db_aggr_tracestatus_arr),	tracestatus_aggr_info,		GY_ARRAY_SIZE(tracestatus_aggr_info),	60 },
 	{ SUBSYS_TRACEHISTORY,	nullptr, 			0,						nullptr,			0,					0 },
 };	
 
@@ -652,7 +652,7 @@ char * QUERY_OPTIONS::get_db_select_multihost_query(STR_WR_BUF & strbuf, SUBSYS_
 					get_subsys_info(subsys) ? get_subsys_info(subsys)->jsonstr : "");
 	}	
 
-	strbuf.appendconst("select * from gy_multihostselect( $a$ ");
+	strbuf.appendconst(" select * from (select * from gy_multihostselect( $a$ ");
 
 	get_db_where_clause(strbuf, SUBSYS_HOST, tablename, datetbl, "");
 
@@ -664,10 +664,14 @@ char * QUERY_OPTIONS::get_db_select_multihost_query(STR_WR_BUF & strbuf, SUBSYS_
 
 	get_db_where_clause(strbuf, subsys, tablename, datetbl, "tbl.", true /* add_multihost_subsys */);
 
-	get_db_sort_limit(strbuf, subsys, "tbl.");
+	get_db_sort_limit(strbuf, subsys, "tbl.", true /* ignorelimit */, false /* ignoresort */, true /* ignoffset */);
+
+	if (maxrecs_) {
+		strbuf.appendfmt(" limit %lu ", maxrecs_ + recoffset_);
+	}
 
 	if (maxrecs_ > 0) {
-		strbuf.appendfmt(" $b$, %lu) as (machid char(32), hostname text, madhavaid char(16), clustername text,", maxrecs_);
+		strbuf.appendfmt(" $b$, %lu) as (machid char(32), hostname text, madhavaid char(16), clustername text,", maxrecs_ + recoffset_);
 	}
 	else {
 		strbuf.appendconst(" $b$ ) as (machid char(32), hostname text, madhavaid char(16), clustername text,");
@@ -681,7 +685,9 @@ char * QUERY_OPTIONS::get_db_select_multihost_query(STR_WR_BUF & strbuf, SUBSYS_
 		strbuf.set_last_char(' ');
 	}
 
-	strbuf << ')';
+	const char		*pqtbl = pdefsubsys_ ? pdefsubsys_->jsonstr : "qtbl";
+
+	strbuf << " ) ) "sv << pqtbl << ' ';
 
 	get_db_sort_limit(strbuf, subsys);
 

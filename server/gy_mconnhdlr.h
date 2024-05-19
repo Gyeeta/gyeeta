@@ -1919,6 +1919,7 @@ done :
 	time_t					tpartha_pingall_	{time(nullptr) + 5 * 3600};
 
 	MTCP_LISTENER_HASH_TABLE		glob_listener_tbl_	{1};
+	gy_atomic<uint64_t>			listen_add_csec_	{0};		
 
 	GY_SCHEDULER				*pdb_scheduler_		{nullptr};
 	std::unique_ptr<PGConnPool>		db_scheduler_pool_;

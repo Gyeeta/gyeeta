@@ -559,7 +559,7 @@ public :
 		return strbuf.buffer();
 	}	
 	
-	char * get_db_sort_limit(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, const char *table_alias_prefix = "", bool ignorelimit = false, bool ignoresort = false) const 
+	char * get_db_sort_limit(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, const char *table_alias_prefix = "", bool ignorelimit = false, bool ignoresort = false, bool ignoffset = false) const 
 	{
 		if (!ignoresort && nsort_ > 0 && nsort_ <= MAX_SORT_COLUMNS) {
 			size_t		n = 0;
@@ -582,11 +582,11 @@ public :
 			if (maxrecs_) {
 				strbuf.appendfmt(" limit %lu ", maxrecs_);
 			}	
-
-			if (recoffset_) {
-				strbuf.appendfmt(" offset %lu ", recoffset_);
-			}	
 		}
+
+		if (recoffset_ && !ignorelimit && !ignoffset) {
+			strbuf.appendfmt(" offset %lu ", recoffset_);
+		}	
 
 		return strbuf.buffer();
 	}	

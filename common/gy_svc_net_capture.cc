@@ -63,7 +63,7 @@ SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid, bool disable_api_capture, uint3
 		gy_rcu_offline();
 	});	
 
-	apischedthr_.add_schedule(100'200, 30'000, 0, "Check for api netns Listener Deletes and Netns capture errors", 
+	apischedthr_.add_schedule(100'000 + (getpid() % 1000), 30'000, 0, "Check for api netns Listener Deletes and Netns capture errors", 
 	[this, sendstatus = bool(false)] () mutable { 
 		check_netns_api_listeners(sendstatus);
 

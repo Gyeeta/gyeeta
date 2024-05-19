@@ -220,8 +220,15 @@ MCONN_HANDLER::MCONN_HANDLER(MADHAVA_C *pmadhava)
 			cleanup_tcp_conn_table();
 		});
 
-		schedshrlong2->add_schedule(307'600, 300'000, 0, "Recheck all listeners for new Request Trace defs", 
-		[this] { 
+		schedshrlong2->add_schedule(207'600, 150'000, 0, "Recheck all listeners for new Request Trace defs", 
+		[this, midchk = true] () mutable { 
+			midchk = !midchk;
+
+			if (!midchk) {
+				if ((int64_t)listen_add_csec_.load(mo_relaxed) < get_sec_clock() - 160) {
+					return;
+				}	
+			}	
 			check_new_req_trace_svcs(true /* checkall */);
 		});
 
@@ -387,7 +394,7 @@ next :
 		cleanup_rem_madhava_unused_structs();
 	});
 
-	pdb_scheduler_->add_schedule(725'000, 5 * GY_MSEC_PER_MINUTE, 0, "Update DB with Trace Status", 
+	pdb_scheduler_->add_schedule(225'000, GY_MSEC_PER_MINUTE, 0, "Update DB with Trace Status", 
 	[this] { 
 		insert_db_req_trace_status();
 	});
@@ -6259,7 +6266,7 @@ bool MCONN_HANDLER::handle_new_req_trace_def(SM_REQ_TRACE_DEF_NEW *pdef, int nev
 
 	wscope.unlock();
 	
-	return GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION)->add_oneshot_schedule(100, "Check all Listeners for New Request Trace",
+	return GY_SCHEDULER::get_singleton(GY_SCHEDULER::SCHEDULER_LONG2_DURATION)->add_oneshot_schedule(500, "Check all Listeners for New Request Trace",
 				[this] { 
 					check_new_req_trace_svcs(false /* checkall */); 
 				}, false);
@@ -6640,20 +6647,23 @@ int MCONN_HANDLER::cleanup_req_trace_elems() noexcept
 			}	
 		}
 
-		time_t				tmindel = (trace_elems_.statlist_.size() < 512 ? tcurr - GY_SEC_PER_DAY * 2 : tcurr - GY_SEC_PER_DAY);
+		time_t				tmindel = (trace_elems_.statlist_.size() < 2048 ? tcurr - GY_SEC_PER_DAY * 5 : tcurr - 2 * GY_SEC_PER_DAY);
+		int				nelemdel = 0, nl = 0;
+
+		if (trace_elems_.statlist_.size() > 10000) {
+			nelemdel = trace_elems_.statlist_.size() - 10000;
+		}
 
 		for (auto it = trace_elems_.statlist_.begin(); it != trace_elems_.statlist_.end();) {
-			if (it->tstatus_ < tmindel) {
+			if ((it->tstatus_ < tmindel) || nl < nelemdel) {
 				it = trace_elems_.statlist_.erase(it);
+				++nl;
+
 				continue;
 			}	
 
 			break;
 		}	
-
-		if (trace_elems_.statlist_.size() > 10000) {
-			trace_elems_.statlist_.resize(10000);
-		}
 
 		wscope.unlock();
 
@@ -14210,6 +14220,10 @@ done1 :
 
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BOLD_GREEN, "%s started %u listeners of which %u are newly seen\n",
 			prawpartha->print_string(STRING_BUFFER<256>().get_str_buf()), nlisteners, nadded);
+
+		if (nadded > 0) {
+			listen_add_csec_.store(get_sec_clock(), mo_relaxed);
+		}	
 
 		return true;
 	}

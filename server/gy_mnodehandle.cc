@@ -9710,15 +9710,15 @@ bool MCONN_HANDLER::web_db_tracestatus(const std::shared_ptr<MCONNTRACK> & conns
 	tvstart = qryopt.get_start_timeval(); 
 	tvend 	= qryopt.get_end_timeval();
 
-	if (tvend.tv_sec - tvstart.tv_sec < (int64_t)INFO_DB_UPDATE_SEC) {
+	if (tvend.tv_sec - tvstart.tv_sec < 60) {
 		origtvstart	= tvstart;
 		origtvend	= tvend;
 		GY_STRNCPY(origstarttime, qryopt.get_starttime(), sizeof(origstarttime));
 		GY_STRNCPY(origendtime, qryopt.get_endtime(), sizeof(origendtime));
 		updqryopt	= true;
 		
-		tvstart.tv_sec = tvend.tv_sec - INFO_DB_UPDATE_SEC;
-		tvend.tv_sec += INFO_DB_UPDATE_SEC/3;
+		tvstart.tv_sec = tvend.tv_sec - 60;
+		tvend.tv_sec += 60/3;
 		qryopt.set_timestamps(gy_localtime_iso8601_sec(tvstart.tv_sec).get(), gy_localtime_iso8601_sec(tvend.tv_sec).get(), tvstart, tvend, true /* pointintime */);
 	
 		pointintime 	= true;
@@ -9856,15 +9856,15 @@ bool MCONN_HANDLER::web_db_aggr_tracestatus(const std::shared_ptr<MCONNTRACK> & 
 	tvstart = qryopt.get_start_timeval(); 
 	tvend 	= qryopt.get_end_timeval();
 
-	if (tvend.tv_sec - tvstart.tv_sec < (int64_t)INFO_DB_UPDATE_SEC) {
+	if (tvend.tv_sec - tvstart.tv_sec < 60) {
 		origtvstart	= tvstart;
 		origtvend	= tvend;
 		GY_STRNCPY(origstarttime, qryopt.get_starttime(), sizeof(origstarttime));
 		GY_STRNCPY(origendtime, qryopt.get_endtime(), sizeof(origendtime));
 		updqryopt	= true;
 		
-		tvstart.tv_sec = tvend.tv_sec - INFO_DB_UPDATE_SEC;
-		tvend.tv_sec += INFO_DB_UPDATE_SEC/3;
+		tvstart.tv_sec = tvend.tv_sec - 60;
+		tvend.tv_sec += 60/3;
 		qryopt.set_timestamps(gy_localtime_iso8601_sec(tvstart.tv_sec).get(), gy_localtime_iso8601_sec(tvend.tv_sec).get(), tvstart, tvend, false /* pointintime */);
 	}	
 
