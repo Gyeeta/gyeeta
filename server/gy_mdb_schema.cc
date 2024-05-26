@@ -1142,12 +1142,13 @@ begin
 	istbl := public.gy_table_exists(schname, 'exttracereqtbl', '');
 	if not istbl then 
 		/*
-		 * NOTE : Please sync any changes here with set_ext_tracereq_fields() function
+		 * NOTE : Please sync any changes here with set_ext_tracereq_fields() function. Need lateral join as duplicate entries possible in traceconntbl...
 		 */
 		execute format($fmt$ create or replace view %s.exttracereqtbl as 
 				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
-					from %s.tracereqtbl tbl left join %s.traceconntbl l on tbl.connid = l.connid and 
-					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '20 sec'::interval
+					from %s.tracereqtbl tbl left join lateral 
+					( select cli_aggr_task_id, cli_comm, cli_parthaid, cli_madhavaid, cli_listener_proc from %s.traceconntbl where 
+					tbl.connid = connid and time between tbl.conntime - '10 sec'::interval and tbl.conntime + '10 sec'::interval limit 1 ) l on true
 			$fmt$, schname, schname, schname);		
 	end if;	
 	
@@ -1155,9 +1156,10 @@ begin
 	if not istbl then 
 		execute format($fmt$ create or replace view %s.exttracereqtbl_%s as 
 				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
-					from %s.tracereqtbl_%s tbl left join %s.traceconntbl_%s l on tbl.connid = l.connid and 
-					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '20 sec'::interval
-			$fmt$, schname, tbltoday, schname, tbltoday, schname, tbltoday);		
+					from %s.tracereqtbl_%s tbl left join lateral
+					( select cli_aggr_task_id, cli_comm, cli_parthaid, cli_madhavaid, cli_listener_proc from %s.traceconntbl where 
+					tbl.connid = connid and time between tbl.conntime - '10 sec'::interval and tbl.conntime + '10 sec'::interval limit 1 ) l on true
+			$fmt$, schname, tbltoday, schname, tbltoday, schname);		
 	end if;	
 
 
@@ -1165,9 +1167,10 @@ begin
 	if not istbl then 
 		execute format($fmt$ create or replace view %s.exttracereqtbl_%s as 
 				select tbl.*, l.cli_aggr_task_id, l.cli_comm, l.cli_parthaid, l.cli_madhavaid, l.cli_listener_proc
-					from %s.tracereqtbl_%s tbl left join %s.traceconntbl_%s l on tbl.connid = l.connid and 
-					l.time between tbl.conntime - '20 sec'::interval and tbl.conntime + '20 sec'::interval
-			$fmt$, schname, tbltom, schname, tbltom, schname, tbltom);		
+					from %s.tracereqtbl_%s tbl left join lateral
+					( select cli_aggr_task_id, cli_comm, cli_parthaid, cli_madhavaid, cli_listener_proc from %s.traceconntbl where 
+					tbl.connid = connid and time between tbl.conntime - '10 sec'::interval and tbl.conntime + '10 sec'::interval limit 1 ) l on true
+			$fmt$, schname, tbltom, schname, tbltom, schname);		
 	end if;	
 
 
