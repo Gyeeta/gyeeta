@@ -871,7 +871,9 @@ begin
 	execute format('alter table if exists %s.tracereqtbl alter column uniqid SET STORAGE plain', schname);
 	
 	execute format('create index if not exists tracereqtbl_index_time on %s.tracereqtbl(time)', schname);
-	execute format('create index if not exists tracereqtbl_index_glob_id on %s.tracereqtbl using HASH (glob_id)', schname);
+	execute format('create index if not exists tracereqtbl_index_errorcode on %s.tracereqtbl(errorcode) where errorcode != 0', schname);
+	execute format('create index if not exists tracereqtbl_index_response on %s.tracereqtbl(response) where response >= 500000', schname);
+	execute format('create index if not exists tracereqtbl_index_bytesout on %s.tracereqtbl(bytesout) where bytesout >= 500000', schname);
 
 	execute format('create unlogged table if not exists %s.tracereqtbl_%s partition of %s.tracereqtbl FOR VALUES FROM (''%s''::timestamptz) to (''%s''::timestamptz)', 
 		schname, tbltoday, schname, timetoday, timetomor);
