@@ -851,10 +851,12 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 			break;
 
+#if 0	// Enable after HTTP2 parsing complete		
 		case PROTO_HTTP2 :
 			isvalid	= HTTP2_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 
 			break;
+#endif			
 		
 		case PROTO_POSTGRES :
 			isvalid	= POSTGRES_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
@@ -993,6 +995,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		return true;
 	}	
 
+#if 0	// Enable after HTTP2 parsing complete
 	isvalid	= HTTP2_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
 		
 	if (true == isvalid) {
@@ -1000,6 +1003,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 		return true;
 	}
+#endif	
 
 	if (!is_init || hdr.dir_ == DirPacket::DirInbound) {
 		// Postgres Init Outbound ignored for detection
