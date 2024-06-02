@@ -1191,7 +1191,7 @@ bool MCONN_HANDLER::db_set_part_unlogged() noexcept
 
 		qbuf.appendconst("select public.gy_set_tbl_unlogged(ARRAY[");
 
-		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_partition_tbls); ++i) {
+		for (size_t i = 0; i < GY_ARRAY_SIZE(db_partha_unlogged_partition_tbls); ++i) {
 			qbuf.appendfmt("\'%s\',", db_partha_unlogged_partition_tbls[i]);
 		}	
 
