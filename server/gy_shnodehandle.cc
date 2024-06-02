@@ -2183,7 +2183,7 @@ bool SHCONN_HANDLER::web_db_detail_tracedef(const std::shared_ptr<SHCONNTRACK> &
 	if (true) {
 		STRING_BUFFER<48 * 1024>	strbuf;
 
-		qryopt.get_db_select_query(strbuf, SUBSYS_ALERTDEF, "public.tracedeftbl");
+		qryopt.get_db_select_query(strbuf, SUBSYS_TRACEDEF, "public.tracedeftbl");
 
 		bret = PQsendQueryOptim(pconn->get(), strbuf.buffer(), strbuf.size());
 	}	
