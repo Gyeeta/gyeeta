@@ -6038,14 +6038,16 @@ uint32_t MCONN_HANDLER::handle_trace_requests(const std::shared_ptr<PARTHA_INFO>
 					break;
 				}	
 
+				/* Uniqid not currently computed */
+
 				qbuf.appendfmt("(to_timestamp(%ld.%06lu),$GYe%lu$%s$GYe%lu$,%lu,%lu,%lu,%d,$GYe$%s$GYe$,%d,$GYe$%s$GYe$,$GYe$%s$GYe$,$GYe$%s$GYe$,"
-							"\'%016lx\',\'%s\',\'%016lx\',\'%s\',\'%016lx\',%ld,to_timestamp(%ld),\'%s\',%hu,%d,%ld,%ld),",
+							"\'%016lx\',\'%s\',\'%016lx\',\'%s\',NULL,%ld,to_timestamp(%ld),\'%s\',%hu,%hu,%d,%ld,%ld),",
 							pdata->treq_usec_ / GY_USEC_PER_SEC, pdata->treq_usec_ % GY_USEC_PER_SEC, curnsect, sv.data(), curnsect,
 							pdata->response_usec_, pdata->reqlen_, pdata->reslen_, pdata->errorcode_, fields.errtxt_.data(), fields.statuscode_,
 							fields.appname_.data(), fields.username_.data(), fields.dbname_.data(), pdata->glob_id_, pdata->comm_,
 							pdata->get_connid_hash(IP_PORT(pdata->cliip_, pdata->cliport_), IP_PORT(pdata->serip_, pdata->serport_), pdata->glob_id_),
-							proto_to_string(pdata->proto_), 0L /* TODO Uniqid not currently computed */, pdata->reqnum_, 
-							pdata->tconnect_usec_ / GY_USEC_PER_SEC, pdata->cliip_.printaddr().get(), pdata->cliport_, fields.sessid_,
+							proto_to_string(pdata->proto_), pdata->reqnum_, 
+							pdata->tconnect_usec_ / GY_USEC_PER_SEC, pdata->cliip_.printaddr().get(), pdata->cliport_, pdata->serport_, fields.sessid_,
 							fields.dyn_prep_reqnum_, fields.dyn_prep_time_t_);
 
 			}	

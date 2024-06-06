@@ -857,6 +857,7 @@ begin
 			conntime		timestamptz,
 			cliip			text,
 			cliport			int,
+			serport			int,
 			sessid			int,
 			prepreqnum		bigint,
 			preptime		bigint
@@ -868,7 +869,6 @@ begin
 	execute format('alter table if exists %s.tracereqtbl alter column comm SET STORAGE plain', schname);
 	execute format('alter table if exists %s.tracereqtbl alter column connid SET STORAGE plain', schname);
 	execute format('alter table if exists %s.tracereqtbl alter column proto SET STORAGE plain', schname);
-	execute format('alter table if exists %s.tracereqtbl alter column uniqid SET STORAGE plain', schname);
 	
 	execute format('create index if not exists tracereqtbl_index_time on %s.tracereqtbl(time)', schname);
 	execute format('create index if not exists tracereqtbl_index_errorcode on %s.tracereqtbl(errorcode) where errorcode != 0', schname);
