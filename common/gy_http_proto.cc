@@ -615,12 +615,18 @@ lbl_chunk_data :
 			uint64_t		slen = std::min<uint64_t>(pktlen, connstate.data_chunk_left_);
 			auto			savepayload = connstate.save_req_payload_;
 			
-			if (slen > 0 && tdstrbuf_.size() > 0 && connstate.save_req_payload_ && parambuf_.bytes_left() > 0 && gy_isprint_ascii(*pdata)) {
+			if (slen > 0 && tdstrbuf_.size() > 0 && connstate.save_req_payload_ > 0 && parambuf_.bytes_left() > 0 && gy_isprint_ascii(*pdata)) {
 				if (slen == 1 || gy_isprint_ascii(pdata[1])) {
 					if (0 == parambuf_.size()) {
 						parambuf_ << " $*PARAM*$ "sv;
 					}
-					parambuf_.append((const char *)pdata, slen);
+
+					if (connstate.save_req_payload_ != req_urlencoded_idx + 1) {
+						parambuf_.append((const char *)pdata, slen);
+					}
+					else {
+						HTTP1_PROTO::url_decode_component(pdata, slen, parambuf_);
+					}	
 				}	
 			}
 
@@ -783,12 +789,18 @@ lbl_cont_data :
 
 			uint64_t		slen = std::min<uint64_t>(pktlen, connstate.data_chunk_left_);
 			
-			if (slen > 0 && tdstrbuf_.size() > 0 && connstate.save_req_payload_ && parambuf_.bytes_left() > 0 && gy_isprint_ascii(*pdata)) {
+			if (slen > 0 && tdstrbuf_.size() > 0 && connstate.save_req_payload_ > 0 && parambuf_.bytes_left() > 0 && gy_isprint_ascii(*pdata)) {
 				if (slen == 1 || gy_isprint_ascii(pdata[1])) {
+
 					if (connstate.data_chunk_left_ == connstate.data_chunk_len_) {
 						parambuf_ << " $*PARAM*$ "sv;
 					}
-					parambuf_.append((const char *)pdata, slen);
+					if (connstate.save_req_payload_ != req_urlencoded_idx + 1) {
+						parambuf_.append((const char *)pdata, slen);
+					}
+					else {
+						HTTP1_PROTO::url_decode_component(pdata, slen, parambuf_);
+					}	
 				}	
 			}
 
@@ -936,7 +948,7 @@ lbl_idle :
 				ptmp = (uint8_t *)memchr(pdata, ' ', pktlen);
 
 				if (!ptmp) {
-					parambuf_.append((const char *)pdata, pktlen);
+					HTTP1_PROTO::url_decode_component(pdata, pktlen, parambuf_);
 					
 					connstate.state_ = HCONN_HDR;
 					connstate.skip_till_eol_ = true;
@@ -944,7 +956,7 @@ lbl_idle :
 					return 0;
 				}	
 				
-				parambuf_.append((const char *)pdata, ptmp - pdata);
+				HTTP1_PROTO::url_decode_component(pdata, ptmp - pdata, parambuf_);
 
 				pdata = ptmp + 1;
 				pktlen = pend - pdata;
@@ -1092,7 +1104,7 @@ lbl_hdr :
 							const auto			& t = req_content_types[i];
 
 							if (memmem(sv1.data() + rv.size(), sv1.size() - rv.size(), t.data(), t.size())) {
-								connstate.save_req_payload_ = 1;
+								connstate.save_req_payload_ = j + 1;
 								break;
 							}	
 						}	

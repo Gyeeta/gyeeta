@@ -8646,6 +8646,17 @@ public :
 		return pwritebuf_;
 	}	
 
+	/*
+	 * No bounds check done for loop based appends. Please ensure safety externally...
+	 */
+	inline char *appendunsafe(char c) noexcept
+	{
+		pwritebuf_[currsz_++] 	= c;
+		pwritebuf_[currsz_] 	= 0;
+
+		return pwritebuf_;
+	}	
+
 	char *appendptr(void *ptr) noexcept
 	{
 		return appendtype<void *>(ptr, "%p");

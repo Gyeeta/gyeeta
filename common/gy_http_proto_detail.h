@@ -74,6 +74,8 @@ public :
 		"/json", "text/", "/x-www-form-urlencoded", "/xml", "form-data",
 	};	
 
+	static constexpr uint8_t req_urlencoded_idx = 2;  // XXX Change if x-www-form-urlencoded index changes
+
 	static constexpr std::string_view comp_content_types[] = {
 		"gzip", "compress", "deflate", "br",
 	};	

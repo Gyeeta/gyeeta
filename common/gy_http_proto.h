@@ -353,6 +353,52 @@ public :
 	}	
 
 	
+	static void url_decode_component(const uint8_t *pinput, size_t sz, STR_WR_BUF & strbuf) noexcept
+	{
+		static constexpr uint8_t hextable[] = {
+			0, 1,  2,  3,  4,  5,  6,  7, 8, 9, 0, 0, 0, 0, 0, 0, /* 0x30 - 0x3f */
+			0, 10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0x40 - 0x4f */
+			0, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0x50 - 0x5f */
+			0, 10, 11, 12, 13, 14, 15                             /* 0x60 - 0x66 */
+		};
+		
+		size_t			i = 0;
+		char			c, c1, c2;
+
+		if (sz > strbuf.bytes_left()) {
+			sz = strbuf.bytes_left();
+		}	
+
+		while (i < sz) {
+			c = (char)pinput[i];
+
+			if (c == '+') {
+				strbuf.appendunsafe(' ');
+				++i;
+				continue;
+			}	
+			else if (c == '%' && i + 2  < sz) {
+				c1 = pinput[i + 1];
+				c2 = pinput[i + 2];
+
+				if (gy_isxdigit_ascii(c1) && gy_isxdigit_ascii(c2)) {
+					strbuf.appendunsafe((char)(uint8_t)((hextable[c1 - '0'] << 4) | hextable[c2 - '0']));
+					
+					i += 3;
+					continue;
+				}
+			}
+			else if (c == '&') {
+				strbuf.appendunsafe(',');
+				++i;
+				continue;
+			}	
+
+			strbuf.appendunsafe(c);
+			++i;
+		}	
+	}	
+	
 
 
 	API_PARSE_HDLR				& apihdlr_;
