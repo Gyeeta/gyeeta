@@ -2518,7 +2518,7 @@ static constexpr JSON_DB_MAPPING json_db_parthalist_arr[] =
 enum : uint32_t
 {
 	FIELD_REQ		= fnv1_consthash("req"),
-	FIELD_RESP		= fnv1_consthash("resp"),
+	FIELD_RESPUS		= fnv1_consthash("respus"),
 	FIELD_NETIN		= fnv1_consthash("netin"),
 	FIELD_NETOUT		= fnv1_consthash("netout"),
 	FIELD_ERR		= fnv1_consthash("err"),
@@ -2546,7 +2546,7 @@ static constexpr JSON_DB_MAPPING json_db_tracereq_arr[] =
 // jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys		jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
 { "time", 		"time", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
 { "req",		"req",		 	GYSLEN("req"),		FIELD_REQ,		SUBSYS_TRACEREQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
-{ "resp",		"response",		GYSLEN("resp"),		FIELD_RESP,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "respus",		"response",		GYSLEN("respus"),	FIELD_RESPUS,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "netin",		"bytesin",		GYSLEN("netin"),	FIELD_NETIN,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "netout",		"bytesout",		GYSLEN("netout"),	FIELD_NETOUT,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "err", 		"errorcode", 		GYSLEN("err"),		FIELD_ERR,		SUBSYS_TRACEREQ,JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
@@ -2571,6 +2571,92 @@ static constexpr JSON_DB_MAPPING json_db_tracereq_arr[] =
 // Additional fields not present in DB
 };
 
+enum : uint32_t
+{
+	FIELD_AVGRESPUS		= fnv1_consthash("avgrespus"),
+	FIELD_MAXRESPUS		= fnv1_consthash("maxrespus"),
+	FIELD_P99RESPUS		= fnv1_consthash("p99respus"),
+	FIELD_NERR		= fnv1_consthash("nerr"),
+	FIELD_SUMNETIN		= fnv1_consthash("sumnetin"),
+	FIELD_SUMNETOUT		= fnv1_consthash("sumnetout"),
+	FIELD_MAXNETIN		= fnv1_consthash("maxnetin"),
+	FIELD_MAXNETOUT		= fnv1_consthash("maxnetout"),
+	FIELD_RESPLT300US	= fnv1_consthash("resplt300us"),
+	FIELD_RESPLT1MS		= fnv1_consthash("resplt1ms"),
+	FIELD_RESPLT10MS	= fnv1_consthash("resplt10ms"),
+	FIELD_RESPLT30MS	= fnv1_consthash("resplt30ms"),
+	FIELD_RESPLT100MS	= fnv1_consthash("resplt100ms"),
+	FIELD_RESPLT300MS	= fnv1_consthash("resplt300ms"),
+	FIELD_RESPLT1SEC	= fnv1_consthash("resplt1sec"),
+	FIELD_RESPGT1SEC	= fnv1_consthash("respgt1sec"),
+};
+
+static constexpr JSON_DB_MAPPING json_db_aggr_tracereq_arr[] =
+{
+// jsonfield		dbcolname		szjson			jsoncrc JSON hash	subsys			jsontype	numtype		dbtype 		dbstrtype	oper		dboper				coldesc	
+{ "time", 		"atime", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEREQ,	JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
+{ "svcid", 		"glob_id", 		GYSLEN("svcid"),	FIELD_SVCID,		SUBSYS_TRACEREQ,	JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "svcname", 		"comm", 		GYSLEN("svcname"),	FIELD_SVCNAME,		SUBSYS_TRACEREQ,	JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "sport", 		"serport", 		GYSLEN("sport"),	FIELD_SPORT,		SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT32,	"int",		DB_STR_NONE,	nullptr, 	nullptr,			"", },
+{ "avgrespus",		"avgrespus",		GYSLEN("avgrespus"),	FIELD_AVGRESPUS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxrespus",		"maxrespus",		GYSLEN("maxrespus"),	FIELD_MAXRESPUS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "p99respus",		"p99respus",		GYSLEN("p99respus"),	FIELD_P99RESPUS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "nreq",		"nreq",			GYSLEN("nreq"),		FIELD_NREQ,		SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "nerr",		"nerr",			GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "sumnetin",		"bytesin",		GYSLEN("sumnetin"),	FIELD_SUMNETIN,		SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "sumnetout",		"bytesout",		GYSLEN("sumnetout"),	FIELD_SUMNETOUT,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxnetin",		"maxbytesin",		GYSLEN("maxnetin"),	FIELD_MAXNETIN,		SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxnetout",		"maxbytesout",		GYSLEN("maxnetout"),	FIELD_MAXNETOUT,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "nconns",		"nconns",		GYSLEN("nconns"),	FIELD_NCONNS,		SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "proto", 		"proto", 		GYSLEN("proto"),	FIELD_PROTO,		SUBSYS_TRACEREQ,	JSON_STRING,	NUM_NAN,	"char(16)",	DB_STR_OCHAR,	nullptr, 	nullptr,			"", },
+{ "resplt300us",	"resplt300us",		GYSLEN("resplt300us"),	FIELD_RESPLT300US,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "resplt1ms",		"resplt1ms",		GYSLEN("resplt1ms"),	FIELD_RESPLT1MS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "resplt10ms",		"resplt10ms",		GYSLEN("resplt10ms"),	FIELD_RESPLT10MS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "resplt30ms",		"resplt30ms",		GYSLEN("resplt30ms"),	FIELD_RESPLT30MS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "resplt100ms",	"resplt100ms",		GYSLEN("resplt100ms"),	FIELD_RESPLT100MS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "resplt300ms",	"resplt300ms",		GYSLEN("resplt300ms"),	FIELD_RESPLT300MS,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "resplt1sec",		"resplt1sec",		GYSLEN("resplt1sec"),	FIELD_RESPLT1SEC,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "respgt1sec",		"respgt1sec",		GYSLEN("respgt1sec"),	FIELD_RESPGT1SEC,	SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "inrecs",		"inrecs",		GYSLEN("inrecs"),	FIELD_INRECS,		SUBSYS_TRACEREQ,	JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+};
+
+static constexpr DB_AGGR_INFO tracereq_aggr_info[] = 
+{
+	// dbexpr								// jsoncrc		// dbfieldname		// dbfieldtype	// dflt_aggr	// ignore_sum	// extarg	
+	{ "",									FIELD_TIME,		"atime",		"timestamptz",	AOPER_GROUPBY,	false, 		0 },		
+	{ "glob_id",								FIELD_SVCID,		"glob_id",		"char(16)",	AOPER_GROUPBY,	false, 		0 },		
+	{ "comm",								FIELD_SVCNAME,		"comm",			"char(16)",	AOPER_GROUPBY,	false, 		0 },			
+	{ "public.last_elem(serport) as serport",				FIELD_SPORT,		"serport",		"int",		AOPER_LAST_ELEM,false, 		0 },			
+	{ "avg(response)::bigint as avgrespus",					FIELD_AVGRESPUS,	"avgrespus",		"bigint",	AOPER_AVG,	true, 		0 },		
+	{ "max(response)::bigint as maxrespus",					FIELD_MAXRESPUS,	"maxrespus",		"bigint",	AOPER_MAX,	true, 		0 },		
+	{ "public.tdigest_percentile(response, 100, 0.99)::bigint as p99respus",
+										FIELD_P99RESPUS,	"p99respus",		"bigint",	AOPER_PERCENTILE,true, 		0 },		
+	{ "count(*)::bigint as nreq",						FIELD_NREQ,		"nreq",			"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where errorcode != 0)::bigint as nerr",		FIELD_NERR,		"nerr",			"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "sum(bytesin)::bigint as bytesin",					FIELD_SUMNETIN,		"bytesin",		"bigint",	AOPER_SUM,	false, 		0 },		
+	{ "sum(bytesout)::bigint as bytesout",					FIELD_SUMNETOUT,	"bytesout",		"bigint",	AOPER_SUM,	false, 		0 },		
+	{ "max(bytesin)::bigint as maxbytesin",					FIELD_MAXNETIN,		"maxbytesin",		"bigint",	AOPER_MAX,	false, 		0 },		
+	{ "max(bytesout)::bigint as maxbytesout",				FIELD_MAXNETOUT,	"maxbytesout",		"bigint",	AOPER_MAX,	false, 		0 },		
+	{ "count(*) filter (where reqnum = 0)::bigint as nconns",		FIELD_NCONNS,		"nconns",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "public.last_elem(proto)::char(16) as proto",				FIELD_PROTO,		"proto",		"char(16)",	AOPER_LAST_ELEM,false, 		0 },			
+	{ "count(*) filter (where response < 300)::bigint as resplt300us",	FIELD_RESPLT300US,	"resplt300us",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where response >= 300 and response < 1000)::bigint as resplt1ms",		
+										FIELD_RESPLT1MS,	"resplt1ms",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where response >= 1000 and response < 10000)::bigint as resplt10ms",		
+										FIELD_RESPLT10MS,	"resplt10ms",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where response >= 10000 and response < 30000)::bigint as resplt30ms",		
+										FIELD_RESPLT30MS,	"resplt30ms",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where response >= 30000 and response < 100000)::bigint as resplt100ms",		
+										FIELD_RESPLT100MS,	"resplt100ms",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where response >= 100000 and response < 300000)::bigint as resplt300ms",		
+										FIELD_RESPLT300MS,	"resplt300ms",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where response >= 300000 and response < 1000000)::bigint as resplt1sec",		
+										FIELD_RESPLT1SEC,	"resplt1sec",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*) filter (where response >= 1000000)::bigint as respgt1sec",	
+										FIELD_RESPGT1SEC,	"respgt1sec",		"bigint",	AOPER_COUNT,	false, 		0 },		
+	{ "count(*)::bigint as inrecs",						FIELD_INRECS,		"inrecs",		"bigint",	AOPER_COUNT,	false, 		0 },		
+};
+
 
 static constexpr JSON_DB_MAPPING json_db_traceconn_arr[] =
 {
@@ -2591,12 +2677,8 @@ enum : uint32_t
 {
 	FIELD_UNIQREQ		= fnv1_consthash("uniqreq"),
 	FIELD_NCNT		= fnv1_consthash("ncnt"),
-	FIELD_AVGRESP		= fnv1_consthash("avgresp"),
-	FIELD_MAXRESP		= fnv1_consthash("maxresp"),
 	FIELD_AVGNETIN		= fnv1_consthash("avgnetin"),
 	FIELD_AVGNETOUT		= fnv1_consthash("avgnetout"),
-	FIELD_MAXNETOUT		= fnv1_consthash("maxnetout"),
-	FIELD_NERR		= fnv1_consthash("nerr"),
 };
 
 static constexpr JSON_DB_MAPPING json_db_traceuniq_arr[] =
@@ -2605,8 +2687,8 @@ static constexpr JSON_DB_MAPPING json_db_traceuniq_arr[] =
 { "time", 		"time", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
 { "uniqreq",		"uniqreq",	 	GYSLEN("uniqreq"),	FIELD_UNIQREQ,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
 { "ncnt",		"ncnt",			GYSLEN("ncnt"),		FIELD_NCNT,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "avgresp",		"avgresp",		GYSLEN("avgresp"),	FIELD_AVGRESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "maxresp",		"maxresp",		GYSLEN("maxresp"),	FIELD_MAXRESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "avgrespus",		"avgresp",		GYSLEN("avgrespus"),	FIELD_AVGRESPUS,	SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxrespus",		"maxresp",		GYSLEN("maxrespus"),	FIELD_MAXRESPUS,	SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "avgnetin",		"avgbytesin",		GYSLEN("avgnetin"),	FIELD_AVGNETIN,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "avgnetout",		"avgbytesout",		GYSLEN("avgnetout"),	FIELD_AVGNETOUT,	SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "maxnetout",		"maxbytesout",		GYSLEN("maxnetout"),	FIELD_MAXNETOUT,	SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
@@ -2625,8 +2707,8 @@ static constexpr JSON_DB_MAPPING json_db_aggr_traceuniq_arr[] =
 { "time", 		"atime", 		GYSLEN("time"),		FIELD_TIME,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"timestamptz",	DB_STR_TEXT,	nullptr, 	nullptr,			"", },
 { "uniqreq",		"uniqreq",	 	GYSLEN("uniqreq"),	FIELD_UNIQREQ,		SUBSYS_TRACEUNIQ,JSON_STRING,	NUM_NAN,	"text",		DB_STR_TEXT,	nullptr,	nullptr,			"", },
 { "ncnt",		"ncnt",			GYSLEN("ncnt"),		FIELD_NCNT,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "resp",		"resp",			GYSLEN("resp"),		FIELD_RESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
-{ "maxresp",		"maxresp",		GYSLEN("maxresp"),	FIELD_MAXRESP,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "respus",		"resp",			GYSLEN("respus"),	FIELD_RESPUS,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
+{ "maxrespus",		"maxresp",		GYSLEN("maxrespus"),	FIELD_MAXRESPUS,	SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "netin",		"bytesin",		GYSLEN("netin"),	FIELD_NETIN,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "netout",		"bytesout",		GYSLEN("netout"),	FIELD_NETOUT,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
 { "nerr",		"nerror",		GYSLEN("nerr"),		FIELD_NERR,		SUBSYS_TRACEUNIQ,JSON_NUMBER,	NUM_INT64,	"bigint",	DB_STR_NONE,	nullptr, 	nullptr,			"", },		
@@ -2645,8 +2727,8 @@ static constexpr DB_AGGR_INFO traceuniq_aggr_info[] =
 	{ "",									FIELD_TIME,		"atime",		"timestamptz",	AOPER_GROUPBY,	false, 		0 },		
 	{ "uniqreq",								FIELD_UNIQREQ,		"uniqreq",		"text",		AOPER_GROUPBY,	false, 		0 },		
 	{ "%s(ncnt)::bigint as ncnt",						FIELD_NCNT,		"ncnt",			"bigint",	AOPER_SUM,	false, 		0 },		
-	{ "%s(avgresp)::bigint as resp",					FIELD_RESP,		"resp",			"bigint",	AOPER_AVG,	true, 		0 },		
-	{ "max(maxresp)::bigint as maxresp",					FIELD_MAXRESP,		"maxresp",		"bigint",	AOPER_MAX,	true, 		0 },		
+	{ "%s(avgresp)::bigint as resp",					FIELD_RESPUS,		"resp",			"bigint",	AOPER_AVG,	true, 		0 },		
+	{ "max(maxresp)::bigint as maxresp",					FIELD_MAXRESPUS,	"maxresp",		"bigint",	AOPER_MAX,	true, 		0 },		
 	{ "%s(avgbytesin * ncnt)::bigint as bytesin",				FIELD_NETIN,		"bytesin",		"bigint",	AOPER_SUM,	false, 		0 },		
 	{ "%s(avgbytesout * ncnt)::bigint as bytesout",				FIELD_NETOUT,		"bytesout",		"bigint",	AOPER_SUM,	false, 		0 },		
 	{ "%s(nerror)::bigint as nerror",					FIELD_NERR,		"nerror",		"bigint",	AOPER_SUM,	false, 		0 },		
@@ -3391,7 +3473,7 @@ static void set_ext_procstate_fields()
 
 static void set_ext_tracereq_fields()
 {
-	uint32_t			nexttracereq_arr = 0;
+	uint32_t			nexttracereq_arr = 0, nexttracereq_aggr_arr = 0, nexttracereq_aggr_info = 0;
 	JSON_DB_MAPPING			*pexttracereq_arr = new JSON_DB_MAPPING[GY_ARRAY_SIZE(json_db_tracereq_arr) + GY_ARRAY_SIZE(json_db_traceconn_arr)];
 	
 	std::memcpy(pexttracereq_arr, json_db_tracereq_arr, GY_ARRAY_SIZE(json_db_tracereq_arr) * sizeof(*json_db_tracereq_arr));
@@ -3414,6 +3496,32 @@ static void set_ext_tracereq_fields()
 	subsys_class_list[SUBSYS_EXTTRACEREQ].pjsonmap 		= pexttracereq_arr;
 	subsys_class_list[SUBSYS_EXTTRACEREQ].szjsonmap 	= nexttracereq_arr;
 
+	JSON_DB_MAPPING			*pexttracereq_aggr_arr = new JSON_DB_MAPPING[GY_ARRAY_SIZE(json_db_aggr_tracereq_arr)];
+
+	std::memcpy(pexttracereq_aggr_arr, json_db_aggr_tracereq_arr, GY_ARRAY_SIZE(json_db_aggr_tracereq_arr) * sizeof(*json_db_aggr_tracereq_arr));
+	nexttracereq_aggr_arr = GY_ARRAY_SIZE(json_db_aggr_tracereq_arr);
+	
+	ASSERT_OR_THROW(nexttracereq_aggr_arr < MAX_COLUMN_LIST, "Internal Error : Number of columns of extended tracereq aggregates %u exceeds max allowed %lu", 
+				nexttracereq_aggr_arr, MAX_COLUMN_LIST);
+
+	for (uint32_t i = 0; i < nexttracereq_aggr_arr; ++i) {
+		pexttracereq_aggr_arr[i].subsys = SUBSYS_EXTTRACEREQ;
+	}	
+
+	DB_AGGR_INFO			*pexttracereq_aggr_info	= new DB_AGGR_INFO[GY_ARRAY_SIZE(tracereq_aggr_info)];
+
+	std::memcpy(pexttracereq_aggr_info, tracereq_aggr_info, GY_ARRAY_SIZE(tracereq_aggr_info) * sizeof(*tracereq_aggr_info));
+	nexttracereq_aggr_info = GY_ARRAY_SIZE(tracereq_aggr_info);
+	
+	ASSERT_OR_THROW(nexttracereq_aggr_info < MAX_COLUMN_LIST, "Internal Error : Number of columns of extended tracereq aggregate info %u exceeds max allowed %lu", 
+				nexttracereq_aggr_info, MAX_COLUMN_LIST);
+
+	// Now update subsys_aggr_list
+	subsys_aggr_list[SUBSYS_EXTTRACEREQ].pajsonmap 	= pexttracereq_aggr_arr;
+	subsys_aggr_list[SUBSYS_EXTTRACEREQ].szajsonmap = nexttracereq_aggr_arr;
+
+	subsys_aggr_list[SUBSYS_EXTTRACEREQ].paggrinfo 	= pexttracereq_aggr_info;
+	subsys_aggr_list[SUBSYS_EXTTRACEREQ].szaggrinfo = nexttracereq_aggr_info;
 
 }
 

@@ -253,6 +253,11 @@ public :
 		return get_aggr_oper_str(pdefaultoper, ignore_sum);
 	}	
 
+	bool is_custom_aggregation() const noexcept
+	{
+		return !!naggr_column_spec_;
+	}
+
 	void reset_aggregated() noexcept
 	{
 		is_aggregated_ 	= false;
@@ -1282,6 +1287,10 @@ extern uint32_t get_clusterstate_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS &
 
 extern uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], \
 							EXT_POOL_ALLOC *pstrpool = nullptr);
+
+
+extern uint32_t get_tracereq_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], \
+							EXT_POOL_ALLOC *pstrpool, bool is_extended = false);
 
 extern uint32_t get_tracestatus_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], \
 							EXT_POOL_ALLOC *pstrpool = nullptr);

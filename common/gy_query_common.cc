@@ -101,10 +101,10 @@ DB_AGGR_CLASS subsys_aggr_list[SUBSYS_MAX] =
 
 	{ SUBSYS_CGROUPSTATE,	nullptr, 			0,						nullptr,			0,					0 },
 
-	{ SUBSYS_TRACEREQ,	nullptr, 			0,						nullptr,			0,					0 },
-	{ SUBSYS_EXTTRACEREQ,	nullptr,/* Update at startup */	0,						nullptr,			0,					0 },
+	{ SUBSYS_TRACEREQ,	json_db_aggr_tracereq_arr, 	GY_ARRAY_SIZE(json_db_aggr_tracereq_arr),	tracereq_aggr_info,		GY_ARRAY_SIZE(tracereq_aggr_info),	10 },
+	{ SUBSYS_EXTTRACEREQ,	nullptr /* Update at startup */,0,						nullptr,			0,					10 },
 	{ SUBSYS_TRACECONN,	nullptr, 			0,						nullptr,			0,					0 },
-	{ SUBSYS_TRACEUNIQ,	json_db_aggr_traceuniq_arr, 	GY_ARRAY_SIZE(json_db_aggr_traceuniq_arr),	traceuniq_aggr_info,		GY_ARRAY_SIZE(traceuniq_aggr_info),	3600 },
+	{ SUBSYS_TRACEUNIQ,	json_db_aggr_traceuniq_arr, 	GY_ARRAY_SIZE(json_db_aggr_traceuniq_arr),	traceuniq_aggr_info,		GY_ARRAY_SIZE(traceuniq_aggr_info),	600 },
 	{ SUBSYS_TRACEDEF,	nullptr, 			0,						nullptr,			0,					0 },
 	{ SUBSYS_TRACESTATUS,	json_db_aggr_tracestatus_arr, 	GY_ARRAY_SIZE(json_db_aggr_tracestatus_arr),	tracestatus_aggr_info,		GY_ARRAY_SIZE(tracestatus_aggr_info),	60 },
 	{ SUBSYS_TRACEHISTORY,	nullptr, 			0,						nullptr,			0,					0 },
@@ -159,7 +159,7 @@ SUBSYS_STATS subsys_stats_list[SUBSYS_MAX] =
 	{ SUBSYS_TRACEREQ,	5,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_PROC_SVC,	},
 	{ SUBSYS_EXTTRACEREQ,	5,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_PROC_SVC,	},
 	{ SUBSYS_TRACECONN,	5,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_PROC_SVC,	},
-	{ SUBSYS_TRACEUNIQ,	3600,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_PROC_SVC,	},
+	{ SUBSYS_TRACEUNIQ,	600,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_PROC_SVC,	},
 	{ SUBSYS_TRACEDEF,	60,				AKEY_INVALID,		AHDLR_SHYAMA,	ASYS_NONE,	},
 	{ SUBSYS_TRACESTATUS,	60,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_NONE,	},
 	{ SUBSYS_TRACEHISTORY,	60,				AKEY_INVALID,		AHDLR_MADHAVA,	ASYS_NONE,	},
@@ -736,7 +736,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 	const uint32_t			szhostjsonmap = 0;
 	uint32_t			szajsonmap = pdbarg->szajsonmap, szaggrinfo = pdbarg->szaggrinfo, noutcol = 0, nincol = 0, npostcol = 0, ngrpby = 0;
 
-	if (!naggr_column_spec_) {
+	if (!is_custom_aggregation()) {
 		// Default aggregation oper
 		
 		strbuf.appendconst(" select * from (select ");
@@ -919,7 +919,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 	const auto			*phostsubsys = get_subsys_info(SUBSYS_HOST);
 	uint32_t			szajsonmap = pdbarg->szajsonmap, szaggrinfo = pdbarg->szaggrinfo, noutcol = 0, nincol = 0, npostcol = 0, ngrpby = 0;
 
-	if (!naggr_column_spec_) {
+	if (!is_custom_aggregation()) {
 		// Default aggregation oper
 		
 		for (uint32_t i = 0; i < szhostjsonmap; ++i) {
@@ -2732,6 +2732,32 @@ uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, cons
 
 	return ncol;
 }
+
+uint32_t get_tracereq_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], EXT_POOL_ALLOC *pstrpool, bool is_extended)
+{
+	uint32_t			ncol;
+	SUBSYS_CLASS_E			subsys = (false == is_extended ? SUBSYS_TRACEREQ : SUBSYS_EXTTRACEREQ);
+
+	/*
+	 * XXX We use the tracereqtbl for both tracereq and exttracereq as aggr columns are same for default aggregation
+	 */
+	const char			*tracetbl = !qryopt.is_custom_aggregation() ? "tracereqtbl" : (false == is_extended ? "tracereqtbl" : "exttracereqtbl");
+
+	if (qryopt.is_multi_host()) {
+		ncol = qryopt.get_select_aggr_multihost_query(strbuf, subsys, pcolarr, tracetbl, datetbl, "", pstrpool);
+
+		strbuf.appendconst(";\n reset search_path; ");
+	}
+	else {
+		char				tablename[128];
+
+		snprintf(tablename, sizeof(tablename), "sch%s.%s%s", qryopt.get_parid_str().get(), tracetbl, datetbl);
+
+		ncol = qryopt.get_select_aggr_query(strbuf, subsys, pcolarr, tablename, "", pstrpool);
+	}
+
+	return ncol;
+}	
 
 uint32_t get_tracestatus_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], EXT_POOL_ALLOC *pstrpool)
 {
