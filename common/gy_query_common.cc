@@ -1221,6 +1221,12 @@ QUERY_OPTIONS::get_custom_aggr_columns(SUBSYS_CLASS_E subsys, const JSON_DB_MAPP
 
 				auto			paggr = dbinnerarr + nincol;
 
+				if (paggr->qryexpr) {
+					parse_aggr_col_expr(subsys, paggr->qryexpr, strlen(paggr->qryexpr), i, noutcol, nincol, npostcol, pcolarr, dbinnerarr, dbouterarr, dbpostaggrarr, strpool, 
+								pajsonmap, szajsonmap);
+					continue;
+				}
+				
 				if (paggr->dbexpr[0] == '%') {
 					char			tbuf[128];
 					size_t			tsz;
@@ -1350,6 +1356,7 @@ QUERY_OPTIONS::get_custom_aggr_columns(SUBSYS_CLASS_E subsys, const JSON_DB_MAPP
 					.dflt_aggr	= AOPER_SUM,
 					.ignore_sum	= false,
 					.extarg		= 0,
+					.qryexpr	= nullptr,
 				};
 
 		dbouterarr[noutcol] = {
@@ -1360,6 +1367,7 @@ QUERY_OPTIONS::get_custom_aggr_columns(SUBSYS_CLASS_E subsys, const JSON_DB_MAPP
 					.dflt_aggr	= AOPER_SUM,
 					.ignore_sum	= false,
 					.extarg		= 0,
+					.qryexpr	= nullptr,
 				};
 
 		dbpostaggrarr[npostcol]			= dbouterarr[noutcol];
@@ -1628,6 +1636,7 @@ void QUERY_OPTIONS::parse_aggr_col_expr(SUBSYS_CLASS_E subsys, const char *colna
 						.dflt_aggr	= dbouterarr[lastoutcol].dflt_aggr,
 						.ignore_sum	= false,
 						.extarg		= 0,
+						.qryexpr	= nullptr,
 					};
 
 		}
@@ -1655,6 +1664,7 @@ void QUERY_OPTIONS::parse_aggr_col_expr(SUBSYS_CLASS_E subsys, const char *colna
 						.dflt_aggr	= AOPER_SUM,
 						.ignore_sum	= false,
 						.extarg		= 0,
+						.qryexpr	= nullptr,
 					};
 		}
 
@@ -2025,6 +2035,7 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 				.dflt_aggr	= aoper,
 				.ignore_sum	= false,
 				.extarg		= pct,
+				.qryexpr	= nullptr,
 			};
 	nincol++;
 
@@ -2040,6 +2051,7 @@ bool QUERY_OPTIONS::parse_one_aggr_colname(const char *colname, size_t szcol, co
 				.dflt_aggr	= aoper,
 				.ignore_sum	= false,
 				.extarg		= pct,
+				.qryexpr	= nullptr,
 			};
 	noutcol++;	
 
