@@ -446,6 +446,15 @@ setcurr1 :
 				else {
 					naggr_column_spec_ 	= 0;
 				}	
+
+				if (naggr_column_spec_ == 0) {
+					siter = optobj.FindMember("aggroutput");
+					if ((siter != optobj.MemberEnd()) && (siter->value.IsString())) {
+						const char		*poutput = siter->value.GetString();
+
+						GY_STRNCPY(aggroutput_, poutput, sizeof(aggroutput_));
+					}
+				}	
 			}	
 			else {
 				const char		*colname;
@@ -715,7 +724,7 @@ char * QUERY_OPTIONS::get_date_trunc_str(STR_WR_BUF & strbuf) noexcept
 	return get_db_date_trunc(strbuf, aggr_dur_sec_);
 }	
 
-uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, JSON_DB_MAPPING (& pcolarr)[MAX_AGGR_COLUMNS], const char *tablename, const char * extra_inner_where, EXT_POOL_ALLOC *pstrpool)
+uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, JSON_DB_MAPPING (& pcolarr)[MAX_AGGR_COLUMNS], const char *tablename, const char * extra_inner_where, EXT_POOL_ALLOC *pstrpool, uint32_t *pskipcolarr, uint32_t nskipcolarr)
 {
 	const auto			*poption = get_options_json();
 	
@@ -738,7 +747,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 
 	if (!is_custom_aggregation()) {
 		// Default aggregation oper
-		
+
 		strbuf.appendconst(" select * from (select ");
 
 		uint32_t 		istart = 0;
@@ -758,6 +767,12 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 		for (uint32_t i = istart; i < szaggrinfo; ++i) {
 			auto		paggr = paggrinfo + i;
 
+			for (int s = 0; s < (int)nskipcolarr; ++s) {
+				if (paggr->jsoncrc == pskipcolarr[s]) {
+					goto next;
+				}	
+			}	
+
 			if (paggr->dbexpr[0] == '%') {
 				strbuf.appendfmt(paggr->dbexpr, get_aggr_oper_str(paggr->dflt_aggr, paggr->ignore_sum));
 			}
@@ -770,6 +785,9 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 			if (i + 1 < szaggrinfo) {
 				strbuf << ", "sv;
 			}	
+
+next :
+			continue;
 		}
 
 		strbuf.appendfmt(" from %s ", tablename);
@@ -791,6 +809,12 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 				continue;
 			}
 
+			for (int s = 0; s < (int)nskipcolarr; ++s) {
+				if (paggr->jsoncrc == pskipcolarr[s]) {
+					goto next2;
+				}	
+			}	
+
 			if (ngrpby > 0) {
 				strbuf << ", "sv;
 			}	
@@ -801,6 +825,8 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 			ngrpby++;
 
 			strbuf.append(paggr->dbfieldname);
+next2 :
+			continue;
 		}
 
 		strbuf << " ) "sv << pdefsubsys_->jsonstr << ' ';
@@ -893,7 +919,7 @@ uint32_t QUERY_OPTIONS::get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_
 	return npostcol;
 }
 
-uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, JSON_DB_MAPPING (& pcolarr)[MAX_AGGR_COLUMNS], const char *tablename, const char *datetbl, const char * extra_inner_where, EXT_POOL_ALLOC *pstrpool)
+uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, JSON_DB_MAPPING (& pcolarr)[MAX_AGGR_COLUMNS], const char *tablename, const char *datetbl, const char * extra_inner_where, EXT_POOL_ALLOC *pstrpool, uint32_t *pskipcolarr, uint32_t nskipcolarr)
 {
 	const auto			*poption = get_options_json();
 	
@@ -951,6 +977,12 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 		for (uint32_t i = istart; i < szaggrinfo; ++i) {
 			auto		paggr = paggrinfo + i;
 
+			for (int s = 0; s < (int)nskipcolarr; ++s) {
+				if (paggr->jsoncrc == pskipcolarr[s]) {
+					goto next;
+				}	
+			}	
+
 			if (paggr->dbexpr[0] == '%') {
 				strbuf.appendfmt(paggr->dbexpr, get_aggr_oper_str(paggr->dflt_aggr, paggr->ignore_sum));
 			}
@@ -963,6 +995,9 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 			if (i + 1 < szaggrinfo) {
 				strbuf << ", "sv;
 			}	
+
+next :			
+			continue;
 		}
 
 		strbuf << " $a$ , $b$ "sv;
@@ -984,6 +1019,12 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 				continue;
 			}
 
+			for (int s = 0; s < (int)nskipcolarr; ++s) {
+				if (paggr->jsoncrc == pskipcolarr[s]) {
+					goto next2;
+				}	
+			}	
+
 			if (ngrpby > 0) {
 				strbuf << ", "sv;
 			}	
@@ -994,6 +1035,9 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 			ngrpby++;
 
 			strbuf.append(paggr->dbfieldname);
+
+next2 :
+			continue;
 		}
 
 		for (uint32_t i = 0; i < szhostjsonmap; ++i) {
@@ -1026,7 +1070,17 @@ uint32_t QUERY_OPTIONS::get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUB
 		}
 
 		for (uint32_t i = istart; i < szaggrinfo; ++i) {
-			strbuf << paggrinfo[i].dbfieldname << ' ' << paggrinfo[i].dbfieldtype << ',';
+			auto			paggr = paggrinfo + i;
+
+			for (int s = 0; s < (int)nskipcolarr; ++s) {
+				if (paggr->jsoncrc == pskipcolarr[s]) {
+					goto next3;
+				}	
+			}	
+
+			strbuf << paggr->dbfieldname << ' ' << paggr->dbfieldtype << ',';
+next3 :
+			continue;
 		}
 
 		strbuf.set_last_char(')');
@@ -2747,16 +2801,45 @@ uint32_t get_alerts_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, cons
 
 uint32_t get_tracereq_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, const char *datetbl, JSON_DB_MAPPING (& pcolarr)[QUERY_OPTIONS::MAX_AGGR_COLUMNS], EXT_POOL_ALLOC *pstrpool, bool is_extended)
 {
-	uint32_t			ncol;
+	uint32_t			ncol, skipcolarr[8], nskipcolarr = 0;
 	SUBSYS_CLASS_E			subsys = (false == is_extended ? SUBSYS_TRACEREQ : SUBSYS_EXTTRACEREQ);
-
+	
 	/*
 	 * XXX We use the tracereqtbl for both tracereq and exttracereq as aggr columns are same for default aggregation
 	 */
 	const char			*tracetbl = !qryopt.is_custom_aggregation() ? "tracereqtbl" : (false == is_extended ? "tracereqtbl" : "exttracereqtbl");
 
+	if (qryopt.aggroutput_[0]) {
+		if (0 == strcmp(qryopt.aggroutput_, "svc")) {
+			skipcolarr[nskipcolarr++] 	= FIELD_APP;
+			skipcolarr[nskipcolarr++] 	= FIELD_USER;
+			skipcolarr[nskipcolarr++] 	= FIELD_DB;
+			skipcolarr[nskipcolarr++] 	= FIELD_CIP;
+		}	
+		else if (0 == strcmp(qryopt.aggroutput_, "app")) {
+			skipcolarr[nskipcolarr++] 	= FIELD_USER;
+			skipcolarr[nskipcolarr++] 	= FIELD_DB;
+			skipcolarr[nskipcolarr++] 	= FIELD_CIP;
+		}	
+		else if (0 == strcmp(qryopt.aggroutput_, "user")) {
+			skipcolarr[nskipcolarr++] 	= FIELD_APP;
+			skipcolarr[nskipcolarr++] 	= FIELD_DB;
+			skipcolarr[nskipcolarr++] 	= FIELD_CIP;
+		}	
+		else if (0 == strcmp(qryopt.aggroutput_, "db")) {
+			skipcolarr[nskipcolarr++] 	= FIELD_APP;
+			skipcolarr[nskipcolarr++] 	= FIELD_USER;
+			skipcolarr[nskipcolarr++] 	= FIELD_CIP;
+		}	
+		else if (0 == strcmp(qryopt.aggroutput_, "cip")) {
+			skipcolarr[nskipcolarr++] 	= FIELD_APP;
+			skipcolarr[nskipcolarr++] 	= FIELD_USER;
+			skipcolarr[nskipcolarr++] 	= FIELD_DB;
+		}	
+	}	
+
 	if (qryopt.is_multi_host()) {
-		ncol = qryopt.get_select_aggr_multihost_query(strbuf, subsys, pcolarr, tracetbl, datetbl, "", pstrpool);
+		ncol = qryopt.get_select_aggr_multihost_query(strbuf, subsys, pcolarr, tracetbl, datetbl, "", pstrpool, skipcolarr, nskipcolarr);
 
 		strbuf.appendconst(";\n reset search_path; ");
 	}
@@ -2765,7 +2848,7 @@ uint32_t get_tracereq_aggr_query(STR_WR_BUF & strbuf, QUERY_OPTIONS & qryopt, co
 
 		snprintf(tablename, sizeof(tablename), "sch%s.%s%s", qryopt.get_parid_str().get(), tracetbl, datetbl);
 
-		ncol = qryopt.get_select_aggr_query(strbuf, subsys, pcolarr, tablename, "", pstrpool);
+		ncol = qryopt.get_select_aggr_query(strbuf, subsys, pcolarr, tablename, "", pstrpool, skipcolarr, nskipcolarr);
 	}
 
 	return ncol;

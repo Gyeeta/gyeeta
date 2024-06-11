@@ -70,6 +70,7 @@ public :
 	uint32_t			aggr_dur_sec_			{0};
 	uint16_t			naggr_column_spec_		{0};
 	AGGR_OPER_E			aggr_oper_			{AOPER_UNSPEC};
+	char				aggroutput_[64]			{};
 
 	uint8_t				nmulti_queries_			{0};
 	uint8_t				multiquery_index_		{0};
@@ -733,10 +734,10 @@ public :
 	char * get_db_select_multihost_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, const char *tablename, const char *datetbl = "", bool ign_col_list = false) const;
 
 	uint32_t get_select_aggr_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, JSON_DB_MAPPING (& pcolarr)[MAX_AGGR_COLUMNS], const char *tablename, \
-							const char * extra_inner_where = "", EXT_POOL_ALLOC *pstrpool = nullptr);
+							const char * extra_inner_where = "", EXT_POOL_ALLOC *pstrpool = nullptr, uint32_t *pskipcolarr = nullptr, uint32_t nskipcolarr = 0);
 
 	uint32_t get_select_aggr_multihost_query(STR_WR_BUF & strbuf, SUBSYS_CLASS_E subsys, JSON_DB_MAPPING (& pcolarr)[MAX_AGGR_COLUMNS], const char *tablename, const char *datetbl = "", \
-							const char * extra_inner_where = "", EXT_POOL_ALLOC *pstrpool = nullptr);
+							const char * extra_inner_where = "", EXT_POOL_ALLOC *pstrpool = nullptr, uint32_t *pskipcolarr = nullptr, uint32_t nskipcolarr = 0);
 
 	void set_sort_options(const JSON_DB_MAPPING *pjsonmap, size_t szjsonmap, const JSON_DB_MAPPING *phostjsonmap, size_t szhostjsonmap, \
 							const SUBSYS_CLASS *pmainsubsys, const SUBSYS_CLASS *phostsubsys);
