@@ -2037,10 +2037,6 @@ bool HTTP1_SESSINFO::print_req() noexcept
 
 		bool			iserr = !!ptran->errorcode_;
 
-		if (psvc_) {
-			psvc_->upd_stats_on_req(*ptran, iserr, is_serv_err_);
-		}	
-
 		if (iserr) {
 			if (errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + errorbuf_.size() + 1) {
 				next++;
@@ -2077,6 +2073,10 @@ bool HTTP1_SESSINFO::print_req() noexcept
 		
 		gtotal_queries++;
 		gtotal_resp += ptran->response_usec_;
+
+		if (psvc_) {
+			psvc_->upd_stats_on_req(*ptran, iserr, is_serv_err_);
+		}	
 
 		return apihdlr.set_xfer_buf_sz(ptran->get_elem_size());
 	}
