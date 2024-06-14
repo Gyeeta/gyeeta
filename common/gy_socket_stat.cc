@@ -4041,14 +4041,14 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 					return CB_OK;
 				}
 
-				std::shared_ptr<SVC_INFO_CAP>	svcshr;
+				std::shared_ptr<SVC_INFO_CAP>	apishr;
 
-				uint32_t			total_queries = 0, bpftotal, c4 = GY_READ_ONCE(plistener->curr_query_v4_), c6 = GY_READ_ONCE(plistener->curr_query_v6_);
+				uint32_t			total_queries, bpftotal, c4 = GY_READ_ONCE(plistener->curr_query_v4_), c6 = GY_READ_ONCE(plistener->curr_query_v6_);
 				int64_t				diffsec = clock_sec - plistener->last_query_clock_;
-				bool				is_stale = false, stale_dur2 = false, is_apicap = false;
+				bool				is_stale = false, stale_dur2 = false;
 				int				curr_qps_extra, curr_active_conn, old_curr_active_conn;
 
-				total_queries += gy_diff_counter(c4, plistener->last_query_v4_);
+				total_queries = gy_diff_counter(c4, plistener->last_query_v4_);
 				total_queries += gy_diff_counter(c6, plistener->last_query_v6_);
 
 				bpftotal = total_queries;
@@ -4068,30 +4068,28 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 				if (plistener->api_cap_started_.load(mo_acquire) == CAPSTAT_ACTIVE) {
 					SCOPE_GY_MUTEX			slock(plistener->svcweak_lock_);
 
-					svcshr = plistener->api_svcweak_.lock();
+					apishr = plistener->api_svcweak_.lock();
 					
 					slock.unlock();
 
-					if (svcshr) {
+					if (apishr) {
 						uint64_t			atreq, acerr, aserr;
 
-						atreq = GY_READ_ONCE(svcshr->stats_.nrequests_);
-						acerr = GY_READ_ONCE(svcshr->stats_.ncli_errors_);
-						aserr = GY_READ_ONCE(svcshr->stats_.nser_errors_);
+						atreq = GY_READ_ONCE(apishr->stats_.nrequests_);
+						acerr = GY_READ_ONCE(apishr->stats_.ncli_errors_);
+						aserr = GY_READ_ONCE(apishr->stats_.nser_errors_);
 
-						total_queries = gy_diff_counter(atreq, svcshr->last_api_nreq_);
-						cli_errors = (uint32_t)gy_diff_counter(acerr, svcshr->last_api_ncli_errors_);
-						ser_errors = (uint32_t)gy_diff_counter(aserr, svcshr->last_api_nser_errors_);
+						total_queries = gy_diff_counter(atreq, apishr->last_api_nreq_);
+						cli_errors = (uint32_t)gy_diff_counter(acerr, apishr->last_api_ncli_errors_);
+						ser_errors = (uint32_t)gy_diff_counter(aserr, apishr->last_api_nser_errors_);
 
-						svcshr->last_api_nreq_ = atreq;
-						svcshr->last_api_ncli_errors_ = acerr;
-						svcshr->last_api_nser_errors_ = aserr;
-
-						is_apicap = true;
+						apishr->last_api_nreq_ = atreq;
+						apishr->last_api_ncli_errors_ = acerr;
+						apishr->last_api_nser_errors_ = aserr;
 					}	
 				}	
 
-				if (!is_apicap) {
+				if (!apishr) {
 					cli_errors = gy_diff_counter(ccerr, plistener->last_cli_errors_);
 					ser_errors = gy_diff_counter(cserr, plistener->last_ser_errors_);
 				}
@@ -4112,11 +4110,11 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 
 					plistener->last_qps_count_ = curr_qps_extra;
 
-					if (!svcshr) {
+					if (!apishr) {
 						plistener->qps_hist_.add_data(curr_qps_extra, clock_sec);
 					}	
 					else {
-						svcshr->qps_hist_.add_data(curr_qps_extra, clock_sec);
+						apishr->qps_hist_.add_data(curr_qps_extra, clock_sec);
 					}	
 				}
 
@@ -4173,13 +4171,13 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 				plistener->tlast_stats_flush_ = tcur;
 				plistener->resp_hist_.flush(tcur);
 
-				if (svcshr) {
-					if (tcur > svcshr->resp_cache_.get_last_rec_time()) {
+				if (apishr) {
+					if (tcur > apishr->resp_cache_.get_last_rec_time()) {
 						// Not thread safe...
-						svcshr->resp_cache_.flush_to_histogram();
+						apishr->resp_cache_.flush_to_histogram();
 					}
 
-					svcshr->resp_hist_.flush(tcur);
+					apishr->resp_hist_.flush(tcur);
 				}	
 
 				if (is_stale) {
@@ -4221,11 +4219,11 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 					return CB_OK;
 				}
 					
-				auto					& hist = !bool(svcshr) ? plistener->resp_hist_ : svcshr->resp_hist_;
-				auto					& qps_hist = !bool(svcshr) ? plistener->qps_hist_ : svcshr->qps_hist_;
+				auto					& resp_hist = !bool(apishr) ? plistener->resp_hist_ : apishr->resp_hist_;
+				auto					& qps_hist = !bool(apishr) ? plistener->qps_hist_ : apishr->qps_hist_;
 
 				for (size_t i = 0; i < RESP_HISTOGRAM::ntime_levels; i++) {
-					hist.get_stats(RESP_HISTOGRAM::dist_seconds[i], plistener->histstat_[i].stats_, 
+					resp_hist.get_stats(RESP_HISTOGRAM::dist_seconds[i], plistener->histstat_[i].stats_, 
 						GY_ARRAY_SIZE(plistener->histstat_[i].stats_), plistener->histstat_[i].tcount_, plistener->histstat_[i].tsum_, 
 						plistener->histstat_[i].mean_val_);
 				}	
@@ -4238,7 +4236,7 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 				LISTENER_DAY_STATS			statn;
 					
 				plistener->get_curr_state(lstate, lissue, sbuf, tcur, clock_diag, curr_active_conn, multiple_factor, cpu_issue, mem_issue, ser_errors,
-								&taskstatus, bool(statcache) ? &statn : nullptr, &hist, &qps_hist);
+								&taskstatus, bool(statcache) ? &statn : nullptr, &resp_hist, &qps_hist);
 
 				if ((diffstartusec > (int64_t)GY_USEC_PER_SEC * 100) || (ser_errors)) {
 					plistener->issue_bit_hist_ <<= 1;

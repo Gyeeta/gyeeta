@@ -2039,7 +2039,7 @@ bool POSTGRES_SESSINFO::print_req() noexcept
 			psvc_->upd_stats_on_req(*ptran, iserr, tdstat_.is_serv_err_);
 		}	
 
-		if (ptran->errorcode_ != 0) {
+		if (iserr) {
 			if (tdstat_.errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + tdstat_.errorbuf_.size() + 1) {
 				next++;
 				ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, tdstat_.errorbuf_.size() + 1) << std::string_view(tdstat_.errorbuf_.data(), tdstat_.errorbuf_.size() + 1);
