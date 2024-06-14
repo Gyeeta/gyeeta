@@ -75,7 +75,7 @@ int test_resp_using_cache(RESP_TIME_HISTOGRAM<SCOPE_GY_MUTEX> & slabhist)
 {
 	using RESP_CACHE		= TIME_HIST_CACHE<RESP_TIME_HISTOGRAM<SCOPE_GY_MUTEX>, RESP_TIME_HASH>;
 
-	RESP_CACHE			resp_cache(&slabhist);
+	RESP_CACHE			resp_cache(slabhist);
 	time_t				tnow = time(nullptr);
 	char				buf1[4096];
 	size_t				bucket_id;

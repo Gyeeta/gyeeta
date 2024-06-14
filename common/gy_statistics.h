@@ -1002,11 +1002,9 @@ public :
 
 	static_assert(true == noexcept(std::declval<HashClass>()(0)), "Hash Operator () needs to be noexcept");
 
-	TIME_HIST_CACHE(Histogram * phist) noexcept :
-		tcurrbucket(time(nullptr)), phistogram(phist), tstarttime(tcurrbucket)
+	TIME_HIST_CACHE(Histogram & hist) noexcept :
+		tcurrbucket(time(nullptr)), phistogram(&hist), tstarttime(tcurrbucket)
 	{
-		assert(phistogram);
-
 		std::memset(cache, 0, sizeof(cache));	
 	}		
 	
@@ -1033,7 +1031,7 @@ public :
 	int flush_to_histogram() noexcept
 	{
 		int			ret;
-		HIST_SERIAL 		tmpcache[64], *ptmpcache;
+		HIST_SERIAL 		tmpcache[128], *ptmpcache;
 		bool 			is_alloc = false;
 
 		if (maxbuckets < GY_ARRAY_SIZE(tmpcache)) {
@@ -1176,7 +1174,7 @@ public :
 			
 		try {
 			size_t 			b, n;
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			/*GY_MT_COLLECT_PROFILE(1000, "copy data to Timeseries Histogram cache");*/
 
@@ -1217,7 +1215,7 @@ public :
 
 		try {
 			size_t 			b, n, count = 0;
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			/*GY_MT_COLLECT_PROFILE(1000, "copy data from Timeseries Histogram cache");*/
 		
@@ -1254,7 +1252,7 @@ public :
 	int add_data(int64_t data, time_t tnow, size_t & bucket_index, bool flush_data = false) noexcept
 	{
 		try {
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			/*GY_MT_COLLECT_PROFILE(10000, "add data to timeseries histogram");*/
 		
@@ -1280,7 +1278,7 @@ public :
 		assert(pdata_arr);
 
 		try {
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			/*GY_MT_COLLECT_PROFILE(1000, "add multi data to timeseries histogram");*/
 		
@@ -1309,7 +1307,7 @@ public :
 
 	int flush(time_t tnow = time(nullptr)) noexcept
 	{
-		ScopeLock		lock(&this->mutex);
+		ScopeLock		lock(mutex);
 			
 		return flush_locked(tnow);
 	}	
@@ -1317,7 +1315,7 @@ public :
 	void clear_all_data(void) noexcept
 	{
 		try {
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			/*GY_MT_COLLECT_PROFILE(1000, "clear timeseries histogram data");*/
 
@@ -1345,7 +1343,7 @@ public :
 				return get_stats_for_period(tnow - time_offset.count(), tnow, pstats, nstats, tcount, tsum, mean_val);
 			}	
 
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			GY_MT_COLLECT_PROFILE(1000, "get stats from timeseries histogram");
 		
@@ -1384,7 +1382,7 @@ public :
 
 			auto			start = mktimepoint(starttime), end = mktimepoint(endtime + 1);
 
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			/*GY_MT_COLLECT_PROFILE(1000, "get stats from timeseries histogram for period");*/
 		
@@ -1418,7 +1416,7 @@ public :
 	int get_total_records_for_period(time_t starttime, time_t endtime, int64_t  *ptotalcount, int64_t *ptotalsum) const noexcept
 	{
 		try {
-			ScopeLock		lock(&this->mutex);
+			ScopeLock		lock(mutex);
 
 			/*GY_MT_COLLECT_PROFILE(100'000, "get total records from timeseries histogram for period");*/
 		
@@ -1450,7 +1448,7 @@ public :
 
 			for (size_t l = 0; l < ndist_levels; l++) {
 
-				ScopeLock		lock(&this->mutex);
+				ScopeLock		lock(mutex);
 
 				ss.appendfmt("\t%s Histogram for %s : \n\t", stattypestr, LevelClass::level_string[l]);
 				

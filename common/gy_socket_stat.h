@@ -596,8 +596,6 @@ public :
 
 	GY_MUTEX					svcweak_lock_;
 	std::weak_ptr<SVC_INFO_CAP>			api_svcweak_;
-	uint64_t					last_api_ncli_errors_		{0};
-	uint64_t					last_api_nser_errors_		{0};
 
 	gy_atomic <int>					nconn_				{0};
 	gy_atomic <int>					nconn_recent_active_		{0};
@@ -646,7 +644,7 @@ public :
 	RESP_CACHE					resp_cache_v4_;
 	CONN_BITMAP					resp_bitmap_v4_;
 	uint32_t					curr_query_v4_			{0};
-	RESP_TO_CONN					resp_conn_v4_;	
+	/*RESP_TO_CONN					resp_conn_v4_;	*/
 
 	RESP_HISTOGRAM					resp_hist_;
 	
@@ -666,7 +664,7 @@ public :
 	RESP_CACHE					resp_cache_v6_;
 	CONN_BITMAP					resp_bitmap_v6_;
 	uint32_t					curr_query_v6_			{0};
-	RESP_TO_CONN					resp_conn_v6_;	
+	/*RESP_TO_CONN					resp_conn_v6_;	*/
 
 	TCP_LISTENER(const GY_IP_ADDR & addr, uint16_t port, ino_t nsinode, pid_t pid, uint32_t listen_hash, int backlog = 0, std::weak_ptr <TASK_STAT> task = {}, \
 			std::shared_ptr <SHR_TASK_HASH_TABLE> listen_table = {}, const char *pcomm = nullptr, const char *pcmdline = nullptr, bool is_pre_existing = false, \
@@ -695,7 +693,8 @@ public :
 	void set_aggr_glob_id() noexcept;
 
 	void get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lissue, STR_WR_BUF & strbuf, time_t tcur, uint64_t clock_usec, int curr_active_conn, \
-					float multiple_factor, bool cpu_issue, bool mem_issue, uint32_t ser_errors, void * ptaskstatus, comm::LISTENER_DAY_STATS *pstatsn) noexcept;
+					float multiple_factor, bool cpu_issue, bool mem_issue, uint32_t ser_errors, void * ptaskstatus, 
+					comm::LISTENER_DAY_STATS *pstatsn, RESP_HISTOGRAM *phist = nullptr, QPS_HISTOGRAM *pqpshist = nullptr) noexcept;
 
 	bool is_task_issue(uint64_t clock_usec, uint32_t & tasks_delay_usec, uint32_t & tasks_cpudelay_usec, uint32_t & tasks_blkiodelay_usec, bool & is_severe, bool & is_delay, \
 					int & ntasks_issue, int & ntasks_noissue, int & tasks_user_cpu, int & tasks_sys_cpu, int & tasks_rss_mb) noexcept;
@@ -703,6 +702,8 @@ public :
 	void set_nat_ip_port(const IP_PORT & nat_ip_port, int64_t tcurr) noexcept;
 
 	size_t get_pids_for_uprobe(pid_t *pidarr, size_t maxpids) const noexcept;
+
+	void handle_api_cap_active() noexcept;
 
 	friend inline bool operator== (const std::shared_ptr<TCP_LISTENER> &lhs, const NS_IP_PORT & ser) noexcept
 	{

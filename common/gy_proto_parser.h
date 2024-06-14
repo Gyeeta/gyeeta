@@ -10,6 +10,7 @@
 #include			"gy_stack_container.h"
 #include			"gy_pool_alloc.h"
 #include			"gy_proto_common.h"
+#include			"gy_statistics.h"
 
 #include 			"folly/container/F14Map.h"
 #include			"folly/MPMCQueue.h"
@@ -488,6 +489,7 @@ struct SVC_PARSE_STATS
 	uint64_t				nsrc_chg_		{0};
 	uint64_t				srcpkts_[API_CAP_SRC::SRC_MAX]	{};
 
+
 	bool update_pkt_stats(const PARSE_PKT_HDR & hdr) noexcept;
 	void print_stats(STR_WR_BUF & strbuf, uint64_t tcurrusec, uint64_t tlastusec) const noexcept;
 
@@ -501,6 +503,10 @@ public :
 	using SessReorderMap 			= folly::F14ValueMap<SVC_SESSION *, uint64_t>;
 	using SessMapIt				= typename SvcSessMap::iterator;
 	
+	using RESP_HISTOGRAM			= RESP_TIME_HISTOGRAM<SCOPE_GY_MUTEX>;
+	using RESP_CACHE			= TIME_HIST_CACHE<RESP_HISTOGRAM, RESP_TIME_HASH>;
+	using QPS_HISTOGRAM			= GY_HISTOGRAM <int, SEMI_LOG_HASH_LO>;
+
 	API_PARSE_HDLR				& apihdlr_;
 
 	SVC_PARSE_STATS				stats_;
@@ -509,6 +515,15 @@ public :
 	SessReorderMap				sessrdrmap_;
 	SVC_PARSE_STATS				laststats_;
 	std::unique_ptr<PROTO_DETECT>		protodetect_;
+
+	RESP_HISTOGRAM				resp_hist_;
+	RESP_CACHE				resp_cache_		{resp_hist_};
+	QPS_HISTOGRAM				qps_hist_		{(uint64_t)get_sec_clock()};
+
+	/* Following fields only updated by gy_socket_stat.cc */
+	uint64_t				last_api_nreq_		{0};
+	uint64_t				last_api_ncli_errors_	{0};
+	uint64_t				last_api_nser_errors_	{0};
 
 	uint64_t 				glob_id_		{0};
 	NS_IP_PORT				ns_ip_port_;
@@ -534,8 +549,6 @@ public :
 
 	void destroy(uint64_t tusec) noexcept;
 
-	void svc_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept;
-
 	void schedule_ssl_probe();
 
 	void schedule_ssl_stop() noexcept;
@@ -549,6 +562,8 @@ public :
 	bool parse_pkt(ParserMemPool::UniquePtr & puniq, PARSE_PKT_HDR & hdr, uint8_t *pdata);
 
 	bool do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata) noexcept;
+
+	void upd_stats_on_req(API_TRAN &tran, bool is_error, bool is_serv_err) noexcept;
 
 	bool proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8_t *pdata);
 

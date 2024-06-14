@@ -2035,24 +2035,17 @@ bool HTTP1_SESSINFO::print_req() noexcept
 			ustrbuf << PARSE_FIELD_LEN(EFIELD_APPNAME, useragentbuf_.size() + 1) << std::string_view(useragentbuf_.data(), useragentbuf_.size() + 1);
 		}	
 
+		bool			iserr = !!ptran->errorcode_;
+
 		if (psvc_) {
-			psvc_->stats_.nrequests_++;
+			psvc_->upd_stats_on_req(*ptran, iserr, is_serv_err_);
 		}	
 
-		if (ptran->errorcode_ != 0) {
+		if (iserr) {
 			if (errorbuf_.size() && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + errorbuf_.size() + 1) {
 				next++;
 				ustrbuf << PARSE_FIELD_LEN(EFIELD_ERRTXT, errorbuf_.size() + 1) << std::string_view(errorbuf_.data(), errorbuf_.size() + 1);
 			}
-
-			if (psvc_) {
-				if (is_serv_err_) {
-					psvc_->stats_.nser_errors_++;
-				}
-				else {
-					psvc_->stats_.ncli_errors_++;
-				}	
-			}	
 		}	
 
 		if (last_resp_status_ && ustrbuf.bytes_left() >= sizeof(PARSE_FIELD_LEN) + sizeof(int)) {

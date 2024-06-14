@@ -294,13 +294,40 @@ SVC_INFO_CAP::SVC_INFO_CAP(const std::shared_ptr<TCP_LISTENER> & listenshr, API_
 		}	
 	}
 
-	auto				psvcnet = SVC_NET_CAPTURE::get_singleton();
+	try {
+		tribool				isssl = indeterminate;
 
-	if (!psvcnet) {
-		return;
-	}	
+		if (proto_ == PROTO_UNKNOWN) {
+			if (orig_proto_ != PROTO_UNKNOWN && orig_proto_ < PROTO_INVALID) {
 
-	svc_init_blocking(*psvcnet);
+				isssl = orig_ssl_;
+				proto_ = orig_proto_;
+
+				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Service API Network Capture for svc '%s\' port %hu set as %s with SSL Capture %s as per prior stats\n",
+					comm_, ns_ip_port_.ip_port_.port_, proto_to_string(proto_), isssl == true ? "enabled" : "disabled");	
+
+				listenshr->api_cap_started_.store(CAPSTAT_ACTIVE, std::memory_order_release);
+
+				listenshr->handle_api_cap_active();
+			}
+			else {
+				protodetect_ = std::make_unique<PROTO_DETECT>();
+			}	
+		}
+
+		if (svc_ssl_ == SSL_SVC_E::SSL_UNINIT && indeterminate(isssl)) {
+			isssl =  typeinfo::ssl_enabled_listener(ns_ip_port_.ip_port_.port_, listenshr->comm_, listenshr->cmdline_);
+		}
+
+		if (isssl == true) {
+			schedule_ssl_probe();
+		}	
+	}
+	GY_CATCH_EXPRESSION(
+		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception seen : Failed to init API Capture for svc %s port %hu : %s\n",
+				comm_, ns_ip_port_.ip_port_.port_, GY_GET_EXCEPT_STRING);
+	);
+
 }	
 
 SVC_INFO_CAP::~SVC_INFO_CAP() noexcept
@@ -328,54 +355,6 @@ void SVC_INFO_CAP::destroy(uint64_t tusec) noexcept
 	
 	}
 }
-
-// Called from constructor
-void SVC_INFO_CAP::svc_init_blocking(SVC_NET_CAPTURE & svcnet) noexcept
-{
-	try {
-		tribool				isssl = indeterminate;
-
-		auto				listenshr = svcweak_.lock();
-
-		if (!listenshr) {
-			return;
-		}	
-
-		SCOPE_GY_MUTEX			slock(listenshr->svcweak_lock_);
-
-		listenshr->api_svcweak_ = weak_from_this();
-
-		slock.unlock();
-
-		if (proto_ == PROTO_UNKNOWN) {
-			if (orig_proto_ != PROTO_UNKNOWN && orig_proto_ < PROTO_INVALID) {
-
-				isssl = orig_ssl_;
-				proto_ = orig_proto_;
-
-				INFOPRINTCOLOR_OFFLOAD(GY_COLOR_YELLOW, "Service API Network Capture for svc '%s\' port %hu set as %s with SSL Capture %s as per prior stats\n",
-					comm_, ns_ip_port_.ip_port_.port_, proto_to_string(proto_), isssl == true ? "enabled" : "disabled");	
-
-				listenshr->api_cap_started_.store(CAPSTAT_ACTIVE, std::memory_order_release);
-			}
-			else {
-				protodetect_ = std::make_unique<PROTO_DETECT>();
-			}	
-		}
-
-		if (svc_ssl_ == SSL_SVC_E::SSL_UNINIT && indeterminate(isssl)) {
-			isssl =  typeinfo::ssl_enabled_listener(ns_ip_port_.ip_port_.port_, listenshr->comm_, listenshr->cmdline_);
-		}
-
-		if (isssl == true) {
-			schedule_ssl_probe();
-		}	
-	}
-	GY_CATCH_EXPRESSION(
-		ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Exception seen : Failed to lazy init API Capture for svc %s port %hu : %s\n",
-				comm_, ns_ip_port_.ip_port_.port_, GY_GET_EXCEPT_STRING);
-	);
-}	
 
 /*
  * Called from capture and probe threads...
@@ -1078,6 +1057,8 @@ void SVC_INFO_CAP::analyze_detect_status()
 
 				svcshr->api_proto_.store(apistat.proto_, mo_relaxed);
 				svcshr->api_cap_started_.store(CAPSTAT_ACTIVE, mo_relaxed);
+
+				svcshr->handle_api_cap_active();
 
 				proto_ = apistat.proto_;
 
@@ -2521,6 +2502,23 @@ void SVC_INFO_CAP::schedule_ssl_stop() noexcept
 	psvcnet->sched_svc_ssl_stop(gy_to_charbuf<256>("Stop SSL Probe for Svc %s %lx", comm_, glob_id_).get(), glob_id_);
 
 	ssl_req_.store(SSL_REQ_E::SSL_NO_REQ, mo_relaxed);
+}	
+
+void SVC_INFO_CAP::upd_stats_on_req(API_TRAN &tran, bool is_error, bool is_serv_err) noexcept
+{
+	size_t			bucket_id;
+
+	stats_.nrequests_++;
+	resp_cache_.add_cache(tran.response_usec_/1000, bucket_id, tran.tupd_usec_/GY_USEC_PER_SEC);	
+
+	if (is_error) {
+		if (is_serv_err) {
+			stats_.nser_errors_++;
+		}	
+		else {
+			stats_.ncli_errors_++;
+		}	
+	}	
 }	
 
 void SVC_PARSE_STATS::operator -= (const SVC_PARSE_STATS & other) noexcept
