@@ -1187,7 +1187,7 @@ lbl_hdr :
 						}	
 					}	
 					else if (i == (int)REQ_HDR_USER_AGENT) {
-						useragentbuf_.reset().append(sv1.data() + rv.size(), sv1.size() - rv.size());
+						useragentbuf_.reset().append(get_ltrim(sv1.data() + rv.size(), sv1.size() - rv.size()));
 					}						
 				}	
 			}	
