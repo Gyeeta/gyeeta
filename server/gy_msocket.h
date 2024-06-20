@@ -1261,6 +1261,7 @@ public :
 		gy_atomic<PROTO_TYPES>			api_proto_		{PROTO_UNKNOWN};
 		gy_atomic<PROTO_CAP_STATUS_E>		api_cap_status_		{CAPSTAT_STOPPED};
 		gy_atomic<bool>				api_is_ssl_		{false};
+		uint8_t					nretries_		{0};
 		
 		MREQ_TRACE_SVC(uint64_t glob_id) noexcept : glob_id_(glob_id)
 		{}	
@@ -1270,8 +1271,8 @@ public :
 			tlaststat_ = 0;
 			tstart_ = 0;
 			tend_ = 0;
-
 			api_cap_status_.store(CAPSTAT_STOPPED, mo_relaxed);
+			nretries_ = 0;
 		}	
 	};
 

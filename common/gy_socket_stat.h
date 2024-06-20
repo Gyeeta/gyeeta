@@ -693,7 +693,7 @@ public :
 	void set_aggr_glob_id() noexcept;
 
 	void get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lissue, STR_WR_BUF & strbuf, time_t tcur, uint64_t clock_usec, int curr_active_conn, \
-					float multiple_factor, bool cpu_issue, bool mem_issue, uint32_t ser_errors, void * ptaskstatus, 
+					bool cpu_issue, bool mem_issue, uint32_t ser_errors, void * ptaskstatus, 
 					comm::LISTENER_DAY_STATS *pstatsn, RESP_HISTOGRAM *phist = nullptr, QPS_HISTOGRAM *pqpshist = nullptr) noexcept;
 
 	bool is_task_issue(uint64_t clock_usec, uint32_t & tasks_delay_usec, uint32_t & tasks_cpudelay_usec, uint32_t & tasks_blkiodelay_usec, bool & is_severe, bool & is_delay, \

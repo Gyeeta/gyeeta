@@ -2328,6 +2328,13 @@ static int gy_nanosleep(int64_t nsec) noexcept
 	return gy_nanosleep(nsec / GY_NSEC_PER_SEC, nsec % GY_NSEC_PER_SEC);
 }
 	
+static int gy_usecsleep(int64_t usec) noexcept
+{
+	uint64_t	nsec = usec * GY_NSEC_PER_USEC;
+
+	return gy_nanosleep(nsec / GY_NSEC_PER_SEC, nsec % GY_NSEC_PER_SEC);
+}
+	
 static int gy_msecsleep(int64_t msec) noexcept
 {
 	uint64_t	nsec = msec * GY_NSEC_PER_MSEC;
@@ -11181,12 +11188,17 @@ public :
 	IP_PORT(const char *pipstr, uint16_t port) : ipaddr_(pipstr), port_(port)
 	{}
 
-	uint32_t get_hash() const noexcept
+	uint32_t get_hash(bool ignore_ip = false) const noexcept
 	{
 		alignas(4) uint8_t	buf1[sizeof(GY_IP_ADDR) + sizeof(uint32_t)];
 		int			len;
 
-		len = ipaddr_.get_as_inaddr(buf1);
+		if (ignore_ip == false) {
+			len = ipaddr_.get_as_inaddr(buf1);
+		}	
+		else {
+			len = 0;
+		}	
 
 		buf1[len++] = (port_ >> 8);
 		buf1[len++] = (port_ & 0xFF);
@@ -11269,6 +11281,21 @@ public :
 		}
 	};
 	
+	class ONLY_PORT 
+	{
+	public :
+		size_t operator()(const IP_PORT & k) const noexcept
+		{
+			return k.get_hash(true /* ignore_ip */);
+		}
+
+		bool operator()(const IP_PORT &lhs, const IP_PORT &rhs) const noexcept
+		{
+			return ((lhs.port_ == rhs.port_) && (lhs.ipaddr_.is_any_address() || rhs.ipaddr_.is_any_address() || lhs.ipaddr_ == rhs.ipaddr_));
+		}	
+	};
+
+
 	friend inline bool operator== (const IP_PORT &lhs, const IP_PORT &rhs) noexcept
 	{
 		return ((lhs.port_ == rhs.port_) && (lhs.ipaddr_ == rhs.ipaddr_));	

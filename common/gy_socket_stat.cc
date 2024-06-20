@@ -2017,7 +2017,7 @@ bool TCP_LISTENER::is_task_issue(uint64_t clock_usec, uint32_t & tasks_delay_use
 	return is_issue;
 }	
 
-void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lissue, STR_WR_BUF & strbuf, time_t tcur, uint64_t clock_usec, int curr_active_conn, float multiple_factor, bool cpu_issue, bool mem_issue, uint32_t ser_errors, void *ptaskstatus, comm::LISTENER_DAY_STATS *pstatn, RESP_HISTOGRAM *phist, QPS_HISTOGRAM *pqpshist) noexcept
+void TCP_LISTENER::get_curr_state(OBJ_STATE_E & lstate, LISTENER_ISSUE_SRC & lissue, STR_WR_BUF & strbuf, time_t tcur, uint64_t clock_usec, int curr_active_conn, bool cpu_issue, bool mem_issue, uint32_t ser_errors, void *ptaskstatus, comm::LISTENER_DAY_STATS *pstatn, RESP_HISTOGRAM *phist, QPS_HISTOGRAM *pqpshist) noexcept
 {
 	GY_NOMT_COLLECT_PROFILE(1000, "Get the Current Listener Response State");
 
@@ -3872,7 +3872,7 @@ TCP_LISTENER * TCP_SOCK_HANDLER::get_listener_by_globid_slow_locked(uint64_t glo
 {
 	TCP_LISTENER			*pret = nullptr;
 
-	auto lam_listen = [&](TCP_LISTENER_ELEM_TYPE *pdatanode, void *arg1) noexcept -> CB_RET_E
+	auto lam_listen = [&, globid](TCP_LISTENER_ELEM_TYPE *pdatanode, void *arg1) noexcept -> CB_RET_E
 	{
 		auto 			plistener = pdatanode->get_cref().get();
 
@@ -3957,8 +3957,8 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 					return CB_DELETE_ELEM;
 				}
 					
-				uint64_t		clock_diag = get_usec_clock();
-				uint64_t		clock_sec = clock_diag/GY_USEC_PER_SEC;	
+				uint64_t		clock_diag 	= get_usec_clock();
+				uint64_t		clock_sec 	= clock_diag/GY_USEC_PER_SEC;	
 
 				uint64_t		tclock		= plistener->clock_usec_.load(std::memory_order_relaxed),
 							tstart_clock 	= plistener->start_clock_usec_.load(std::memory_order_relaxed);
@@ -4042,7 +4042,6 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 				}
 
 				std::shared_ptr<SVC_INFO_CAP>	apishr;
-
 				uint32_t			total_queries, bpftotal, c4 = GY_READ_ONCE(plistener->curr_query_v4_), c6 = GY_READ_ONCE(plistener->curr_query_v6_);
 				int64_t				diffsec = clock_sec - plistener->last_query_clock_;
 				bool				is_stale = false, stale_dur2 = false;
@@ -4106,16 +4105,18 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 					}	
 				}	
 				else {
-					curr_qps_extra = total_queries * multiple_factor/diffsec;
-
-					plistener->last_qps_count_ = curr_qps_extra;
-
 					if (!apishr) {
+						curr_qps_extra = total_queries * multiple_factor/diffsec;
+						
 						plistener->qps_hist_.add_data(curr_qps_extra, clock_sec);
 					}	
 					else {
+						curr_qps_extra = total_queries/diffsec;
+
 						apishr->qps_hist_.add_data(curr_qps_extra, clock_sec);
 					}	
+
+					plistener->last_qps_count_ = curr_qps_extra;
 				}
 
 				if (plistener->last_conn_clock_ + GY_USEC_PER_SEC < tclock) {
@@ -4235,7 +4236,7 @@ std::tuple<int, int, int> TCP_SOCK_HANDLER::listener_stats_update(const std::sha
 				RELATED_LISTENERS::LISTENER_TASK_STATUS	taskstatus;
 				LISTENER_DAY_STATS			statn;
 					
-				plistener->get_curr_state(lstate, lissue, sbuf, tcur, clock_diag, curr_active_conn, multiple_factor, cpu_issue, mem_issue, ser_errors,
+				plistener->get_curr_state(lstate, lissue, sbuf, tcur, clock_diag, curr_active_conn, cpu_issue, mem_issue, ser_errors,
 								&taskstatus, bool(statcache) ? &statn : nullptr, &resp_hist, &qps_hist);
 
 				if ((diffstartusec > (int64_t)GY_USEC_PER_SEC * 100) || (ser_errors)) {

@@ -6321,21 +6321,38 @@ int MCONN_HANDLER::check_new_req_trace_svcs(bool checkall) noexcept
 				}	
 			}	
 
-			auto			st = listener.rtraceshr_->api_cap_status_.load(mo_acquire);
+			auto			*prtrace = listener.rtraceshr_.get();
+			auto			st = prtrace->api_cap_status_.load(mo_acquire);
 
-			if (st == CAPSTAT_FAILED && listener.rtraceshr_->tlaststat_ > tcurr - 900) {
-				NOTEPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Ignoring New Request Trace command for listener \'%s' 0x%016lx for host %s as recent trace request failed : "
-						"Will retry later...\n", listener.comm_, listener.glob_id_, listener.parthashr_->hostname_);
+			if (st == CAPSTAT_FAILED && prtrace->tlaststat_ > tcurr - 900) {
+				DEBUGEXECN(1, 
+					NOTEPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Ignoring New Request Trace command for listener \'%s' 0x%016lx for host %s as recent trace request failed : "
+							"Will retry later...\n", listener.comm_, listener.glob_id_, listener.parthashr_->hostname_);
+				);
 				return false;
+			}	
+			else if (st == CAPSTAT_FAILED) {
+				if (prtrace->nretries_ >= 8) {
+					if (prtrace->nretries_ != 10 || gdebugexecn > 0) {
+						WARNPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "Ignoring New Request Trace command for listener \'%s' 0x%016lx for host %s as too many retries failed : %hu\n",
+							listener.comm_, listener.glob_id_, listener.parthashr_->hostname_, prtrace->nretries_);
+
+						prtrace->nretries_ = 10;
+					}
+
+					return false;
+				}	
+
+				prtrace->nretries_++;
 			}	
 
 			if (st < CAPSTAT_STARTING) {
-				listener.rtraceshr_->tlaststat_ 	= tcurr;
-				listener.rtraceshr_->tstart_ 		= tcurr;
-				listener.rtraceshr_->tend_ 		= def.tend_;
-				listener.rtraceshr_->curr_trace_defid_ 	= def.reqdefid_;
+				prtrace->tlaststat_ 		= tcurr;
+				prtrace->tstart_ 		= tcurr;
+				prtrace->tend_ 			= def.tend_;
+				prtrace->curr_trace_defid_ 	= def.reqdefid_;
 
-				listener.rtraceshr_->api_cap_status_.store(CAPSTAT_STARTING, mo_relaxed);
+				prtrace->api_cap_status_.store(CAPSTAT_STARTING, mo_relaxed);
 			}
 
 			auto 			[it, success] = rsetmap.try_emplace(listener.parthashr_, rsetarena);

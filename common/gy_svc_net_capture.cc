@@ -140,7 +140,7 @@ std::pair<SvcType *, DirPacket> get_from_tuple_locked(const NetNsType & netns, c
 		}
 
 		if (nelem == 1) {
-			// Should we still check the listener ip?
+			// Should we still check the listener ip for non pcapfile pkts?
 			psvc = pfirst1;
 			return;
 		}	
@@ -1864,7 +1864,7 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 		bool				bret;
 		
 		if (dir == DirPacket::DirInbound) {
-			if constexpr (netns.parse_api_calls_ == false) {
+			if constexpr (netns.is_api_call_ == false) {
 				bret = netns.handle_req_err_locked(*psvc, srcip, tcp.source, tcp, pdata, data_len, caplen, tv_pkt);
 				if (bret == false) {
 					psvc->nmaybe_noweb_++;
@@ -1880,7 +1880,7 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 			}	
 		}
 		else {
-			if constexpr (netns.parse_api_calls_ == false) {
+			if constexpr (netns.is_api_call_ == false) {
 				bret = netns.handle_resp_err_locked(*psvc, dstip, tcp.dest, tcp, pdata, data_len, caplen, tv_pkt);
 				if (bret == false) {
 					psvc->nmaybe_noweb_++;
@@ -1898,7 +1898,7 @@ int process_pkt(NetNsType & netns, const uint8_t *pframe, uint32_t caplen, uint3
 
 		fastlock.unlock();
 
-		if constexpr (netns.parse_api_calls_) {
+		if constexpr (netns.is_api_call_) {
 			if (pcapsvc) {
 				netns.nmissed_total_ += !netns.svccap_.apihdlr_->send_pkt_to_parser(*msghdr, pdata, caplen, pcapsvc, glob_id);
 			}
@@ -2027,7 +2027,7 @@ void netns_restart_capture(NetNsType & netns)
 {
 	STRING_BUFFER<3000>		filstr;
 	uint32_t			bufsz, snaplen;
-	const char			*pnetstr = !netns.parse_api_calls_ ? "Error" : "API";
+	const char			*pnetstr = !netns.is_api_call_ ? "Error" : "API";
 
 	netns.forcerestart_ 		= false;
 	netns.tstart_ 			= time(nullptr);
@@ -2111,7 +2111,7 @@ void netns_restart_capture(NetNsType & netns)
 	};	
 
 	if (!netns.is_rootns_) {
-		if constexpr (netns.parse_api_calls_) {
+		if constexpr (netns.is_api_call_) {
 			bufsz = 10 * 1024 * 1024;
 		}	
 		else {
@@ -2119,7 +2119,7 @@ void netns_restart_capture(NetNsType & netns)
 		}	
 	}	
 	else {
-		if constexpr (netns.parse_api_calls_) {
+		if constexpr (netns.is_api_call_) {
 			bufsz = 32 * 1024 * 1024;
 		}	
 		else {

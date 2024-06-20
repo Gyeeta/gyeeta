@@ -147,7 +147,6 @@ int PARTHA_C::init_all_singletons()
 
 /*
  * Current format of tmp/partha_runtime.json :
- * XXX tracereq is only valid under CONDEXEC and DEBUGEXECN(5)
 {
 	"debuglevel"			:	10,
 	"response_sampling_percent"	:	50,
@@ -156,7 +155,34 @@ int PARTHA_C::init_all_singletons()
 	"tracereq" : [
 		{
 			"svcid"		:	"f3ba5d643a5eb14b",
-			"tend"		:	"2024-04-22 11:00:00+0530"
+			"tend"		:	"2024-04-22 11:00:00+0530",
+			"comment"	:	"Enable service trace on the fly : XXX tracereq is only valid under CONDEXEC and DEBUGEXECN(5)"
+		}
+	],
+	"pcaptrace" : [
+		{
+			"pcapfile"		:	"/tmp/Path_to_pcap",
+			"ip_port_xlate"		:
+				[
+					{
+						"serip"		:	"0.0.0.0",
+						"serport"	:	5000,
+						"localport"	:	42832,
+						"comment"	:	"serip/serport are the input pcap server IP/Port, localport is the local testing listener port (already started externally)"
+					},
+					{
+						"serip"		:	"192.168.0.2",
+						"serport"	:	5001,
+						"localport"	:	42834,
+						"comment"	:	"netns below is the netns inode of the external listener used for mapping"
+					}
+				],	
+			"netns"			:	"4026531840",
+			"nrepeats"		:	0,
+			"compression"		:	1.0,
+
+			"comment"		:	"Use to run pcap for offline trace : XXX Only valid under DEBUGEXECN(1 or above)",
+
 		}
 	]	
 }		 	
@@ -280,6 +306,33 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 			);
 		);
 
+		DEBUGEXECN(5,
+			if (auto aiter = doc.FindMember("pcaptrace"); (aiter != doc.MemberEnd()) && (aiter->value.IsArray())) {
+				for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+					if (false == aiter->value[i].IsObject()) {
+						goto next1;
+					}	
+
+					const auto 			& tobj = aiter->value[i].GetObject();
+					const char			*pcapfile = nullptr, serip = nullptr;
+					int				serport = 0, localport = 0;
+
+
+					if (auto it = tobj.FindMember("pcapfile"); ((it != tobj.MemberEnd()) && (it->value.IsString()))) {
+						svcid = string_to_number<uint64_t>(it->value.GetString(), 16);
+					}	
+					else {
+						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but no \'pcapfile\' param seen\n");
+						goto next1;
+					}	
+
+
+				}
+			}
+
+		);
+
+next1 :
 
 		return 0;
 	}

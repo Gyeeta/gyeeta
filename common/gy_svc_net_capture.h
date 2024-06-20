@@ -65,7 +65,7 @@ public :
 	bool					web_confirm_			{false};
 	bool					is_rootns_			{false};
 	
-	static constexpr bool			parse_api_calls_		{false};
+	static constexpr bool			is_api_call_			{false};
 
 	SVC_ERR_HTTP(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)); 
 
@@ -170,7 +170,7 @@ public :
 	// Keep this field last
 	std::unique_ptr<PCAP_NET_CAP>	netcap_;
 
-	static constexpr bool		parse_api_calls_	{false};
+	static constexpr bool		is_api_call_		{false};
 
 	NETNS_HTTP_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, bool is_rootns = false);
 
@@ -211,7 +211,7 @@ public :
 	uint16_t				serport_		{0};
 	bool					is_rootns_		{false};
 	
-	static constexpr bool			parse_api_calls_	{true};
+	static constexpr bool			is_api_call_		{true};
 
 	SVC_API_PARSER(std::shared_ptr<TCP_LISTENER> && listenshr, bool is_rootns, time_t tstart = time(nullptr)); 
 
@@ -253,7 +253,7 @@ public :
 	// Keep this field last
 	std::unique_ptr<PCAP_NET_CAP>	netcap_;
 
-	static constexpr bool		parse_api_calls_	{true};
+	static constexpr bool		is_api_call_		{true};
 
 	NETNS_API_CAP1(ino_t netinode, SVC_NET_CAPTURE & svccap, bool is_rootns = false);
 

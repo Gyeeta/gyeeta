@@ -103,6 +103,11 @@ public :
 		return fseeko(pfp_pcap_, newoff, SEEK_SET);
 	}
 		
+	int restart_pcap_read() noexcept
+	{
+		return fseeko(pfp_pcap_, sizeof(PCAP_FILE_HEADER), SEEK_SET);
+	}
+		
 	int get_linktype() const noexcept
 	{
 		return linktype_;
