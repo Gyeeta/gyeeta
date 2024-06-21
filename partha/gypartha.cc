@@ -23,6 +23,8 @@
 #include		"gy_query_common.h"
 #include		"gy_libcurl.h"
 #include		"gy_proto_common.h"
+#include		"gy_svc_net_capture.h"
+#include		"gy_pseudo_pcap_cap.h"
 
 #include 		<sys/utsname.h>
 
@@ -181,7 +183,7 @@ int PARTHA_C::init_all_singletons()
 			"nrepeats"		:	0,
 			"compression"		:	1.0,
 
-			"comment"		:	"Use to run pcap for offline trace : XXX Only valid under DEBUGEXECN(1 or above)",
+			"comment"		:	"Use to run pcap for offline trace : XXX Only valid under DEBUGEXECN(5 or above)",
 
 		}
 	]	
@@ -308,28 +310,114 @@ int PARTHA_C::update_runtime_cfg(char *pcfg, int sz) noexcept
 
 		DEBUGEXECN(5,
 			if (auto aiter = doc.FindMember("pcaptrace"); (aiter != doc.MemberEnd()) && (aiter->value.IsArray())) {
+				auto			*psvcnet = SVC_NET_CAPTURE::get_singleton();
+
+				if (!psvcnet) {
+					ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but Svc Net Capture singleton not yet initialized...\n");
+					goto next1;
+				}	
+
+				auto			*papihdlr = psvcnet->get_api_handler(0);
+
+				if (!papihdlr) {
+					ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but API Capture Handler not yet initialized. Please enable API Capture first...\n");
+					goto next1;
+				}	
+
 				for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+
 					if (false == aiter->value[i].IsObject()) {
+						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but \'pcaptrace\' element is not an object\n");
 						goto next1;
 					}	
 
 					const auto 			& tobj = aiter->value[i].GetObject();
-					const char			*pcapfile = nullptr, serip = nullptr;
-					int				serport = 0, localport = 0;
+					const char			*pcapfile = nullptr;
+					struct stat			stat1;
+					std::vector<IP_PORT>		ipportvec;
+					std::vector<uint16_t>		portvec;
+					uint64_t			netns;
+					int				nrepeats = 0;
+					float 				comp_rate = 1;
 
 
 					if (auto it = tobj.FindMember("pcapfile"); ((it != tobj.MemberEnd()) && (it->value.IsString()))) {
-						svcid = string_to_number<uint64_t>(it->value.GetString(), 16);
+						pcapfile = it->value.GetString();
+
+						if (stat(pcapfile, &stat1)) {
+							PERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command : Invalid pcap file %s", pcapfile);
+							goto next1;
+						}
+
+						if (stat1.st_size <= 24) {
+							continue;
+						}	
 					}	
 					else {
 						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but no \'pcapfile\' param seen\n");
 						goto next1;
 					}	
 
+					if (auto aiter = tobj.FindMember("ip_port_xlate"); ptcp && ((aiter != tobj.MemberEnd()) && (aiter->value.IsArray()))) {
+						for (uint32_t i = 0; i < aiter->value.Size(); i++) {
+							if (true == aiter->value[i].IsObject()) {
+								
+								const auto 			& eobj = aiter->value[i].GetObject();
+								GY_IP_ADDR			oip;
+								int				serport = 0, localport = 0;
+						
+								if (auto it = eobj.FindMember("serip"); ((it != eobj.MemberEnd()) && (it->value.IsString()))) {
+									oip.set_ip(it->value.GetString());
+								}	
 
+								if (auto it = eobj.FindMember("serport"); ((it != eobj.MemberEnd()) && (it->value.IsInt()))) {
+									serport = it->value.GetInt();
+								}
+								else {
+									ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but no \'ip_port_xlate.serport\' param seen\n");
+									goto next1;
+								}	
+
+								if (auto it = eobj.FindMember("localport"); ((it != eobj.MemberEnd()) && (it->value.IsInt()))) {
+									localport = it->value.GetInt();
+								}
+								else {
+									ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but no \'ip_port_xlate.localport\' param seen\n");
+									goto next1;
+								}
+
+								ipportvec.emplace_back(oip, serport);
+								portvec.emplace_back(localport);
+							}
+						}
+					}	
+					
+					if (ipportvec.size() == 0) {
+						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but no valid \'ip_port_xlate\' param seen\n");
+						goto next1;
+					}	
+
+
+					if (auto aiter = tobj.FindMember("netns"); ((aiter != tobj.MemberEnd()) && (aiter->value.IsInt64()))) {
+						netns = aiter->value.GetInt64();
+					}
+					else {
+						ERRORPRINTCOLOR_OFFLOAD(GY_COLOR_RED, "pcaptrace runtime command specified but no \'netns\' param seen\n");
+						goto next1;
+					}	
+					
+					if (auto aiter = tobj.FindMember("nrepeats"); ((aiter != tobj.MemberEnd()) && (aiter->value.IsInt()))) {
+						nrepeats = aiter->value.GetInt();
+					}
+
+					if (auto aiter = tobj.FindMember("compression"); ((aiter != tobj.MemberEnd()) && (aiter->value.IsDouble()))) {
+						comp_rate = (float)aiter->value.GetDouble();
+					}
+
+					new PSEUDO_PCAP_CAP(pcapfile, ipportvec.data(), portvec.data(), portvec.size(), netns, *papihdlr,
+												nrepeats, comp_rate, true /* delete_object_on_end */);
 				}
 			}
-
 		);
 
 next1 :

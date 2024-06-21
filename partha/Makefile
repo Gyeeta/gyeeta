@@ -17,7 +17,8 @@ BINARIES := partha-bcc partha-bpf
 all: $(BINARIES)
 
 
-COMMON_OBJS := gypartha.o sversion.o gy_ebpf_common.o gy_paconnhdlr.o gy_server_int.o sys_hardware_partha.o
+COMMON_OBJS := gypartha.o sversion.o gy_ebpf_common.o gy_paconnhdlr.o gy_server_int.o sys_hardware_partha.o \
+		gy_pseudo_pcap_cap.o
 
 PARTHA_BCC_OBJS := gy_ebpf_bcc.o gy_ssl_cap_bcc.o
 
