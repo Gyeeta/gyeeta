@@ -1599,6 +1599,14 @@ SVC_SESSION::~SVC_SESSION() noexcept
 			}	
 			break;
 
+		case PROTO_SYBASE_ASE :
+			if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&pvarproto_); psybase) {
+				if (*psybase) psvc_->apihdlr_.psybase_->destroy(*psybase, pdataproto_);
+				del = true;
+			}	
+			break;
+
+
 		default :
 			break;
 		}	
@@ -1613,6 +1621,10 @@ SVC_SESSION::~SVC_SESSION() noexcept
 			else if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&pvarproto_); ppostgres) {
 				if (*ppostgres) psvc_->apihdlr_.ppostgres_->destroy(*ppostgres, pdataproto_);
 			}	
+			else if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&pvarproto_); psybase) {
+				if (*psybase) psvc_->apihdlr_.psybase_->destroy(*psybase, pdataproto_);
+			}	
+
 		}	
 	}
 }	
@@ -2308,6 +2320,16 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 				}
 				break;
 
+			case PROTO_SYBASE_ASE :
+				if (true) {
+					auto [psess, pdata]		= apihdlr_.psybase_->alloc_sess(sess, hdr);
+
+					sess.pvarproto_ 		= psess;
+					sess.pdataproto_		= pdata;
+				}
+				break;
+
+
 			default :
 				break;	
 			}	
@@ -2382,6 +2404,18 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 				}
 				break;
 
+			case PROTO_SYBASE_ASE :
+				if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&sess.pvarproto_); psybase && *psybase) {
+
+					if (hdr.dir_ == DirPacket::DirInbound) {
+						apihdlr_.psybase_->handle_request_pkt(**psybase, sess, hdr, pdata);
+					}	
+					else {
+						apihdlr_.psybase_->handle_response_pkt(**psybase, sess, hdr, pdata);
+					}	
+				}
+				break;
+
 			default :
 				break;	
 
@@ -2408,6 +2442,13 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 			case PROTO_POSTGRES :
 				if (auto ppostgres = std::get_if<POSTGRES_SESSINFO *>(&sess.pvarproto_); ppostgres && *ppostgres) {
 					apihdlr_.ppostgres_->handle_session_end(**ppostgres, sess, hdr);
+				}
+				break;
+
+
+			case PROTO_SYBASE_ASE :
+				if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&sess.pvarproto_); psybase && *psybase) {
+					apihdlr_.psybase_->handle_session_end(**psybase, sess, hdr);
 				}
 				break;
 
@@ -2448,6 +2489,13 @@ bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr,
 			apihdlr_.ppostgres_->handle_ssl_change(**ppostgres, sess, hdr, pdata);
 		}
 		break;
+
+	case PROTO_SYBASE_ASE :
+		if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&sess.pvarproto_); psybase && *psybase) {
+			apihdlr_.psybase_->handle_ssl_change(**psybase, sess, hdr, pdata);
+		}
+		break;
+
 
 	default :
 		return false;
@@ -2996,6 +3044,14 @@ void API_PARSE_HDLR::print_stats() noexcept
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
 		strbuf.reset();
 	}	
+
+	SYBASE_ASE_PROTO::print_stats(strbuf, tcurrusec/GY_USEC_PER_SEC, tlast_print_usec_/GY_USEC_PER_SEC);
+	
+	if (strbuf.bytes_left() < 1500) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+		strbuf.reset();
+	}	
+
 
 	auto				diffstats = stats_, & lstats = laststats_;
 

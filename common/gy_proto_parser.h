@@ -394,7 +394,7 @@ class SYBASE_ASE_SESSINFO;
 
 struct SVC_SESSION
 {
-	using proto_sess = std::variant<std::monostate, HTTP1_SESSINFO *, HTTP2_SESSINFO *, POSTGRES_SESSINFO *>;
+	using proto_sess = std::variant<std::monostate, HTTP1_SESSINFO *, HTTP2_SESSINFO *, POSTGRES_SESSINFO *, SYBASE_ASE_SESSINFO *>;
 
 	proto_sess				pvarproto_;
 	void					*pdataproto_		{nullptr};

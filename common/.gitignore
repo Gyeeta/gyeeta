@@ -1,5 +1,7 @@
 
 gy_sybase_proto*.cc
 gy_sybase_proto*.h
+gy_datalist_proto.cc
+gy_datalist_proto.h
 
 

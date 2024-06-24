@@ -23,7 +23,8 @@ CXXSRCS = gy_file_api.cc gy_pkt_pool.cc gy_rcu.cc gy_task_handler.cc				\
 		gy_svc_net_capture.cc gy_query_common.cc gy_query_criteria.cc gy_boolparse.cc	\
 		gy_alerts.cc gy_openssl_pthr.cc gy_cloud_metadata.cc gy_libbpf.cc		\
 		gy_pcap_write.cc gy_elf.cc gy_ssl_cap_util.cc gy_proto_parser.cc		\
-		gy_http_proto.cc gy_http2_proto.cc gy_postgres_proto.cc gy_sybase_proto.cc
+		gy_http_proto.cc gy_http2_proto.cc gy_postgres_proto.cc gy_sybase_proto.cc	\
+		gy_datalist_proto.cc
 
 OBJS = $(CXXSRCS:.cc=.o)
 
