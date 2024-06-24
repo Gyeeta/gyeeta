@@ -10,6 +10,7 @@
 #include			"gy_http_proto_detail.h"
 #include			"gy_http2_proto_detail.h"
 #include			"gy_postgres_proto_detail.h"
+#include			"gy_sybase_proto_detail.h"
 #include			"gy_pcap_write.h"
 #include			"gy_server_int.h"
 
@@ -253,6 +254,7 @@ API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint
 		phttp1_.reset(new HTTP1_PROTO(*this, api_max_len_));
 		phttp2_.reset(new HTTP2_PROTO(*this, api_max_len_));
 		ppostgres_.reset(new POSTGRES_PROTO(*this, api_max_len_));
+		psybase_.reset(new SYBASE_ASE_PROTO(*this, api_max_len_));
 	}	
 	else {	
 		GY_THROW_EXPRESSION("API Parser Initialiation : Invalid Parser Index id specified %hhu : Max allowed is %lu", parseridx, MAX_API_PARSERS);
@@ -842,6 +844,12 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 			break;
 			
+		case PROTO_SYBASE_ASE :
+			isvalid	= SYBASE_ASE_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+
+			break;
+			
+			
 		default :
 			isvalid = false;
 			break;
@@ -851,7 +859,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			if (indeterminate(isvalid)) {
 				apistat.nmaybe_not_++;
 
-				if (apistat.nmaybe_not_ > 5) {
+				if (apistat.nmaybe_not_ > 16) {
 					apistat.nis_not_++;
 					apistat.nmaybe_not_ = 0;
 				}
@@ -994,6 +1002,14 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			return true;
 		}
 	}
+
+	isvalid	= SYBASE_ASE_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+
+	if (true == isvalid) {
+		init_apistat(PROTO_SYBASE_ASE);
+
+		return true;
+	}	
 
 	return true;
 }	

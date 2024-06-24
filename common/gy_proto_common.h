@@ -21,6 +21,9 @@ enum PROTO_TYPES : uint16_t
 	PROTO_MYSQL,
 	PROTO_MONGO,
 	PROTO_REDIS,
+	PROTO_SYBASE_ASE,
+	PROTO_DB2,
+	PROTO_INFORMIX,
 
 	PROTO_INVALID,
 };	
@@ -28,6 +31,7 @@ enum PROTO_TYPES : uint16_t
 static constexpr const char 			*proto_type_str[PROTO_INVALID + 1] = 
 {
 		"Unknown", "HTTP1", "HTTP2", "Postgres", "MySQL", "Mongo", "Redis", 
+		"Sybase ASE", "DB2", "Informix",
 		"Invalid",
 };	
 

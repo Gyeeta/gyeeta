@@ -363,10 +363,10 @@ public :
 		return indeterminate;
 	}	
 
-	static bool is_valid_resp(const uint8_t *pdata, uint32_t len, bool is_init = false) noexcept
+	static tribool is_valid_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, bool is_init = false) noexcept
 	{
 		if (is_init) {
-			if (len >= 9) {
+			if (caplen >= 9) {
 				uint32_t			msglen, type;
 				char				c = (char)*pdata;
 
@@ -376,7 +376,7 @@ public :
 
 				msglen = unaligned_read_be32(pdata + 1);
 
-				if (len != msglen + 1) {
+				if (caplen != msglen + 1) {
 					return false;
 				}
 
@@ -390,7 +390,7 @@ public :
 
 				return false;
 			}
-			else if (len == 1) {
+			else if (caplen == 1) {
 				char				c = (char)*pdata;
 
 				if (c == 'S' || c == 'N') {
@@ -402,11 +402,11 @@ public :
 			return false;
 		}
 
-		if (len < 5) {
+		if (caplen < 5) {
 			return false;
 		}	
 		
-		int				maxlen = len, ntkns = 0;
+		int				maxlen = caplen, ntkns = 0;
 		const char			*pstart = (const char *)pdata;
 
 		do {
@@ -519,7 +519,7 @@ public :
 			return is_valid_req(pdata, caplen, wirelen, is_init);
 		}	
 
-		return is_valid_resp(pdata, caplen, is_init);
+		return is_valid_resp(pdata, caplen, wirelen, is_init);
 	}	
 
 

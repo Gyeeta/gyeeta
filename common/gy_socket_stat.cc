@@ -3854,7 +3854,7 @@ int TCP_SOCK_HANDLER::handle_api_trace_set(const comm::REQ_TRACE_SET *preq, int 
 		ndel = delidmap.size();
 
 		if (ndel > 0) {
-			svcnetcap_->sched_del_listeners(0, gy_to_charbuf<128>("Request Trace Delete Listeners %ld", get_usec_time()).get(), std::move(delidmap));
+			svcnetcap_->sched_del_listeners(0, gy_to_charbuf<128>("Request Trace Delete Listeners %ld", get_usec_time()).get(), std::move(delidmap), true /* onlyapi */);
 		}
 
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_BLUE, "Request Trace Set : Scheduled Trace Capture for %ld listeners and Scheduled Trace disabled for %ld\n",
