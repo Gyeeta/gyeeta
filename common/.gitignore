@@ -1,6 +1,11 @@
 
+gy_postgres_proto.cc
+gy_postgres_proto.h
+gy_postgres_proto_detail.h
+
 gy_sybase_proto*.cc
 gy_sybase_proto*.h
+
 gy_datalist_proto.cc
 gy_datalist_proto.h
 
