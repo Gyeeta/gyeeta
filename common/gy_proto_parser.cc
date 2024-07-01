@@ -31,7 +31,7 @@ std::optional<GY_THREAD>			API_PARSE_HDLR::gtran_thr_;
 
 #ifdef GY_TEST_REORDER_PKTS
 
-// Enable GY_TEST_PCAPWRITE if GY_TEST_PCAPWRITE set
+// Enable GY_TEST_PCAPWRITE if GY_TEST_REORDER_PKTS set
 #ifndef 				GY_TEST_PCAPWRITE
 #define 				GY_TEST_PCAPWRITE
 #endif
