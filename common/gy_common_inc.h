@@ -1307,7 +1307,7 @@ public :
 
 	void setbuf(const char *pmsg) noexcept
 	{
-		GY_STRNCPY(buf_, pmsg, szbuf_);
+		if (pmsg) GY_STRNCPY(buf_, pmsg, szbuf_);
 	}	
 	
 	void setbuf(const char *pmsg, size_t szstr) noexcept
@@ -1767,6 +1767,34 @@ static auto gy_noexcept_cast(const T obj) noexcept
 {
 	return reinterpret_cast<typename gy_noexcept_cast_helper<T>::type>(obj);
 };
+
+/*
+ * Convert UTF16 to ASCII (Only valid for ASCII charset)
+ */
+#define unicode_to_ascii(__pdest, __psrc, __unilen, __destlen, __psrcend, _tonullterm)		\
+({												\
+	uint8_t		*_pdest = (uint8_t *)(__pdest);						\
+	auto		*_psrc = (const uint8_t *)(__psrc);					\
+	uint32_t	_cpylen, _i, _unilen = __unilen;					\
+												\
+	if (((__destlen) > 0) && ((__destlen) < (_unilen))) {					\
+		(_unilen) = (__destlen);							\
+	}											\
+	_cpylen = (_unilen);									\
+												\
+	if (_cpylen >= 2 && !_psrc[1] && !_psrc[3]) { /* ASCII UNICODE */			\
+		if (_psrc + 2 * _cpylen > (const uint8_t *)(__psrcend)) 			\
+			_cpylen = (((const uint8_t *)(__psrcend)) - _psrc) >> 1;		\
+												\
+		for (_i = 0; _i < _cpylen; _i++) {						\
+			_pdest[_i] = _psrc[_i << 1];						\
+		}										\
+	} else if (_cpylen) { /* Multibyte UNICODE */						\
+		memcpy(_pdest, _psrc, _cpylen);							\
+	}											\
+	if ((_tonullterm)) _pdest[_cpylen] = '\0';						\
+	_cpylen;										\
+})
 
 
 // Enum for use in Callback invoked while in a loop
@@ -3859,7 +3887,7 @@ static inline void unaligned_write_64(void *_u, uint64_t a) noexcept
 #endif
 }
 
-enum BYTE_ORDER_E : int
+enum BYTE_ORDER_E : uint8_t
 {
 	BO_BIG_ENDIAN		= 0,
 	BO_LITTLE_ENDIAN	= 1,
@@ -9281,6 +9309,15 @@ public :
 	{
 		return append(&val, sizeof(T));
 	}
+
+	/*
+	 * No bounds check done for loop based appends. Please ensure safety externally...
+	 */
+	inline uint8_t *appendunsafe(char c) noexcept
+	{
+		pwritebuf_[currsz_++] 	= c;
+		return pwritebuf_;
+	}	
 
 	/*
 	 * NOTE : Do not overload the non-template const char * << function to enable string literal

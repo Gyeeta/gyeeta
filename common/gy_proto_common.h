@@ -28,6 +28,7 @@ enum PROTO_TYPES : uint16_t
 	PROTO_INVALID,
 };	
 
+// Keep the Proto Strings limited to 15 bytes
 static constexpr const char 			*proto_type_str[PROTO_INVALID + 1] = 
 {
 		"Unknown", "HTTP1", "HTTP2", "Postgres", "MySQL", "Mongo", "Redis", 

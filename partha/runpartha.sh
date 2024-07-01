@@ -61,11 +61,11 @@ printf "
 
 	For Help on any option : please type 
 	
-	$0 help <Option>
+	%s help <Option>
 
-	e.g. $0 help start
+	e.g. %s help start
 
-"
+" $0 $0
 
 }
 
