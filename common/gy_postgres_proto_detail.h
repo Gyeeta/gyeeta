@@ -1,0 +1,1 @@
+../../privgyeeta/common/gy_postgres_proto_detail.h
