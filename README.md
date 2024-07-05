@@ -3,7 +3,7 @@
 <p align="center"><a href="https://gyeeta.io"><img src="https://gyeeta.io/img/gyeeta.png" alt="Gyeeta" width="96" /></a></p>
 
 
-[***Gyeeta***](https://gyeeta.io) is a *100% Open Source (GPLv3)* and *Free* Infrastructure, Services and Process Level monitor (*Linux* only).  
+[***Gyeeta***](https://gyeeta.io) is an *Open Source (GPLv3)* Infrastructure, Services and Process Level monitor (*Linux* only).  
 
 
 ## Key Observability Capabilities
@@ -18,7 +18,7 @@
 - Detect Process Level *CPU starvation, Virtual Memory or IO Bottlenecks*. 
 - Monitor Kubernetes or any other Cluster orchestrators.
 
-[***Website***](https://gyeeta.io) | [***Documentation***](https://gyeeta.io/docs) | [***Youtube***](https://youtube.com/@gyeeta) | [***Twitter***](https://twitter.com/GyeetaIO)
+[***Website***](https://gyeeta.io) | [***Documentation***](https://gyeeta.io/docs) | [***Youtube***](https://youtube.com/@gyeeta) | [***X***](https://x.com/GyeetaIO)
 
 ## License
 
@@ -80,13 +80,6 @@ Other Linux distributions based on Debian/Ubuntu or RHEL are supported as long a
 
 Container Platforms such as Kubernetes or Docker Swarm are also supported using Helm Charts or Docker containers.
 
-## Live Gyeeta Web UI Demo
-
-A live Gyeeta Web Demo is available for users to evaluate some of the features available. More information on
-accessing the Live Demo Web server can be obtained from the link : 
-
-[Live Demo Server](https://gyeeta.io/docs/livedemo)
-
 ## Snapshots of Gyeeta Web UI
 
 ![Service State Monitor](https://gyeeta.io/img/servicemon.png)
@@ -95,35 +88,9 @@ accessing the Live Demo Web server can be obtained from the link :
 
 ![Process States](https://gyeeta.io/img/procstate1.png)
 
-
-## Github Repositories for other Gyeeta Components
-
-- [nodewebserver - Node Webserver](https://github.com/gyeeta/nodewebserver)
-- [frontend - Frontend React WebUI](https://github.com/gyeeta/frontend)
-- [alertaction - Alert Agent](https://github.com/gyeeta/alertaction)
-
-## Info on this Repository
+## More Info 
 
 This repository provides the source for the Gyeeta Host Agents (*Partha*), *Shyama Central Server* and *Madhava Intermediate Server*.
 
 Gyeeta uses C++ (C++17) as the programming language for these components. 
 
-### Building the Components
-
-We provide a Docker container for building this repo source.
-
-```bash
-docker pull ghcr.io/gyeeta/gyeeta-devel:latest
-```
-
-Note that the container is over 5 GB size. 
-
-Users can run the container optionally passing a Volume mount for the git source.
-
-To compile the source from within the container :
-
-```bash
-git clone https://github.com/Gyeeta/gyeeta.git
-cd gyeeta
-make ci
-```
