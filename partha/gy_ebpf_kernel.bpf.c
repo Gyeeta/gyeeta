@@ -165,7 +165,6 @@ int BPF_KRETPROBE(trace_connect_v4_return, int ret)
 		return 0;
 	}
 
-	// pull in details
 	struct sock 		*sk = *skpp;
 
 	return do_trace_connect_v4_return(ret, sk, pid);
@@ -588,7 +587,6 @@ static int do_trace_accept_return(void *ctx, struct sock *newsk)
 		return 0;
 	}
 
-	// pull in details
 	u16 			lport = 0, dport = 0;
 	u32 			net_ns_inum = 0;
 	u8 			ipver = 0;
@@ -596,7 +594,6 @@ static int do_trace_accept_return(void *ctx, struct sock *newsk)
 	BPF_CORE_READ_INTO(&dport, newsk, __sk_common.skc_dport);
 	BPF_CORE_READ_INTO(&lport, newsk, __sk_common.skc_num);
 
-	// Get network namespace id, if kernel supports it
 	if (bpf_core_field_exists(newsk->__sk_common.skc_net)) {
 		BPF_CORE_READ_INTO(&net_ns_inum, newsk, __sk_common.skc_net.net, ns.inum);
 	}
@@ -785,9 +782,6 @@ static int do_trace_ipv4_xmit(void *ctx, struct sock *sk)
 		return 0;
 	}
 
-	/*
-	 * Only process xmits of listened sockets
-	 */
 	BPF_CORE_READ_INTO(&sk_max_ack_backlog, sk, sk_max_ack_backlog);
 	if (sk_max_ack_backlog == 0) {
 		return 0;
@@ -801,14 +795,12 @@ static int do_trace_ipv4_xmit(void *ctx, struct sock *sk)
 	BPF_CORE_READ_INTO(&rcv_tstamp, ptcp, rcv_tstamp);
 
 	if (lrcvtime + 10 < rcv_tstamp) {
-		// Probably a continuation of response. The response time will have been accounted in an earlier packet
 		return 0;
 	}	
 
 	BPF_CORE_READ_INTO(&lsndtime, ptcp, lsndtime);
 
 	if (lsndtime < lrcvtime) {
-		// Request not responded yet
 		return 0;
 	}	
 
@@ -859,9 +851,6 @@ static int do_trace_ipv6_xmit(void *ctx, struct sock *sk)
 		return 0;
 	}
 
-	/*
-	 * Only process xmits of listened sockets
-	 */
 	BPF_CORE_READ_INTO(&sk_max_ack_backlog, sk, sk_max_ack_backlog);
 	if (sk_max_ack_backlog == 0) {
 		return 0;
@@ -875,14 +864,12 @@ static int do_trace_ipv6_xmit(void *ctx, struct sock *sk)
 	BPF_CORE_READ_INTO(&rcv_tstamp, ptcp, rcv_tstamp);
 
 	if (lrcvtime + 10 < rcv_tstamp) {
-		// Probably a continuation of response. The response time will have been accounted in an earlier packet
 		return 0;
 	}	
 
 	BPF_CORE_READ_INTO(&lsndtime, ptcp, lsndtime);
 
 	if (lsndtime < lrcvtime) {
-		// Request not responded yet
 		return 0;
 	}	
 
@@ -950,8 +937,6 @@ int BPF_KPROBE(trace_cgroup_migrate, struct task_struct *task, bool threadgroup)
 	evt.pid 	= BPF_CORE_READ(task, tgid);
 	evt.tid 	= BPF_CORE_READ(task, pid);
 	evt.threadgroup	= threadgroup;
-
-/* 	bpf_printk("cgroup migrate called for PID %d TID %d threadgroup %d\n", evt.pid, evt.tid, (int)evt.threadgroup); */
 
 	bpf_perf_event_output(ctx, &cgroup_migrate_event, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
 

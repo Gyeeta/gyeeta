@@ -22,12 +22,6 @@ SVC_NET_CAPTURE * SVC_NET_CAPTURE::get_singleton() noexcept
 	return pgsvccap;
 }	
 
-/*
- * NOTE : The errschedthr_ and apischedthr_ are the main handlers for all the captures. Also note that these threads will
- * keep alternating between the monitored Network Namespaces.
- *
- * Please do not assume the errschedthr_ or apischedthr_ will always run in root Network Namespace
- */
 SVC_NET_CAPTURE::SVC_NET_CAPTURE(ino_t rootnsid, bool disable_api_capture, uint32_t api_max_len)
 	: rootnsid_(rootnsid),
 	api_thr_("API Parser Thread", SVC_NET_CAPTURE::GET_PTHREAD_WRAPPER(api_parse_thread), this, nullptr, nullptr, true, 2 * 1024 * 1024, 2000, true, true, true, 10000, false),

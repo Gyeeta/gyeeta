@@ -749,9 +749,6 @@ int trace_ip_xmit(struct pt_regs *ctx, struct sock *skp)
 		return 0;
 	}
 
-	/*
-	 * Only process xmits of listened sockets
-	 */
 	if (skp->sk_max_ack_backlog == 0) {
 		return 0;
 	}	
@@ -766,12 +763,10 @@ int trace_ip_xmit(struct pt_regs *ctx, struct sock *skp)
 	u32			lsndtime = ptcp->lsndtime;
 
 	if (lrcvtime + 10 < ptcp->rcv_tstamp) {
-		// Probably a continuation of response. The response time will have been accounted in an earlier packet
 		return 0;
 	}	
 
 	if (lsndtime < lrcvtime) {
-		// Request not responded yet
 		return 0;
 	}	
 
@@ -840,8 +835,6 @@ int trace_cgroup_migrate(struct pt_regs *ctx, struct task_struct *task, bool thr
 	evt.pid 	= task->tgid;
 	evt.tid 	= task->pid;
 	evt.threadgroup	= threadgroup;
-
-/* 	bpf_trace_printk("cgroup migrate called for PID %d TID %d\n", evt.pid, evt.tid); */
 
 	cgroup_migrate_event.perf_submit(ctx, &evt, sizeof(evt));
 
