@@ -11,6 +11,7 @@
 #include			"gy_http2_proto_detail.h"
 #include			"gy_postgres_proto_detail.h"
 #include			"gy_sybase_proto_detail.h"
+#include			"gy_mongo_proto_detail.h"
 #include			"gy_pcap_write.h"
 #include			"gy_server_int.h"
 
@@ -255,6 +256,7 @@ API_PARSE_HDLR::API_PARSE_HDLR(SVC_NET_CAPTURE & svcnet, uint8_t parseridx, uint
 		phttp2_.reset(new HTTP2_PROTO(*this, api_max_len_));
 		ppostgres_.reset(new POSTGRES_PROTO(*this, api_max_len_));
 		psybase_.reset(new SYBASE_ASE_PROTO(*this, api_max_len_));
+		pmongo_.reset(new MONGO_PROTO(*this, api_max_len_));
 	}	
 	else {	
 		GY_THROW_EXPRESSION("API Parser Initialiation : Invalid Parser Index id specified %hhu : Max allowed is %lu", parseridx, MAX_API_PARSERS);
@@ -849,6 +851,12 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 			break;
 			
+		case PROTO_MONGO :
+			isvalid	= MONGO_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+
+			break;
+			
+			
 			
 		default :
 			isvalid = false;
@@ -1007,6 +1015,14 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	if (true == isvalid) {
 		init_apistat(PROTO_SYBASE_ASE);
+
+		return true;
+	}	
+
+	isvalid	= MONGO_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+
+	if (true == isvalid) {
+		init_apistat(PROTO_MONGO);
 
 		return true;
 	}	
@@ -1607,6 +1623,15 @@ SVC_SESSION::~SVC_SESSION() noexcept
 			break;
 
 
+		case PROTO_MONGO :
+			if (auto pmongo = std::get_if<MONGO_SESSINFO *>(&pvarproto_); pmongo) {
+				if (*pmongo) psvc_->apihdlr_.pmongo_->destroy(*pmongo, pdataproto_);
+				del = true;
+			}	
+			break;
+
+
+
 		default :
 			break;
 		}	
@@ -1624,7 +1649,9 @@ SVC_SESSION::~SVC_SESSION() noexcept
 			else if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&pvarproto_); psybase) {
 				if (*psybase) psvc_->apihdlr_.psybase_->destroy(*psybase, pdataproto_);
 			}	
-
+			else if (auto pmongo = std::get_if<MONGO_SESSINFO *>(&pvarproto_); pmongo) {
+				if (*pmongo) psvc_->apihdlr_.pmongo_->destroy(*pmongo, pdataproto_);
+			}	
 		}	
 	}
 }	
@@ -2329,6 +2356,16 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 				}
 				break;
 
+			case PROTO_MONGO :
+				if (true) {
+					auto [psess, pdata]		= apihdlr_.pmongo_->alloc_sess(sess, hdr);
+
+					sess.pvarproto_ 		= psess;
+					sess.pdataproto_		= pdata;
+				}
+				break;
+
+
 
 			default :
 				break;	
@@ -2416,6 +2453,19 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 				}
 				break;
 
+			case PROTO_MONGO :
+				if (auto pmongo = std::get_if<MONGO_SESSINFO *>(&sess.pvarproto_); pmongo && *pmongo) {
+
+					if (hdr.dir_ == DirPacket::DirInbound) {
+						apihdlr_.pmongo_->handle_request_pkt(**pmongo, sess, hdr, pdata);
+					}	
+					else {
+						apihdlr_.pmongo_->handle_response_pkt(**pmongo, sess, hdr, pdata);
+					}	
+				}
+				break;
+
+
 			default :
 				break;	
 
@@ -2449,6 +2499,12 @@ bool SVC_INFO_CAP::do_proto_parse(SVC_SESSION & sess, PARSE_PKT_HDR & hdr, uint8
 			case PROTO_SYBASE_ASE :
 				if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&sess.pvarproto_); psybase && *psybase) {
 					apihdlr_.psybase_->handle_session_end(**psybase, sess, hdr);
+				}
+				break;
+
+			case PROTO_MONGO :
+				if (auto pmongo = std::get_if<MONGO_SESSINFO *>(&sess.pvarproto_); pmongo && *pmongo) {
+					apihdlr_.pmongo_->handle_session_end(**pmongo, sess, hdr);
 				}
 				break;
 
@@ -2493,6 +2549,12 @@ bool SVC_INFO_CAP::proto_handle_ssl_chg(SVC_SESSION & sess, PARSE_PKT_HDR & hdr,
 	case PROTO_SYBASE_ASE :
 		if (auto psybase = std::get_if<SYBASE_ASE_SESSINFO *>(&sess.pvarproto_); psybase && *psybase) {
 			apihdlr_.psybase_->handle_ssl_change(**psybase, sess, hdr, pdata);
+		}
+		break;
+
+	case PROTO_MONGO :
+		if (auto pmongo = std::get_if<MONGO_SESSINFO *>(&sess.pvarproto_); pmongo && *pmongo) {
+			apihdlr_.pmongo_->handle_ssl_change(**pmongo, sess, hdr, pdata);
 		}
 		break;
 
@@ -3046,6 +3108,13 @@ void API_PARSE_HDLR::print_stats() noexcept
 	}	
 
 	SYBASE_ASE_PROTO::print_stats(strbuf, tcurrusec/GY_USEC_PER_SEC, tlast_print_usec_/GY_USEC_PER_SEC);
+	
+	if (strbuf.bytes_left() < 1500) {
+		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());
+		strbuf.reset();
+	}	
+
+	MONGO_PROTO::print_stats(strbuf, tcurrusec/GY_USEC_PER_SEC, tlast_print_usec_/GY_USEC_PER_SEC);
 	
 	if (strbuf.bytes_left() < 1500) {
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_GREEN, "%s\n", strbuf.buffer());

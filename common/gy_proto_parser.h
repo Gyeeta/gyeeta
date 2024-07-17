@@ -392,9 +392,12 @@ class POSTGRES_SESSINFO;
 class SYBASE_ASE_PROTO;
 class SYBASE_ASE_SESSINFO;
 
+class MONGO_PROTO;
+class MONGO_SESSINFO;
+
 struct SVC_SESSION
 {
-	using proto_sess = std::variant<std::monostate, HTTP1_SESSINFO *, HTTP2_SESSINFO *, POSTGRES_SESSINFO *, SYBASE_ASE_SESSINFO *>;
+	using proto_sess = std::variant<std::monostate, HTTP1_SESSINFO *, HTTP2_SESSINFO *, POSTGRES_SESSINFO *, SYBASE_ASE_SESSINFO *, MONGO_SESSINFO *>;
 
 	proto_sess				pvarproto_;
 	void					*pdataproto_		{nullptr};
@@ -693,6 +696,7 @@ public :
 	std::unique_ptr<HTTP2_PROTO>		phttp2_;
 	std::unique_ptr<POSTGRES_PROTO>		ppostgres_;
 	std::unique_ptr<SYBASE_ASE_PROTO>	psybase_;
+	std::unique_ptr<MONGO_PROTO>		pmongo_;
 
 	SVC_NET_CAPTURE				& svcnet_;
 	SSL_CAP_SVC				sslcap_;
