@@ -2012,7 +2012,7 @@ uint32_t NETNS_API_CAP1::get_filter_string(STR_WR_BUF & strbuf)
 				netinode_, tports, minport, maxport);
 	);
 
-	return 65535;
+	return 66000;
 }
 
 
