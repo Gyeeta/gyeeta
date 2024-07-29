@@ -118,7 +118,7 @@ public :
 		}
 	}
 
-	static tribool is_valid_req(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, bool is_init = false) noexcept
+	static tribool is_valid_req(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, bool is_init = false, LAST_PKT_SNIPPET *plastsnippet = nullptr) noexcept
 	{
 		auto			method = get_req_method(pdata, caplen);
 		
@@ -164,20 +164,20 @@ public :
 		return false;
 	}
 
-	static bool is_valid_resp(const uint8_t *pdata, uint32_t len, bool is_init = false) noexcept
+	static bool is_valid_resp(const uint8_t *pdata, uint32_t len, bool is_init = false, LAST_PKT_SNIPPET *plastsnippet = nullptr) noexcept
 	{
 		bool			is_cli_err, is_ser_err;
 
 		return is_status_response(pdata, len, is_cli_err, is_ser_err);
 	}	
 
-	static tribool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir, bool is_init = false) noexcept
+	static tribool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir, bool is_init = false, LAST_PKT_SNIPPET *plastsnippet = nullptr) noexcept
 	{
 		if (dir == DirPacket::DirInbound) {
-			return is_valid_req(pdata, caplen, wirelen, is_init);
+			return is_valid_req(pdata, caplen, wirelen, is_init, plastsnippet);
 		}	
 
-		return is_valid_resp(pdata, caplen, is_init);
+		return is_valid_resp(pdata, caplen, is_init, plastsnippet);
 	}	
 	
 	static bool is_status_response(const uint8_t *pdata, uint32_t len, bool & is_cli_err, bool & is_ser_err) noexcept

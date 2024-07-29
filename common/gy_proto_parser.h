@@ -227,7 +227,7 @@ public :
 		bool				ssl_init_resp_		{false};
 		uint8_t				ssl_nreq_		{0};
 		uint8_t				ssl_nresp_		{0};
-		DirPacket			lastdir_		{DirPacket::DirUnknown};
+		LAST_PKT_SNIPPET		lastpkt_;
 		
 		SessInfo(time_t tstart, PROTO_DETECT & detect, uint32_t nxt_cli_seq, uint32_t nxt_ser_seq, bool syn_seen) noexcept
 			: tstart_(tstart), tlastpkt_(tstart), detect_(detect), nxt_cli_seq_(nxt_cli_seq), nxt_ser_seq_(nxt_ser_seq), syn_seen_(syn_seen)

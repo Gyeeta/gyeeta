@@ -484,14 +484,20 @@ void PROTO_DETECT::cleanup_inactive_sess(time_t tcur) noexcept
 	}	
 }
 
-bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
+bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *porigdata)
 {
-	auto				& detect = *protodetect_.get();
+	uint8_t				tempbuf[1600];
 
+	uint8_t				*pdata = porigdata;
+	uint32_t			datalen = hdr.datalen_, wirelen = hdr.wirelen_, nlastbuf;
+
+	auto				& detect = *protodetect_.get();
 	IP_PORT				ipport(hdr.cliip_, hdr.cliport_);
+
 	PROTO_DETECT::SessInfo		*psess = nullptr;
 	bool				is_syn = hdr.tcpflags_ & GY_TH_SYN, is_finrst = hdr.tcpflags_ & (GY_TH_FIN | GY_TH_RST), skip_parse = false, skipdone = false;
 	bool				new_sess = false, is_init = false;
+	tribool				is_proto_valid = indeterminate;
 	DROP_TYPES			droptype, droptypeack;
 
 	auto				it = detect.smap_.find(ipport);
@@ -500,7 +506,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		if (is_finrst) {
 			return false;
 		}	
-		if (hdr.datalen_ == 0) {
+		if (datalen == 0) {
 			if (!is_syn) {
 				return false;
 			}	
@@ -521,7 +527,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			}	
 
 			it = detect.smap_.try_emplace(ipport, hdr.tv_.tv_sec, detect,
-						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn).first;
+						datalen == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, datalen == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn).first;
 			
 			new_sess = true;
 		}	
@@ -553,7 +559,8 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	if (hdr.src_ == SRC_UPROBE_SSL && !sess.is_ssl_) {
 		sess.is_ssl_ = true;
-		sess.lastdir_ = DirPacket::DirUnknown;
+		sess.lastpkt_.reset();
+
 		detect.nssl_confirm_++;
 
 		if (sess.syn_seen_) {
@@ -564,19 +571,19 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			sess.PROTO_DETECT::SessInfo::~SessInfo();
 
 			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, detect,
-						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
+						datalen == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, datalen == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
 
 			sess.is_ssl_ = true;
-			sess.lastdir_ = DirPacket::DirUnknown;
+			sess.lastpkt_.lastdir_ = DirPacket::DirUnknown;
 		}	
 	}	
 	
-	if (hdr.datalen_ == 0) {
+	if (datalen == 0) {
 		if (is_syn && !new_sess) {
 			sess.PROTO_DETECT::SessInfo::~SessInfo();
 
 			new (&sess) PROTO_DETECT::SessInfo(hdr.tv_.tv_sec, detect,
-						hdr.datalen_ == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, hdr.datalen_ == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
+						datalen == 0 ? hdr.nxt_cli_seq_ : hdr.start_cli_seq_, datalen == 0 ? hdr.nxt_ser_seq_ : hdr.start_ser_seq_, is_syn);
 		}
 
 		return true;
@@ -609,6 +616,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	}	
 
 	if (droptype == DT_RETRANSMIT) {
+		sess.lastpkt_.nlastbuf_ = 0;
 		return false;
 	}
 
@@ -619,7 +627,14 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	GY_SCOPE_EXIT {
 		if (psess) {
-			psess->lastdir_ = hdr.dir_;
+			psess->lastpkt_.lastdir_ = hdr.dir_;
+
+			if (hdr.datalen_ > 0 && !psess->skip_to_req_after_resp_) {
+				psess->lastpkt_.set_last_pkt(hdr.dir_, porigdata, hdr.datalen_);
+			}
+			else {
+				psess->lastpkt_.nlastbuf_ = 0;
+			}	
 		}	
 	};
 
@@ -630,9 +645,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}
 
 		sess.ndrops_++;
-
 		sess.skip_to_req_after_resp_ = 1;
-		sess.lastdir_ = hdr.dir_;
 
 		return true;
 	}	
@@ -648,10 +661,28 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			else {
 				return true;
 			}	
+
+			sess.lastpkt_.nlastbuf_ = 0;
 		}
 
-		if (sess.lastdir_ == DirPacket::DirInbound) {
-			return false;
+		if (sess.lastpkt_.lastdir_ == DirPacket::DirInbound) {
+			/*
+			 * No drops or reorder handling during detects
+			 */
+			nlastbuf = sess.lastpkt_.nlastbuf_;
+			sess.lastpkt_.nlastbuf_ = 0;
+
+			if (nlastbuf > 0 && nlastbuf <= LAST_PKT_SNIPPET::MaxLastBufSize && datalen + nlastbuf < sizeof(tempbuf) && !sess.lastpkt_.last_buf_trunc_) {
+				std::memcpy(tempbuf, sess.lastpkt_.lastbuf_, nlastbuf);
+				std::memcpy(tempbuf + nlastbuf, pdata, datalen);
+
+				pdata = tempbuf;
+				datalen += nlastbuf;
+				wirelen += nlastbuf;
+			}
+			else {
+				return false;
+			}	
 		}
 
 		if (sess.tfirstreq_ == 0) {
@@ -663,7 +694,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				if (hdr.src_ == SRC_UPROBE_SSL) {
 					sess.ssl_init_req_ = true;
 				}
-				else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
+				else if (true == TLS_PROTO::is_tls_req_resp(pdata, datalen, hdr.dir_, true /* is_init */)) {
 					sess.ssl_init_req_ = true;
 					skip_parse = true;
 				}	
@@ -674,7 +705,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					return true;
 				}
 			}	
-			else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
+			else if (true == TLS_PROTO::is_tls_req_resp(pdata, datalen, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nreq_++;
 				skip_parse = true;
 			}	
@@ -682,12 +713,12 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			sess.tfirstreq_ = hdr.tv_.tv_sec;
 		}
 		else if (!sess.is_ssl_ && sess.ssl_nreq_ > 0) {
-			if ((hdr.src_ == SRC_UPROBE_SSL) || (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */))) {
+			if ((hdr.src_ == SRC_UPROBE_SSL) || (true == TLS_PROTO::is_tls_req_resp(pdata, datalen, hdr.dir_, false /* is_init */))) {
 				sess.ssl_nreq_++;
 
 				if (sess.ssl_nresp_ > 1) {
 					sess.is_ssl_ = true;
-					sess.lastdir_ = DirPacket::DirUnknown;
+					sess.lastpkt_.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -710,8 +741,24 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}
 	}
 	else {
-		if (sess.lastdir_ == DirPacket::DirOutbound) {
-			return false;
+		if (sess.lastpkt_.lastdir_ == DirPacket::DirOutbound) {
+			/*
+			 * No drops or reorder handling during detects
+			 */
+			nlastbuf = sess.lastpkt_.nlastbuf_;
+			sess.lastpkt_.nlastbuf_ = 0;
+
+			if (nlastbuf > 0 && nlastbuf <= LAST_PKT_SNIPPET::MaxLastBufSize && datalen + nlastbuf < sizeof(tempbuf) && !sess.lastpkt_.last_buf_trunc_) {
+				std::memcpy(tempbuf, sess.lastpkt_.lastbuf_, nlastbuf);
+				std::memcpy(tempbuf + nlastbuf, pdata, datalen);
+
+				pdata = tempbuf;
+				datalen += nlastbuf;
+				wirelen += nlastbuf;
+			}
+			else {
+				return false;
+			}	
 		}
 
 		if (sess.skip_to_req_after_resp_) {
@@ -728,7 +775,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				if (hdr.src_ == SRC_UPROBE_SSL) {
 					sess.ssl_init_resp_ = true;
 					sess.is_ssl_ = true;
-					sess.lastdir_ = DirPacket::DirUnknown;
+					sess.lastpkt_.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -739,13 +786,13 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 						schedule_ssl_probe();
 					}	
 				}
-				else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, true /* is_init */)) {
+				else if (true == TLS_PROTO::is_tls_req_resp(pdata, datalen, hdr.dir_, true /* is_init */)) {
 					sess.ssl_init_resp_ = true;
 					skip_parse = true;
 
 					if (sess.ssl_init_req_) {
 						sess.is_ssl_ = true;
-						sess.lastdir_ = DirPacket::DirUnknown;
+						sess.lastpkt_.lastdir_ = DirPacket::DirUnknown;
 						detect.nssl_confirm_++;
 						
 						if (sess.syn_seen_) {
@@ -762,7 +809,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 				sess.skip_to_req_after_resp_ = 1;
 				return true;
 			}	
-			else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
+			else if (true == TLS_PROTO::is_tls_req_resp(pdata, datalen, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nresp_++;
 				skip_parse = true;
 			}	
@@ -773,7 +820,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 			if (hdr.src_ == SRC_UPROBE_SSL) {
 				if (sess.ssl_nreq_ > 1) {
 					sess.is_ssl_ = true;
-					sess.lastdir_ = DirPacket::DirUnknown;
+					sess.lastpkt_.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -785,12 +832,12 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 					}	
 				}
 			}
-			else if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, false /* is_init */)) {
+			else if (true == TLS_PROTO::is_tls_req_resp(pdata, datalen, hdr.dir_, false /* is_init */)) {
 				sess.ssl_nresp_++;
 
 				if (sess.ssl_nreq_ > 1) {
 					sess.is_ssl_ = true;
-					sess.lastdir_ = DirPacket::DirUnknown;
+					sess.lastpkt_.lastdir_ = DirPacket::DirUnknown;
 					detect.nssl_confirm_++;
 
 					if (sess.syn_seen_) {
@@ -824,47 +871,45 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 	}	
 
 	auto				& apistat = sess.apistat_;
-	tribool				isvalid;
 
 	if (apistat.proto_ != PROTO_UNKNOWN && apistat.proto_ < PROTO_INVALID) {
 		switch (apistat.proto_) {
 
 		case PROTO_HTTP1 :
-			isvalid	= HTTP1_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			is_proto_valid	= HTTP1_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
 			break;
 
 #if 0	// Enable after HTTP2 parsing complete		
 		case PROTO_HTTP2 :
-			isvalid	= HTTP2_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			is_proto_valid	= HTTP2_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
 			break;
 #endif			
 		
 		case PROTO_POSTGRES :
-			isvalid	= POSTGRES_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			is_proto_valid	= POSTGRES_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
 			break;
 			
 		case PROTO_SYBASE_ASE :
-			isvalid	= SYBASE_ASE_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			is_proto_valid	= SYBASE_ASE_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
 			break;
 			
 		case PROTO_MONGO :
-			isvalid	= MONGO_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+			is_proto_valid	= MONGO_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
 			break;
-			
 			
 			
 		default :
-			isvalid = false;
+			is_proto_valid = false;
 			break;
 		}	
 
-		if (isvalid != true) {
-			if (indeterminate(isvalid)) {
+		if (is_proto_valid != true) {
+			if (indeterminate(is_proto_valid)) {
 				apistat.nmaybe_not_++;
 
 				if (apistat.nmaybe_not_ > 16) {
@@ -954,7 +999,7 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		}	
 	}	
 
-	if (true == TLS_PROTO::is_tls_req_resp(pdata, hdr.datalen_, hdr.dir_, is_init)) {
+	if (true == TLS_PROTO::is_tls_req_resp(pdata, datalen, hdr.dir_, is_init)) {
 		if (hdr.dir_ == DirPacket::DirInbound) {
 			sess.ssl_nreq_++;
 		}
@@ -982,18 +1027,18 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 		apistat.proto_ = proto;
 	};	
 
-	isvalid	= HTTP1_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+	is_proto_valid	= HTTP1_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
-	if (true == isvalid) {
+	if (true == is_proto_valid) {
 		init_apistat(PROTO_HTTP1);
 
 		return true;
 	}	
 
 #if 0	// Enable after HTTP2 parsing complete
-	isvalid	= HTTP2_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+	is_proto_valid	= HTTP2_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 		
-	if (true == isvalid) {
+	if (true == is_proto_valid) {
 		init_apistat(PROTO_HTTP2);
 
 		return true;
@@ -1002,26 +1047,26 @@ bool SVC_INFO_CAP::detect_svc_req_resp(PARSE_PKT_HDR & hdr, uint8_t *pdata)
 
 	if (!is_init || hdr.dir_ == DirPacket::DirInbound) {
 		// Postgres Init Outbound ignored for detection
-		isvalid	= POSTGRES_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+		is_proto_valid	= POSTGRES_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 			
-		if (true == isvalid) {
+		if (true == is_proto_valid) {
 			init_apistat(PROTO_POSTGRES);
 
 			return true;
 		}
 	}
 
-	isvalid	= SYBASE_ASE_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+	is_proto_valid	= SYBASE_ASE_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
-	if (true == isvalid) {
+	if (true == is_proto_valid) {
 		init_apistat(PROTO_SYBASE_ASE);
 
 		return true;
 	}	
 
-	isvalid	= MONGO_PROTO::is_valid_req_resp(pdata, hdr.datalen_, hdr.wirelen_, hdr.dir_, is_init);
+	is_proto_valid	= MONGO_PROTO::is_valid_req_resp(pdata, datalen, wirelen, hdr.dir_, is_init, &sess.lastpkt_);
 
-	if (true == isvalid) {
+	if (true == is_proto_valid) {
 		init_apistat(PROTO_MONGO);
 
 		return true;

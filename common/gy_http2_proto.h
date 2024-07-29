@@ -203,7 +203,7 @@ public :
 		return (finfo.type_ == HTYPE_SETTINGS);
 	}	
 
-	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir, bool is_init = false) noexcept
+	static bool is_valid_req_resp(const uint8_t *pdata, uint32_t caplen, uint32_t wirelen, DirPacket dir, bool is_init = false, LAST_PKT_SNIPPET *plastsnippet = nullptr) noexcept
 	{
 		if (is_init) {
 			if (dir == DirPacket::DirInbound) {

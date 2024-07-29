@@ -879,8 +879,8 @@ lbl_idle :
 						return 0;
 					}	
 					
-					if (pdata == porigstart && reqnum_ == 0 && true == HTTP2_PROTO::is_valid_req_resp(pdata, pktlen, pktlen, 
-						DirPacket::DirInbound, !is_midway_session_ /* is_init */)) {
+					if (pdata == porigstart && reqnum_ == 0 && 
+						true == HTTP2_PROTO::is_valid_req_resp(pdata, pktlen, pktlen, DirPacket::DirInbound, !is_midway_session_ /* is_init */)) {
 						
 						gstats[STATH1_HTTP2_CONN]++;
 

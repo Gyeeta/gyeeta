@@ -59,6 +59,46 @@ enum class DirPacket : uint8_t
 	DirOutbound		= 2,	/* Outbound : From Server to Client */
 };	
 
+struct LAST_PKT_SNIPPET
+{
+	static constexpr uint8_t	MaxLastBufSize			{124};
+
+	DirPacket			lastdir_			{DirPacket::DirUnknown};
+	bool				last_buf_trunc_			{false};
+	uint8_t				nlastbuf_			{0};
+	uint8_t				lastbuf_[MaxLastBufSize];
+
+	LAST_PKT_SNIPPET(DirPacket dir, const uint8_t *pdata, uint32_t len) noexcept
+	{
+		set_last_pkt(dir, pdata, len);
+	}	
+
+	LAST_PKT_SNIPPET() noexcept		= default;
+
+	~LAST_PKT_SNIPPET() noexcept		= default;
+
+	void set_last_pkt(DirPacket dir, const uint8_t *pdata, uint32_t len) noexcept
+	{
+		lastdir_ = dir;
+
+		if (len > MaxLastBufSize) {
+			last_buf_trunc_ = true;
+			nlastbuf_ 	= MaxLastBufSize;
+		}	
+		else {
+			last_buf_trunc_ = false;
+			nlastbuf_ 	= len;
+		}	
+
+		std::memcpy(lastbuf_, pdata, nlastbuf_);
+	}	
+
+	void reset() noexcept
+	{
+		this->~LAST_PKT_SNIPPET();
+		new (this) LAST_PKT_SNIPPET();
+	}	
+};	
 
 template <typename T>
 int set_bitset_from_buffer(T &bset, const char *buf, size_t buflen, bool ignore_over_max = true) noexcept
