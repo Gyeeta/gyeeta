@@ -11,8 +11,6 @@ class HTTP2_SESSINFO
 {
 public :
 	HTTP2_SESSINFO()			= default;
-	
-	~HTTP2_SESSINFO() noexcept		= default;
 };
 
 

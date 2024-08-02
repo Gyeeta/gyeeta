@@ -3057,7 +3057,13 @@ declare
 	c 	refcursor;
 	r 	record;
 	spart	text := schname || '.' || parttbl;
+	istbl	boolean;
 begin
+	istbl := public.gy_table_exists(schname, parttbl, '');
+	if not istbl then 
+		return;
+	end if;	
+
 	open c for select relid FROM pg_partition_tree(spart)  where level > 0 and right(relid::text, 8)::date < mindate;
 	loop
 		fetch c into r;
@@ -3263,6 +3269,20 @@ begin
 	end if;	
 end;
 $$ language plpgsql;
+
+
+/*
+ * Will extract string till target or entire string if no target
+ */
+create or replace function substring_until_target(input_text text, target text) returns text as $$
+BEGIN
+    RETURN CASE 
+        WHEN POSITION(target IN input_text) > 0 
+        THEN SUBSTRING(input_text FROM 1 FOR POSITION(target IN input_text) - 1)
+        ELSE input_text
+    END;
+END;
+$$ LANGUAGE plpgsql immutable;
 
 /*
  * Truncate timestamptz to arbitrary intervals < 1 hour. For intervals >= hour, the timezone offset from UTC will be added

@@ -53,7 +53,6 @@ public :
 	}	
 
 	SvcClusterMeshOne() noexcept 						= default;
-	~SvcClusterMeshOne() noexcept						= default;
 
 	friend inline bool operator== (const SvcClusterMeshOne & lhs, uint64_t svc_cluster_id) noexcept
 	{

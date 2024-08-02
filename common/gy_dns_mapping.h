@@ -66,8 +66,6 @@ public :
 	
 	DNS_MAPPING(const char * save_entry_pathin = nullptr);
 
-	~DNS_MAPPING()			= default;
-
 	// Returns 0 if newly added, 1 if already present
 	int add_dns_entry(const char *pdomain, const GY_IP_ADDR & addr) noexcept;
 

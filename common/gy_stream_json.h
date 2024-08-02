@@ -718,9 +718,6 @@ public :
 		: StreamBuf(connshr, connhdlr, resp_type, errcode, comm::RESP_JSON_WITH_HEADER, resp_seqid, max_total_bytes, parrpool, incr_max_sched)
 	{}	
 
-	~STREAM_JSON_EPOLL() noexcept		= default;
-
-
 	void Put(char c)
 	{
 		uint32_t		bufsz;

@@ -75,8 +75,6 @@ struct LAST_PKT_SNIPPET
 
 	LAST_PKT_SNIPPET() noexcept		= default;
 
-	~LAST_PKT_SNIPPET() noexcept		= default;
-
 	void set_last_pkt(DirPacket dir, const uint8_t *pdata, uint32_t len) noexcept
 	{
 		lastdir_ = dir;

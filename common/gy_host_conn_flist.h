@@ -77,8 +77,6 @@ public :
 	
 	HOST_CONN_FLIST() noexcept	= default;
 
-	~HOST_CONN_FLIST() noexcept	= default;
-
 	size_t add_conn(const L1param *pl1, std::weak_ptr<ConnTrack> weakconn, ConnTrack *pconn, comm::HOST_TYPES_E host_type, comm::CLI_TYPE_E cli_type) 
 	{
 		ScopeLock		scopelock(mutex_);

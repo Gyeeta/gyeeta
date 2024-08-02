@@ -933,8 +933,6 @@ public :
 		INFOPRINTCOLOR_OFFLOAD(GY_COLOR_CYAN, "Postgres Connection Pool \'%s\' completed : Sample connection Info is : %s\n", ident, connvec_[0].print_db_conn().get());
 	}	
 
-	~PGConnPool() noexcept			= default;
-
 	/*
 	 * Get a connection from pool.
 	 * wait_response_if_unavail => If no idle conns, will wait for at least 1 conn to complete response. This requires the resp_cb_ to be set to be effective

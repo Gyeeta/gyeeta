@@ -191,8 +191,6 @@ struct API_TRAN
 		}	
 	}
 
-	~API_TRAN() noexcept			= default;
-
 	// Returns the Request string len and ext fields len and padding
 	uint32_t get_elem_size() const noexcept
 	{

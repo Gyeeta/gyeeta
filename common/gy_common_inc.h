@@ -5305,8 +5305,6 @@ public :
 	{
 	}
 
-	~MULTI_IO_STATS() noexcept		= default;
-		
 	uint64_t get_nexec_print() const noexcept
 	{
 		return nresetexecs;	

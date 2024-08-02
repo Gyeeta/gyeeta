@@ -58,8 +58,6 @@ public :
 
 	GY_SSLCAP(GY_EBPF_CB cb, void *pcb_cookie);
 
-	~GY_SSLCAP() noexcept			= default;
-
 	// Will update pidarr and set skipped pids to 0
 	size_t add_procs_with_init(pid_t *pidarr, size_t npids, GY_EBPF_CB cb, void *pcb_cookie, char (&errorbuf)[256]);
 
