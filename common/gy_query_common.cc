@@ -3272,6 +3272,24 @@ $$ language plpgsql;
 
 
 /*
+ * Get a partition storage space. To get the space for an individual partition use :
+ *
+ * select pg_total_relation_size('schb994cfde213046e8a148cca2df722743.tracereqtbl_20240801')::bigint;
+ */
+create or replace function gy_partition_size(schemaname text, partname text) returns bigint as
+$$
+	WITH RECURSIVE partitions AS (
+		SELECT inhrelid::regclass AS partition_name FROM pg_inherits WHERE pg_inherits.inhparent = (schemaname || '.' || partname)::regclass
+		UNION ALL
+		SELECT i.inhrelid::regclass
+		FROM pg_inherits i
+		INNER JOIN partitions p ON p.partition_name = i.inhparent
+	)
+	SELECT SUM(pg_total_relation_size(partition_name::regclass))::bigint AS total_partition_table_size FROM partitions;
+$$ language sql stable;
+
+
+/*
  * Will extract string till target or entire string if no target
  */
 create or replace function substring_until_target(input_text text, target text) returns text as $$
