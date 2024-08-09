@@ -381,8 +381,7 @@ static void stack_writer_test()
 	
 	smallwriter.StartObject();
 
-	smallwriter.KeyConst("Test2");
-	smallwriter.Int(2);
+	smallwriter.KeyConst("Test2").Int(2);
 
 	char				tbuf[512];
 
@@ -390,8 +389,8 @@ static void stack_writer_test()
 	std::memset(tbuf + strlen("Long string follows"), '.', sizeof(tbuf) - strlen("Long string follows") - 1);
 	tbuf[sizeof(tbuf) - 1] = 0;
 
-	smallwriter.KeyConst("Long string");
-	smallwriter.String(tbuf, sizeof(tbuf) - 1);
+	smallwriter.KeyConst("Long string").String(tbuf, sizeof(tbuf) - 1);
+
 	smallwriter.EndObject();
 
 	assert(true == smallwriter.IsComplete());
@@ -422,8 +421,7 @@ static void ext_writer_test()
 	std::memset(tbuf + strlen("Long string follows"), '.', sizeof(tbuf) - strlen("Long string follows") - 1);
 	tbuf[sizeof(tbuf) - 1] = 0;
 
-	smallwriter.KeyConst("Long string");
-	smallwriter.String(tbuf, sizeof(tbuf) - 1);
+	smallwriter.KeyConst("Long string").String(tbuf, sizeof(tbuf) - 1);
 
 	smallwriter.EndObject();
 
@@ -449,8 +447,7 @@ static void stack_reader_writer()
 	std::memset(tbuf + strlen("Long string follows"), '.', sizeof(tbuf) - strlen("Long string follows") - 1);
 	tbuf[sizeof(tbuf) - 1] = 0;
 
-	smallwriter.KeyConst("Long string");
-	smallwriter.String(tbuf, sizeof(tbuf) - 1);
+	smallwriter.KeyConst("Long string").String(tbuf, sizeof(tbuf) - 1);
 
 	smallwriter.KeyConst("double array");
 	smallwriter.StartArray();
@@ -568,8 +565,7 @@ static void small_heap_test()
 	
 	smallwriter.StartObject();
 
-	smallwriter.KeyConst("Test2");
-	smallwriter.Int(2);
+	smallwriter.KeyConst("Test2").Int(2);
 
 	char				tbuf[512];
 

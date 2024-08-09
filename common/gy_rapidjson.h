@@ -313,9 +313,11 @@ public :
 	 * Use only for string literals and not char arrays as no run time strlen calculated...
 	 */
 	template <size_t N>
-	bool KeyConst(const char (&str)[N]) 
+	JSON_WRITER_BASE & KeyConst(const char (&str)[N]) 
 	{
-		return Key(static_cast<const char *>(str), N - 1);
+		Key(static_cast<const char *>(str), N - 1);
+
+		return *this;
 	}
 
 	template <size_t N>
@@ -328,10 +330,10 @@ public :
 	 * Disable local char arrays
 	 */
 	template <size_t N>
-	bool KeyConst(char (&str)[N]) 		= delete;
+	JSON_WRITER_BASE & KeyConst(char (&str)[N])	= delete;
 
 	template <size_t N>
-	bool StringConst(char (&str)[N]) 	= delete;
+	bool StringConst(char (&str)[N]) 		= delete;
 
 
 	/*
