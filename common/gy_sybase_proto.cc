@@ -1,1 +1,0 @@
-../../privgyeeta/common/gy_sybase_proto.cc

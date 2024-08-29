@@ -1,1 +1,0 @@
-../../privgyeeta/common/gy_mongo_proto_detail.h
