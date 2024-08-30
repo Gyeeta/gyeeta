@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 LABEL org.opencontainers.image.description="This container provides madhava which is the Gyeeta Intermediate Server"
 

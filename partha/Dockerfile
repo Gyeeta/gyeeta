@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 LABEL org.opencontainers.image.description="This container provides partha which is the Gyeeta Host Monitor Agent to be installed on all hosts which need to be monitored"
 
