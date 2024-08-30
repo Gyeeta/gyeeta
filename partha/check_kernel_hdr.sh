@@ -32,7 +32,7 @@ get_config()
 }
 
 if [ -f /sys/kernel/btf/vmlinux ]; then
-	if [ $( ls -l /sys/kernel/btf/ | wc -l ) -gt 2 ]; then
+	if [ $( ls -l /sys/kernel/btf/ | wc -l ) -gt 0 ]; then
 		exit 0
 	fi	
 fi	
