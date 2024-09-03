@@ -13,7 +13,8 @@
   both HTTP and non-HTTP based services and can provide statistics such as Queries/sec, Response Times, Network Throughputs, Service Network 
   Flows for any service (even proprietary or TLS encrypted) with no manual inputs or integrations.
 - Query Global Aggregated Statistics from multiple servers using a single query either from Web UI or REST APIs.
-- Self Learning Algorithms that can detect Anomalies, Contention or Degradation without any manual inputs. 
+- Self Learning Algorithms that can detect Anomalies, Contention or Degradation without any manual inputs.
+- Trace individual Requests for HTTP/HTTPS, Postgres, MongoDB with on demand Tracing.
 - Advanced Cluster, Service or Process Level Alerts using a powerful Web UI or REST APIs.
 - Detect Process Level *CPU starvation, Virtual Memory or IO Bottlenecks*. 
 - Monitor Kubernetes or any other Cluster orchestrators.
