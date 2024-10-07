@@ -1,9 +1,9 @@
 # Gyeeta Observability
 
-<p align="center"><a href="https://gyeeta.io"><img src="https://gyeeta.io/img/gyeeta.png" alt="Gyeeta" width="96" /></a></p>
+<p align="center"><a href="https://gyeeta.github.io"><img src="https://gyeeta.github.io/img/gyeeta.png" alt="Gyeeta" width="96" /></a></p>
 
 
-[***Gyeeta***](https://gyeeta.io) is an *Open Source (GPLv3)* Infrastructure, Services and Process Level monitor (*Linux* only).  
+[***Gyeeta***](https://gyeeta.github.io) is an *Open Source (GPLv3)* Infrastructure, Services and Process Level monitor (*Linux* only).  
 
 
 ## Key Observability Capabilities
@@ -19,7 +19,7 @@
 - Detect Process Level *CPU starvation, Virtual Memory or IO Bottlenecks*. 
 - Monitor Kubernetes or any other Cluster orchestrators.
 
-[***Website***](https://gyeeta.io) | [***Documentation***](https://gyeeta.io/docs) | [***Youtube***](https://youtube.com/@gyeeta) | [***X***](https://x.com/GyeetaIO)
+[***Website***](https://gyeeta.github.io) | [***Documentation***](https://gyeeta.github.io/docs) | [***Youtube***](https://youtube.com/@gyeeta) | [***X***](https://x.com/GyeetaIO)
 
 ## License
 
@@ -43,7 +43,7 @@ Gyeeta is licensed under the [GNU General Public License v3.0 (GPLv3)](./LICENSE
 
 The image below shows the high level overview of how the different components interact with each other :
 
-![Gyeeta Architecture](https://gyeeta.io/img/gyeeta_arch.jpg)
+![Gyeeta Architecture](https://gyeeta.github.io/img/gyeeta_arch.jpg)
 
 ## Install Options for Gyeeta components
 
@@ -58,11 +58,11 @@ Gyeeta is a self-hosted Observability product. Gyeeta components can be installe
 Installing using either the Bash Script or Kubernetes Helm Charts are the easiest ways to deploy the various Gyeeta
 components.
 
-**Install instructions** are available at [Gyeeta Install Planning and Options](https://gyeeta.io/docs/installation/install_options)
+**Install instructions** are available at [Gyeeta Install Planning and Options](https://gyeeta.github.io/docs/installation/install_options)
 
-**A Quick TL;DR Install of Gyeeta Server Components** can be found at [TL;DR Instructions](https://gyeeta.io/docs/installation/install_options#tldr-quick-single-command-install)
+**A Quick TL;DR Install of Gyeeta Server Components** can be found at [TL;DR Instructions](https://gyeeta.github.io/docs/installation/install_options#tldr-quick-single-command-install)
 
-**Kubernetes Installation** using Helm Charts can be found at [K8s Helm Charts](https://gyeeta.io/docs/installation/k8s_helm)
+**Kubernetes Installation** using Helm Charts can be found at [K8s Helm Charts](https://gyeeta.github.io/docs/installation/k8s_helm)
 
 ## Supported Linux Distributions
 
@@ -83,11 +83,11 @@ Container Platforms such as Kubernetes or Docker Swarm are also supported using 
 
 ## Snapshots of Gyeeta Web UI
 
-![Service State Monitor](https://gyeeta.io/img/servicemon.png)
+![Service State Monitor](https://gyeeta.github.io/img/servicemon.png)
 
-![Process Network Flow Dashboard](https://gyeeta.io/img/procflow.png)
+![Process Network Flow Dashboard](https://gyeeta.github.io/img/procflow.png)
 
-![Process States](https://gyeeta.io/img/procstate1.png)
+![Process States](https://gyeeta.github.io/img/procstate1.png)
 
 ## More Info 
 
