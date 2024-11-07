@@ -109,7 +109,7 @@ public :
 
 		ret = get_host_id(sysfs_dir_fd, machine_id_str, sizeof(machine_id_str));
 		if (ret != 0) {
-			GY_THROW_EXCEPTION("Could not get machine ID from DMI info");
+			GY_THROW_EXCEPTION("Could not get machine ID from DMI info : Please specify HostID manually at startup using config or cli option");
 		}	
 
 		set_from_string(machine_id_str, strlen(machine_id_str));
@@ -523,7 +523,7 @@ public :
 	bool					is_uts_namespace	{false};
 	bool					is_cgroup_namespace	{false};
 
-	SYS_HARDWARE(bool ignore_min_kern = false, int sysfs_dir_fd_in = -1, int procfs_dir_fd_in = -1, bool error_on_no_host_ns = true, bool need_root_priv = false)
+	SYS_HARDWARE(bool ignore_min_kern = false, int sysfs_dir_fd_in = -1, int procfs_dir_fd_in = -1, bool error_on_no_host_ns = true, bool need_root_priv = false, std::string_view hostid_string = {})
 		: sysfs_dir_fd(sysfs_dir_fd_in), procfs_dir_fd(procfs_dir_fd_in), close_sysfs_fd(false), close_procfs_fd(false)
 	{
 		int			ret;
@@ -580,7 +580,13 @@ public :
 		os_info	 	= std::make_unique <OS_INFO> (ignore_min_kern, is_mount_namespace, is_uts_namespace);
 		net_info 	= std::make_unique <NET_IF_HDLR> (procfs_dir_fd, sysfs_dir_fd, rootns_inodes.get_ns_inode(NS_TYPE_NET), true /* is_root_ns */);
 
-		if (is_perm_issue == false && need_root_priv) {
+		if (hostid_string.size()) {
+			NOTEPRINTCOLOR(GY_COLOR_YELLOW, "Host ID String specified. Machine ID will be set as per Host ID String \'%s\' : Machine ID will be unique only if the Host ID is unique...", 
+					hostid_string.data());
+
+			machine_id_128.set_from_string(hostid_string.data(), hostid_string.size());
+		}
+		else if (is_perm_issue == false && need_root_priv) {
 			machine_id_128.populate_machineid(sysfs_dir_fd);
 		}
 	}
@@ -642,7 +648,7 @@ public :
 		
 	void print_system_info() noexcept;
 			
-	static int			init_singleton(bool ignore_min_kern = false, bool need_root_priv = false, bool error_on_no_host_ns = true);
+	static int			init_singleton(bool ignore_min_kern = false, bool need_root_priv = false, bool error_on_no_host_ns = true, std::string_view hostid_string = {});
 
 	static SYS_HARDWARE *		get_singleton() noexcept;
 };	

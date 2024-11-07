@@ -32,6 +32,7 @@ public :
 		std::vector<std::string>	shyama_hosts;
 		std::vector<uint16_t>		shyama_ports;
 
+		std::string			hostid_string;
 		uint8_t				response_sampling_percent			{100};
 		bool				capture_errcode					{true};
 		bool				disable_api_capture				{false};

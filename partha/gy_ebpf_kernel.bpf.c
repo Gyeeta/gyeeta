@@ -698,7 +698,13 @@ int BPF_KRETPROBE(trace_accept_return, struct sock *newsk)
 
 
 SEC("fexit/inet_csk_accept")
-int BPF_PROG(fexit_trace_accept_return, struct sock *sk, int flags, int *err, bool kern, struct sock *newsk)
+int BPF_PROG(fexit_trace_accept_pre610_return, struct sock *sk, int flags, int *err, bool kern, struct sock *newsk)
+{
+	return do_trace_accept_return(ctx, newsk);
+}	
+
+SEC("fexit/inet_csk_accept")
+int BPF_PROG(fexit_trace_accept_return, struct sock *sk, void *arg, struct sock *newsk)
 {
 	return do_trace_accept_return(ctx, newsk);
 }	

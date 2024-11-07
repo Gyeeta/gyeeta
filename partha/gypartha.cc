@@ -25,18 +25,22 @@
 #include		"gy_proto_common.h"
 #include		"gy_svc_net_capture.h"
 #include		"gy_pseudo_pcap_cap.h"
+#include 		"gy_sslhash.h"
 
 #include 		<sys/utsname.h>
 
 namespace gyeeta {
 namespace partha {
 
-static PARTHA_C		*pgpartha;
+static PARTHA_C			*pgpartha;
 
  
 int PARTHA_C::init_all_singletons()
 {
-	const char		*pext[] = {".log", ".tmp"};
+	const char			*pext[] = {".log", ".tmp"};
+	std::string_view		hostid;
+	STRING_BUFFER<64>		modbuf;
+
 
 	GY_CURL_EASY::global_init();
 
@@ -56,7 +60,25 @@ int PARTHA_C::init_all_singletons()
 
 	MOUNT_HDLR::init_singleton(true /* mount_proc_if_not */, true /* mount_sys_if_not */, true /* mount_tracefs_if_not */);
 
-	SYS_HARDWARE::init_singleton(false /* ignore_min_kern */, true /* need_root_priv */);
+	if (psettings_->hostid_string.size()) {
+		auto			mbin = gy_get_ssl_hash(std::string_view(psettings_->hostid_string), gyeeta::GY_HASH_SHA256);
+
+		const uint8_t		*ptmp;
+
+		if (mbin.size() >= 12) {
+			modbuf << "00000000"sv;
+
+			ptmp = mbin.get();
+
+			for (int i = 0; i < 12; ++i) {
+				modbuf.appendfmt("%02x", ptmp[i]);
+			}	
+
+			hostid = modbuf.get_view();
+		}
+	}	
+
+	SYS_HARDWARE::init_singleton(false /* ignore_min_kern */, true /* need_root_priv */, true /* error_on_no_host_ns */, hostid);
 
 	if (true == SYS_HARDWARE::get_singleton()->is_mount_ns_container()) {
 		get_root_mount_ns_info(OS_INFO::get_singleton(), pcmd_child_, SYS_HARDWARE::get_singleton()->is_uts_ns_container());
@@ -548,6 +570,20 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		ewriter.RawValue(penv, strlen(penv), rapidjson::kNumberType);
 	}	
 
+	penv = getenv("CFG_HOSTID_STRING");
+	if (penv) {
+		ewriter.KeyConst("hostid_string");
+
+		if (*penv != '"') {
+			ewriter.StringStreamStart();
+			ewriter.StringStream(penv, strlen(penv));
+			ewriter.StringStreamEnd();
+		}
+		else {
+			ewriter.RawValue(penv, strlen(penv), rapidjson::kStringType);
+		}	
+	}	
+
 	penv = getenv("CFG_IS_KUBERNETES");
 	if (penv) {
 		ewriter.KeyConst("is_kubernetes");
@@ -601,6 +637,7 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 		"response_sampling_percent"	:	100,
 		"capture_errcode"		:	true,
 		"auto_respawn_on_exit"		:	true,
+		"hostid_string"			:	"Use this only if the /sys/class/dmi/id/product_uuid not available or not to be used : Please specify a uniq string here"
 		"is_kubernetes"			:	true,
 		"enable_task_delays"		:	2,
 		"api_max_len"			:	4096,
@@ -753,6 +790,17 @@ PARTHA_C::PA_SETTINGS_C::PA_SETTINGS_C(char *pjson)
 	else if (aiter = doc.FindMember("auto_respawn_on_exit"); ((aiter != doc.MemberEnd()) && (aiter->value.IsBool()))) {
 		auto_respawn_on_exit = aiter->value.GetBool();
 	}	
+
+	if (aiter = edoc.FindMember("hostid_string"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), 256, "HostID String from Environment Variable", false /* firstalphaonly */, false /* emptyok */);
+
+		hostid_string.assign(aiter->value.GetString(), aiter->value.GetStringLength());
+	}
+	else if (aiter = doc.FindMember("hostid_string"); ((aiter != doc.MemberEnd()) && (aiter->value.IsString()))) {
+		validate_json_name(aiter->value.GetString(), aiter->value.GetStringLength(), 256, "HostID String from config", false /* firstalphaonly */, false /* emptyok */);
+
+		hostid_string.assign(aiter->value.GetString(), aiter->value.GetStringLength());
+	}
 
 	if (aiter = edoc.FindMember("is_kubernetes"); ((aiter != edoc.MemberEnd()) && (aiter->value.IsBool()))) {
 		is_kubernetes = aiter->value.GetBool();
@@ -1690,6 +1738,7 @@ static int start_partha(int argc, char **argv)
 						hash_cfg_disable_api_capture	= fnv1_consthash("--cfg_disable_api_capture"),
 						hash_cfg_enable_task_delays	= fnv1_consthash("--cfg_enable_task_delays"),
 						hash_cfg_auto_respawn_on_exit	= fnv1_consthash("--cfg_auto_respawn_on_exit"),
+						hash_cfg_hostid_string		= fnv1_consthash("--cfg_hostid_string"),
 						hash_cfg_is_kubernetes		= fnv1_consthash("--cfg_is_kubernetes"),
 						hash_cfg_api_max_len		= fnv1_consthash("--cfg_api_max_len"),
 					
@@ -1835,6 +1884,13 @@ static int start_partha(int argc, char **argv)
 			case hash_cfg_auto_respawn_on_exit :
 				if (i + 1 < argc) {
 					setenv("CFG_AUTO_RESPAWN_ON_EXIT", argv[i + 1], 1);
+					i++;
+				}
+				break;
+
+			case hash_cfg_hostid_string :
+				if (i + 1 < argc) {
+					setenv("CFG_HOSTID_STRING", argv[i + 1], 1);
 					i++;
 				}
 				break;
